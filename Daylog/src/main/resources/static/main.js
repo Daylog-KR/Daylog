@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
 
             // 1. 사용자에게 로그아웃 여부 확인
-            const isConfirmed = confirm('정말 로그아웃 하시겠어요? 🤎');
+            const isConfirmed = confirm('정말 로그아웃 하시겠어요?');
 
             if (isConfirmed) {
                 // 2. oauth-redirect.html 에서 생성한 실제 키값들을 명확히 삭제
@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===== 1. D-Day 카운터 로직 =====
-    const startDate = new Date("2025-06-18");
+    const startDate = new Date("2026-05-09");
     calculateDDay(startDate);
 
     // ===== 2. 추억 기록 등록 이벤트 인터랙션 =====

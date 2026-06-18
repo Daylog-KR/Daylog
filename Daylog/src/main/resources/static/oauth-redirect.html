@@ -3,25 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#1a56db">
-    <title>로그인 처리중 — 마이빌딩</title>
+    <!-- 테마 컬러를 크림 아이보리 톤으로 변경 -->
+    <meta name="theme-color" content="#fdfbf7">
+    <title>로그인 처리중 — Our Memory</title>
+    <!-- 감성 폰트 링크 추가 -->
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --blue: #1a56db;
-            --blue-light: #e8f0fe;
-            --blue-dark: #1e429f;
-            --gray-500: #6b7280;
-            --gray-700: #374151;
-            --gray-900: #111827;
+            /* 차분한 웜톤 컬러 팔레트 */
+            --primary: #b08968;       /* 카라멜 브라운 */
+            --primary-light: #e6ccb2; /* 부드러운 베이지 */
+            --primary-dark: #9c6644;  /* 딥 브라운 */
+            --bg-color: #fdfbf7;      /* 포근한 크림 아이보리 */
+
+            --gray-100: #f3f0ec;
+            --gray-200: #e5e0d8;
+            --gray-500: #7a756e;
+            --gray-700: #45413c;
+            --gray-900: #1c1a18;
             --white: #ffffff;
+
             --radius-xl: 20px;
-            --shadow-lg: 0 10px 30px rgba(0,0,0,0.20), 0 4px 12px rgba(0,0,0,0.12);
-            --font: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+            /* 은은한 브라운 그림자 */
+            --shadow-lg: 0 10px 30px rgba(139, 115, 85, 0.12), 0 4px 12px rgba(139, 115, 85, 0.08);
+            --font-main: 'Noto Sans KR', sans-serif;
         }
 
-        html, body { height: 100%; font-family: var(--font); }
+        html, body { height: 100%; font-family: var(--font-main); }
 
         body {
             min-height: 100vh;
@@ -30,16 +40,18 @@
             align-items: center;
             justify-content: center;
             padding: 24px;
-            background: linear-gradient(160deg, var(--blue) 0%, var(--blue-dark) 100%);
+            background-color: var(--bg-color);
             position: relative;
             overflow: hidden;
         }
 
+        /* 아늑한 베이지 글로우 배경 장식 */
         body::before, body::after {
             content: '';
             position: absolute;
             border-radius: 50%;
-            background: rgba(255,255,255,0.08);
+            background: rgba(230, 204, 178, 0.3);
+            filter: blur(45px);
             pointer-events: none;
         }
         body::before { width: 320px; height: 320px; top: -120px; right: -100px; }
@@ -51,6 +63,7 @@
             background: var(--white);
             border-radius: var(--radius-xl);
             box-shadow: var(--shadow-lg);
+            border: 1px solid var(--gray-100);
             padding: 44px 40px;
             text-align: center;
             width: 100%;
@@ -63,33 +76,37 @@
         }
 
         .brand-logo {
-            width: 56px; height: 56px; margin: 0 auto 18px;
-            border-radius: 16px;
-            background: var(--blue-light);
+            width: 58px; height: 58px; margin: 0 auto 18px;
+            border-radius: 18px;
+            background: var(--gray-100);
+            border: 1px solid var(--gray-200);
             display: flex; align-items: center; justify-content: center;
-            font-size: 30px;
+            font-size: 26px;
+            box-shadow: 0 4px 10px rgba(139, 115, 85, 0.05);
         }
 
         .loading-text {
-            font-size: 18px;
-            font-weight: 700;
+            font-size: 17px;
+            font-weight: 500;
             color: var(--gray-900);
-            margin-bottom: 22px;
+            margin-bottom: 24px;
             white-space: nowrap;
+            letter-spacing: -0.3px;
         }
 
+        /* 웜톤 브라운 스피너 */
         .spinner {
-            width: 44px; height: 44px; margin: 0 auto;
-            border: 4px solid var(--blue-light);
-            border-top-color: var(--blue);
+            width: 40px; height: 40px; margin: 0 auto;
+            border: 3.5px solid var(--primary-light);
+            border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 0.9s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .loading-subtext {
-            margin-top: 22px;
-            font-size: 14px;
+            margin-top: 24px;
+            font-size: 13.5px;
             color: var(--gray-500);
         }
 
@@ -110,7 +127,8 @@
 </head>
 <body>
 <div class="loading-container">
-    <div class="brand-logo">🏢</div>
+    <!-- 로고 이모지를 웜톤 하트로 변경 -->
+    <div class="brand-logo">🤎</div>
     <div class="loading-text">로그인 중입니다<span class="dots"></span></div>
     <div class="spinner"></div>
     <div class="loading-subtext">잠시만 기다려 주세요</div>
@@ -118,9 +136,8 @@
 
 <script src="config.js?v=1.0.0"></script>
 <script>
-    // ⚙️ 백엔드 서버 주소 (수동 코드교환 엔드포인트가 있는 곳)
+    // ⚙️ 백엔드 서버 주소 (기존 로직 완전 유지)
     const BACKEND_BASE = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE);
-    // 프론트 파일이 모두 같은 폴더에 있다는 가정. 구조가 다르면 아래 두 값만 수정.
     const SUCCESS_REDIRECT = 'main.html';
     const LOGIN_PAGE = 'login.html';
 
@@ -136,9 +153,8 @@
             return;
         }
 
-        // ── 방법 1: ?code=... 로 인가코드가 온 경우 → 컨트롤러로 교환 ──
+        // ── 방법 1: ?code=... 로 인가코드가 온 경우 ──
         const code = params.get('code');
-        // provider: state 접두사("provider__xxxx")에서 추출, 없으면 sessionStorage/쿼리
         const stateProvider = (params.get('state') || '').split('__')[0];
         const provider = stateProvider || sessionStorage.getItem('provider') || params.get('provider');
 
@@ -148,12 +164,11 @@
             return;
         }
         if (!provider) {
-            alert('소셜 제공자 정보를 찾을 수 없습니다. (이 페이지가 로그인 페이지와 같은 주소(127.0.0.1:5500)에서 열렸는지 확인)');
+            alert('소셜 제공자 정보를 찾을 수 없습니다.');
             window.location.href = LOGIN_PAGE;
             return;
         }
 
-        // 컨트롤러의 콜백(수동 교환) 엔드포인트
         const endpoints = {
             kakao:  `${BACKEND_BASE}/user/oauth2/code/kakao`,
             naver:  `${BACKEND_BASE}/user/oauth2/code/naver`,
@@ -167,7 +182,6 @@
         }
 
         try {
-            // 인가코드를 백엔드로 전달 → JWT 수령
             const response = await fetch(`${endpoint}?code=${encodeURIComponent(code)}`, {
                 method: 'GET'
             });
@@ -180,10 +194,11 @@
                 return;
             }
 
-            const data = await response.json(); // JWTDTO
+            const data = await response.json();
 
             localStorage.clear();
-            // JWTDTO 의 토큰 필드명에 맞게 추출 (동작 버전 기준 data.token)
+
+            // 데이터 키 네임셋을 고정하여 저장 (main.js 로그아웃 시 일괄 삭제 대상)
             const token = data.token || data.accessToken || data.jwt || '';
             if (token) localStorage.setItem('accessToken', token);
             if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user));
