@@ -1,0 +1,167 @@
+/* ===== Our Memory 로그인 — 차분한 웜톤(우드/베이지) 디자인 ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    /* 감성 웜톤 컬러 팔레트 */
+    --primary: #b08968;       /* 따뜻한 카라멜 브라운 */
+    --primary-light: #e6ccb2; /* 부드러운 베이지 */
+    --primary-dark: #9c6644;  /* 딥 브라운 */
+    --bg-color: #fdfbf7;      /* 포근한 크림 아이보리 */
+
+    --gray-50: #faf9f8;
+    --gray-100: #f3f0ec;
+    --gray-200: #e5e0d8;
+    --gray-300: #d1cbc1;
+    --gray-400: #a8a29a;
+    --gray-500: #7a756e;
+    --gray-600: #5c5751;
+    --gray-700: #45413c;
+    --gray-800: #2e2b28;
+    --gray-900: #1c1a18;
+    --white: #ffffff;
+
+    --kakao: #fee500;
+    --kakao-text: #191600;
+    --naver: #03c75a;
+
+    /* 따뜻한 느낌의 부드러운 브라운 그림자 */
+    --shadow-sm: 0 1px 3px rgba(139, 115, 85, 0.08), 0 1px 2px rgba(139, 115, 85, 0.05);
+    --shadow-md: 0 4px 15px rgba(139, 115, 85, 0.08);
+    --shadow-lg: 0 10px 30px rgba(139, 115, 85, 0.12), 0 4px 12px rgba(139, 115, 85, 0.08);
+
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+
+    /* 폰트 설정 */
+    --font-main: 'Noto Sans KR', sans-serif;
+    --font-logo: 'Lora', serif; /* 고급스러운 명조체 느낌 */
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--font-main);
+    background-color: var(--bg-color);
+    color: var(--gray-800);
+}
+
+.login-page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 은은한 웜톤 배경 장식 */
+.login-page::before,
+.login-page::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(230, 204, 178, 0.25); /* 베이지 글로우 */
+    filter: blur(45px);
+    pointer-events: none;
+}
+.login-page::before { width: 450px; height: 450px; top: -120px; right: -150px; }
+.login-page::after  { width: 380px; height: 380px; bottom: -120px; left: -120px; }
+
+.login-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 380px;
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: 36px 28px 28px;
+    animation: cardIn 0.5s ease-out;
+}
+
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.brand { text-align: center; margin-bottom: 32px; }
+
+.brand-logo {
+    width: 64px; height: 64px; margin: 0 auto 16px;
+    border-radius: 20px; /* 동그라미에서 살짝 둥근 사각형으로 변경하여 단정함 추가 */
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    box-shadow: var(--shadow-sm);
+}
+
+.brand-name {
+    font-family: var(--font-logo);
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--primary-dark);
+    letter-spacing: -0.5px;
+}
+
+.brand-tagline {
+    font-size: 14px; color: var(--gray-500);
+    margin-top: 10px; line-height: 1.6;
+}
+
+.social-login { display: flex; flex-direction: column; gap: 12px; }
+
+.social-login-label {
+    font-size: 12px; font-weight: 500; color: var(--gray-400);
+    text-align: center; margin-bottom: 6px;
+    position: relative;
+}
+.social-login-label::before,
+.social-login-label::after {
+    content: ''; position: absolute; top: 50%;
+    width: 56px; height: 1px; background: var(--gray-200);
+}
+.social-login-label::before { left: 0; }
+.social-login-label::after  { right: 0; }
+
+.social-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 14px 16px;
+    border-radius: var(--radius-md); border: 1px solid transparent;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    font-family: var(--font-main);
+    transition: all 0.2s ease;
+}
+
+.social-btn:active { transform: scale(0.98); }
+.social-icon { display: flex; align-items: center; justify-content: center; }
+.social-text { line-height: 1; }
+
+.social-btn.kakao { background: var(--kakao); color: var(--kakao-text); }
+.social-btn.naver { background: var(--naver); color: var(--white); }
+.social-btn.google {
+    background: var(--white); color: var(--gray-700);
+    border: 1px solid var(--gray-200); box-shadow: var(--shadow-sm);
+}
+.social-btn.google:hover { background: var(--gray-50); }
+
+.login-footer {
+    margin-top: 26px; text-align: center;
+    font-size: 12px; color: var(--gray-400); line-height: 1.7;
+}
+.login-footer a { color: var(--primary); text-decoration: none; font-weight: 500; }
+.login-footer a:hover { color: var(--primary-dark); }
+
+#toast {
+    position: fixed; bottom: 40px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--gray-800); color: var(--white);
+    padding: 12px 24px; border-radius: 8px; /* 토스트도 단정하게 */
+    font-size: 13px; font-weight: 400;
+    opacity: 0; transition: opacity 0.3s, transform 0.3s;
+    z-index: 9999; max-width: calc(100% - 48px); text-align: center;
+    box-shadow: var(--shadow-md);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

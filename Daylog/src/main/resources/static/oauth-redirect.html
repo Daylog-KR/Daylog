@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a56db">
+    <title>로그인 처리중 — 마이빌딩</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --blue: #1a56db;
+            --blue-light: #e8f0fe;
+            --blue-dark: #1e429f;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+            --white: #ffffff;
+            --radius-xl: 20px;
+            --shadow-lg: 0 10px 30px rgba(0,0,0,0.20), 0 4px 12px rgba(0,0,0,0.12);
+            --font: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+        }
+
+        html, body { height: 100%; font-family: var(--font); }
+
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: linear-gradient(160deg, var(--blue) 0%, var(--blue-dark) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        body::before, body::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+            pointer-events: none;
+        }
+        body::before { width: 320px; height: 320px; top: -120px; right: -100px; }
+        body::after  { width: 260px; height: 260px; bottom: -110px; left: -90px; }
+
+        .loading-container {
+            position: relative;
+            z-index: 1;
+            background: var(--white);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            padding: 44px 40px;
+            text-align: center;
+            width: 100%;
+            max-width: 340px;
+            animation: cardIn 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .brand-logo {
+            width: 56px; height: 56px; margin: 0 auto 18px;
+            border-radius: 16px;
+            background: var(--blue-light);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px;
+        }
+
+        .loading-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 22px;
+            white-space: nowrap;
+        }
+
+        .spinner {
+            width: 44px; height: 44px; margin: 0 auto;
+            border: 4px solid var(--blue-light);
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-subtext {
+            margin-top: 22px;
+            font-size: 14px;
+            color: var(--gray-500);
+        }
+
+        .dots { display: inline-block; width: 1.4em; text-align: left; }
+        .dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .loading-container { animation: none; }
+            .spinner { animation-duration: 1.8s; }
+        }
+    </style>
+</head>
+<body>
+<div class="loading-container">
+    <div class="brand-logo">🏢</div>
+    <div class="loading-text">로그인 중입니다<span class="dots"></span></div>
+    <div class="spinner"></div>
+    <div class="loading-subtext">잠시만 기다려 주세요</div>
+</div>
+
+<script src="config.js?v=1.0.0"></script>
+<script>
+    // ⚙️ 백엔드 서버 주소 (수동 코드교환 엔드포인트가 있는 곳)
+    const BACKEND_BASE = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE);
+    // 프론트 파일이 모두 같은 폴더에 있다는 가정. 구조가 다르면 아래 두 값만 수정.
+    const SUCCESS_REDIRECT = 'main.html';
+    const LOGIN_PAGE = 'login.html';
+
+    document.addEventListener('DOMContentLoaded', async function () {
+        const params = new URLSearchParams(window.location.search);
+
+        // ── 방법 2: 백엔드 성공 핸들러가 ?token=... 으로 보낸 경우 ──
+        const tokenParam = params.get('token') || params.get('accessToken');
+        if (tokenParam) {
+            localStorage.clear();
+            localStorage.setItem('accessToken', tokenParam);
+            window.location.href = SUCCESS_REDIRECT;
+            return;
+        }
+
+        // ── 방법 1: ?code=... 로 인가코드가 온 경우 → 컨트롤러로 교환 ──
+        const code = params.get('code');
+        // provider: state 접두사("provider__xxxx")에서 추출, 없으면 sessionStorage/쿼리
+        const stateProvider = (params.get('state') || '').split('__')[0];
+        const provider = stateProvider || sessionStorage.getItem('provider') || params.get('provider');
+
+        if (!code) {
+            alert('인가 코드가 존재하지 않습니다.');
+            window.location.href = LOGIN_PAGE;
+            return;
+        }
+        if (!provider) {
+            alert('소셜 제공자 정보를 찾을 수 없습니다. (이 페이지가 로그인 페이지와 같은 주소(127.0.0.1:5500)에서 열렸는지 확인)');
+            window.location.href = LOGIN_PAGE;
+            return;
+        }
+
+        // 컨트롤러의 콜백(수동 교환) 엔드포인트
+        const endpoints = {
+            kakao:  `${BACKEND_BASE}/user/oauth2/code/kakao`,
+            naver:  `${BACKEND_BASE}/user/oauth2/code/naver`,
+            google: `${BACKEND_BASE}/user/oauth2/code/google`
+        };
+        const endpoint = endpoints[provider];
+        if (!endpoint) {
+            alert('지원하지 않는 소셜 로그인입니다.');
+            window.location.href = LOGIN_PAGE;
+            return;
+        }
+
+        try {
+            // 인가코드를 백엔드로 전달 → JWT 수령
+            const response = await fetch(`${endpoint}?code=${encodeURIComponent(code)}`, {
+                method: 'GET'
+            });
+
+            if (!response.ok) {
+                let msg = '로그인 처리 실패';
+                try { const e = await response.json(); msg = e.message || msg; } catch (_) {}
+                alert(msg);
+                window.location.href = LOGIN_PAGE;
+                return;
+            }
+
+            const data = await response.json(); // JWTDTO
+
+            localStorage.clear();
+            // JWTDTO 의 토큰 필드명에 맞게 추출 (동작 버전 기준 data.token)
+            const token = data.token || data.accessToken || data.jwt || '';
+            if (token) localStorage.setItem('accessToken', token);
+            if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user));
+            localStorage.setItem('auth', JSON.stringify(data));
+
+            sessionStorage.removeItem('provider');
+
+            window.location.href = SUCCESS_REDIRECT;
+        } catch (error) {
+            console.error('OAuth 로그인 처리 오류:', error);
+            alert('로그인 처리 중 오류가 발생했습니다.');
+            window.location.href = LOGIN_PAGE;
+        }
+    });
+</script>
+</body>
+</html>

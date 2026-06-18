@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리의 소중한 기록</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+
+<header class="navbar">
+    <div class="logo">Our Memory</div>
+    <div class="dday-counter">
+        <span class="heart-icon">♥</span> 우리 함께한 지 <span id="dday-count">0</span>일째
+    </div>
+    <button class="logout-btn">로그아웃</button>
+</header>
+
+<main class="container">
+    <section class="profile-section">
+        <div class="profile-box">
+            <div class="avatar user-avatar">👦</div>
+            <p class="profile-name">나</p>
+        </div>
+        <div class="center-heart">💖</div>
+        <div class="profile-box">
+            <div class="avatar gf-avatar">👧</div>
+            <p class="profile-name">여자친구</p>
+        </div>
+    </section>
+
+    <div class="content-wrapper">
+
+        <section class="memory-form-card">
+            <h3>오늘의 추억 새기기</h3>
+            <form id="memory-form">
+                <input type="date" id="memory-date" required>
+                <input type="text" id="memory-title" placeholder="어떤 날이었나요? (예: 삼청동 데이트)" required>
+                <textarea id="memory-content" placeholder="오늘의 소중한 이야기를 적어주세요..." rows="5" required></textarea>
+                <button type="submit" class="submit-btn">기록하기 ✨</button>
+            </form>
+        </section>
+
+        <section class="timeline-section">
+            <h3>우리의 추억 타임라인</h3>
+            <div id="timeline-feed">
+                <div class="memory-card">
+                    <div class="card-header">
+                        <span class="card-date">2026.06.01</span>
+                        <h4 class="card-title">첫 번째 기념일 데이트</h4>
+                    </div>
+                    <p class="card-text">맛있는 저녁도 먹고 한강에서 돗자리 펴고 도란도란 이야기 나눈 날. 날씨도 우리 마음처럼 너무 완벽했다! 앞으로도 예쁘게 만나자 화이팅!</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>

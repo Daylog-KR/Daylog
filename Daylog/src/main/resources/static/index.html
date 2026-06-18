@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 테마 컬러를 크림 아이보리 톤으로 변경 -->
+    <meta name="theme-color" content="#fdfbf7">
+    <title>Our Memory</title>
+    <!-- 감성 폰트 (Lora 명조체 및 Noto Sans) 추가 -->
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            /* 웜톤 컬러 팔레트 */
+            --primary: #b08968;
+            --primary-light: #e6ccb2;
+            --primary-dark: #9c6644;
+            --bg-color: #fdfbf7;
+            --gray-200: #e5e0d8;
+            --gray-500: #7a756e;
+            --gray-600: #5c5751;
+            --white: #ffffff;
+
+            --font-main: 'Noto Sans KR', sans-serif;
+            --font-logo: 'Lora', serif;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+        }
+
+        .intro {
+            min-height: 100vh; min-height: 100dvh;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 24px;
+            background-color: var(--bg-color);
+            position: relative; overflow: hidden;
+            opacity: 1;
+            transition: opacity 0.6s ease;
+        }
+        .intro.leaving { opacity: 0; }
+
+        /* 은은한 베이지 글로우 배경 장식 */
+        .intro::before, .intro::after {
+            content: ''; position: absolute; border-radius: 50%;
+            background: rgba(230, 204, 178, 0.3); /* 베이지 글로우 */
+            filter: blur(45px);
+            pointer-events: none;
+        }
+        .intro::before { width: 380px; height: 380px; top: -130px; right: -110px; }
+        .intro::after  { width: 320px; height: 320px; bottom: -120px; left: -100px; }
+
+        .intro-inner {
+            position: relative; z-index: 1; text-align: center;
+            opacity: 0; transform: translateY(14px);
+            animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        @keyframes rise {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 단정하고 고급스러운 로고 박스 */
+        .logo {
+            width: 88px; height: 88px; margin: 0 auto 20px;
+            border-radius: 24px;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 38px;
+            box-shadow: 0 10px 30px rgba(139, 115, 85, 0.12);
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+
+        .name {
+            font-family: var(--font-logo);
+            font-size: 32px; font-weight: 500; color: var(--primary-dark);
+            letter-spacing: -0.5px;
+        }
+
+        .tagline {
+            margin-top: 14px;
+            font-size: 15px; line-height: 1.6;
+            color: var(--gray-600);
+            font-weight: 400;
+        }
+
+        /* 진행 인디케이터 (베이지 톤) */
+        .dots {
+            margin-top: 32px;
+            display: flex; gap: 8px; justify-content: center;
+        }
+        .dots span {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--primary-light);
+            animation: blink 1.2s ease-in-out infinite;
+        }
+        .dots span:nth-child(2) { animation-delay: 0.2s; }
+        .dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink {
+            0%, 100% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.15); }
+        }
+
+        /* 스킵 버튼 (화이트 & 우드) */
+        .skip {
+            position: absolute; bottom: max(32px, env(safe-area-inset-bottom)); left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+            color: var(--gray-500);
+            font-size: 13px; font-weight: 500;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: 20px;
+            padding: 10px 20px;
+            cursor: pointer; font-family: var(--font-main);
+            box-shadow: 0 2px 10px rgba(139, 115, 85, 0.05);
+            transition: all 0.2s ease;
+        }
+        .skip:active, .skip:hover {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .intro-inner { animation: none; opacity: 1; transform: none; }
+            .logo { animation: none; }
+            .dots span { animation: none; opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+<div class="intro" id="intro">
+    <div class="intro-inner">
+        <div class="logo">🤎</div>
+        <div class="name">Our Memory</div>
+        <div class="tagline">우리의 소중한 순간들을<br>따뜻하게 기록하는 공간</div>
+        <div class="dots"><span></span><span></span><span></span></div>
+    </div>
+    <button class="skip" id="skip">바로 시작하기</button>
+</div>
+
+<script>
+    (function () {
+        var NEXT = 'login.html';   // 이동할 로그인 페이지
+        var STAY = 2200;           // 화면에 머무는 시간(ms)
+        var FADE = 600;            // 페이드아웃 시간(ms, CSS transition 과 동일)
+
+        var intro = document.getElementById('intro');
+        var moved = false;
+
+        function go() {
+            if (moved) return;
+            moved = true;
+            intro.classList.add('leaving');      // 슥 사라짐
+            setTimeout(function () {
+                window.location.replace(NEXT);   // history 에 안 남도록 replace
+            }, FADE);
+        }
+
+        // 일정 시간 뒤 자동 이동
+        var timer = setTimeout(go, STAY);
+
+        // "바로 시작하기" 누르면 즉시 이동
+        document.getElementById('skip').addEventListener('click', function () {
+            clearTimeout(timer);
+            go();
+        });
+
+        // 화면 아무 곳이나 탭해도 즉시 이동
+        intro.addEventListener('click', function (e) {
+            if (e.target.id === 'skip') return; // 버튼은 위에서 처리
+            clearTimeout(timer);
+            go();
+        });
+    })();
+</script>
+</body>
+</html>
