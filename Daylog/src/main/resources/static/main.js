@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (memoryList.length === 0) {
                     timelineFeed.innerHTML =
                         '<div class="empty-state"><span class="es-icon">🤎</span>' +
-                        '<p>기록된 것이 존재하지 않음.<br>지도에서 첫 추억을 남겨보세요.</p></div>';
+                        '<p>기록이 존재하지 않음</p></div>';
                     return;
                 }
 
