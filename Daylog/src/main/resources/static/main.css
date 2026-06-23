@@ -36,11 +36,14 @@
 }
 
 html, body {
+    width: 100%;             /* [수정] 가로 크기 고정 */
+    max-width: 100%;         /* [수정] 가로 최대크기 제한 */
     height: 100%;
     font-family: var(--font-main);
     background-color: var(--bg-color);
     color: var(--gray-800);
     overflow: hidden;
+    overflow-x: hidden;      /* [수정] 모바일 좌우 드래그 및 가로 스크롤 완전 차단 */
     -webkit-font-smoothing: antialiased;
 }
 
@@ -367,8 +370,8 @@ button { font-family: inherit; }
 
 .modal {
     position: fixed; z-index: 2000; inset: 0; width: 100vw;
-    height: 100vh; /* 구형 브라우저 대비용 */
-    height: 100dvh; /* 핵심: 실제 가시 화면 높이 적용 */
+    height: 100vh;
+    height: 100dvh;          /* [수정] 모바일 상/하단 브라우저 UI를 제외한 실제 화면 크기 맞춤 */
     background: rgba(46, 43, 40, 0.55); backdrop-filter: blur(5px);
     display: flex; align-items: center; justify-content: center; padding: 20px;
     animation: backdropIn 0.28s ease;
@@ -377,7 +380,7 @@ button { font-family: inherit; }
 
 .modal-content {
     background: var(--white); border-radius: 22px; width: 100%; max-width: 400px;
-    max-height: 80dvh; /* 86vh에서 80dvh로 수정하여 안전 여백 확보 */
+    max-height: 80dvh;       /* [수정] 86vh에서 80dvh로 줄여 화면 아래 '기록하기' 버튼 여백 확보 */
     overflow-y: auto; padding: 24px; box-shadow: var(--shadow-md);
     animation: modalPop 0.4s var(--ease-spring);
 }
@@ -409,8 +412,20 @@ button { font-family: inherit; }
     box-shadow: 0 0 0 3px rgba(176, 137, 104, 0.15);
 }
 
+/* [추가] 날짜 입력창 크기 맞춤 및 모바일(iOS/안드로이드) 왼쪽 정렬 강제 지정 */
+input[type="date"] {
+    width: 100%;
+    text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.2em;
+}
+
 .preview-zone img {
-    width: 100%; max-height: 260px; object-fit: contain; border-radius: 14px;
+    width: 100%;
+    max-height: 200px;       /* [수정] 260px에서 200px로 줄여 사진 업로드 시 버튼이 밑으로 밀리는 현상 완화 */
+    object-fit: contain; border-radius: 14px;
     margin-bottom: 14px; border: 1px solid var(--gray-100); background: var(--gray-50);
     cursor: zoom-in; animation: modalPop 0.4s var(--ease-spring);
 }
