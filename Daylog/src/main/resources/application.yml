@@ -1,0 +1,104 @@
+server:
+  port: 8085
+
+jwt:
+  secret: ${JWT_CODE}
+  expiration: ${JWT_TIME}
+
+google:
+  cloud:
+    credentials:
+      header: ${GOOGLE_CLOUD_URL}
+    storage:
+      bucket: ${GOOGLE_CLOUD_NAME}
+
+spring:
+  profiles:
+    active: prod
+  servlet:
+    multipart:
+      max-file-size: 20MB           # 업로드 가능한 단일 파일의 최대 크기
+      max-request-size: 20MB        # 하나의 요청(request)에서 전송 가능한 전체 데이터의 최대 크기 (파일 여러 개 포함할 경우 전체 용량 제한)
+
+  server:
+    tomcat:
+      max-http-form-post-size: 20MB # form-data POST 요청에서 허용하는 최대 크기 (multipart/form-data 포함)
+      max-swallow-size: 20MB        # 업로드 중 문제가 생겨서 요청이 중단되었을 때, Tomcat이 내부적으로 버릴 수 있는 최대 데이터 크기, 파일 업로드 시 에러 방지를 위해 함께 설정함
+
+  application:
+    name: REMS
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: false
+
+  messages:
+    encoding: UTF-8                 # 메시지 소스(국제화) UTF-8로 설정
+
+  output:
+    ansi:
+      enabled: always               # 콘솔 출력 인코딩/ANSI 컬러 관련
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_ID}
+            client-secret: ${KAKAO_SECRET_ID}
+            scope:
+              - account_email
+              - profile_nickname
+            authorization-grant-type: authorization_code
+            redirect-uri: ${REDIRECT_URI}
+            client-name: Kakao
+            client-authentication-method: client_secret_post
+
+          naver:
+            client-id: ${NAVER_ID}
+            client-secret: ${NAVER_SECRET_ID}
+            scope:
+              - name
+              - email
+            client-name: Naver
+            authorization-grant-type: authorization_code
+            redirect-uri: ${REDIRECT_URI}
+
+          google:
+            client-id: ${GOOGLE_ID}
+            client-secret: ${GOOGLE_SECRET_ID}
+            scope:
+              - email
+              - profile
+            authorization-grant-type: authorization_code
+            client-name: Google
+            redirect-uri: ${REDIRECT_URI}
+
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+          naver:
+            authorization-uri: https://nid.naver.com/oauth2.0/authorize
+            token-uri: https://nid.naver.com/oauth2.0/token
+            user-info-uri: https://openapi.naver.com/v1/nid/me
+            user-name-attribute: response
+
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: sub
