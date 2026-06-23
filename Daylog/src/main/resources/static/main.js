@@ -76,14 +76,17 @@ function requireAuthOrRedirect() {
 
 // 공통 fetch 응답 처리
 async function handleResponse(res) {
-    if (res.status === 401 || res.status === 403) {
-        redirectToLogin('세션이 만료되었습니다. 다시 로그인해주세요.');
-        throw new Error('인증이 만료되었습니다');
+    // 1. 401(Unauthorized), 403(Forbidden) 또는 500(Internal Server Error)이 발생하면 튕겨냄
+    if (res.status === 401 || res.status === 403 || res.status === 500) {
+        redirectToLogin('토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주세요.');
+        throw new Error('인증 만료 또는 서버 에러 발생');
     }
+
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        if (/jwt|token|expired|signature|malformed|unauthor|forbidden|authentication/i.test(text)) {
-            redirectToLogin('세션이 만료되었습니다. 다시 로그인해주세요.');
+        // 2. 에러 텍스트 내부에 토큰 관련 키워드가 있거나 500 에러 오브젝트 구조가 보이면 튕겨냄
+        if (/jwt|token|expired|signature|malformed|unauthor|forbidden|authentication|Internal Server Error/i.test(text)) {
+            redirectToLogin('토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주세요.');
             throw new Error('인증이 만료되었습니다');
         }
         throw new Error(text || (res.status + ' ' + res.statusText));
