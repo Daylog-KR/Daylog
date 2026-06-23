@@ -43,6 +43,14 @@ html, body {
     font-family: var(--font-main);
     background-color: var(--bg-color);
     color: var(--gray-800);
+    /* 모바일에서 화면이 위아래로 드래그/스크롤 되지 않도록 고정 */
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
+    touch-action: none;
 }
 
 .login-page {

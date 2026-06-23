@@ -85,4 +85,24 @@ public class MemoryService {
                 .map(MemoryDTO::entityToDto)
                 .collect(Collectors.toList());
     }
+
+    // 본인 소유 추억의 제목/내용/날짜만 수정 (이미지는 변경하지 않음)
+    @Transactional
+    public MemoryDTO updateMemory(Long id, MemoryDTO memoryDTO, UserDetails userDetails) {
+        MemoryEntity memory = memoryRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
+
+        // 소유자 검증 — 로그인한 본인이 작성한 추억만 수정 가능
+        String ownerUid = (memory.getOwner() != null) ? memory.getOwner().getUid() : null;
+        if (userDetails == null || ownerUid == null || !ownerUid.equals(userDetails.getUsername())) {
+            throw new RuntimeException("권한이 없습니다");
+        }
+
+        // 이미지(mediaURL)와 위치(lat/lng)는 변경하지 않음
+        if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
+        if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
+        if (memoryDTO.getCreatedAt() != null) memory.setCreatedAt(memoryDTO.getCreatedAt());
+
+        return MemoryDTO.entityToDto(memoryRepository.save(memory));
+    }
 }

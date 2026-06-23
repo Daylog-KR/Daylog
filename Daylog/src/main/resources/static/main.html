@@ -91,19 +91,19 @@
             </div>
 
             <div class="stats-grid">
-                <div class="stat">
+                <div class="stat" id="stat-card-dday">
                     <span class="stat-num" id="stat-days">0</span>
                     <span class="stat-label">D-Day</span>
                 </div>
-                <div class="stat">
+                <div class="stat" id="stat-card-total">
                     <span class="stat-num" id="stat-total">0</span>
                     <span class="stat-label">우리의 추억</span>
                 </div>
-                <div class="stat">
+                <div class="stat" id="stat-card-me">
                     <span class="stat-num" id="stat-me-count">0</span>
                     <span class="stat-label" id="stat-me-label">내가 남긴 추억</span>
                 </div>
-                <div class="stat">
+                <div class="stat" id="stat-card-partner">
                     <span class="stat-num" id="stat-partner-count">0</span>
                     <span class="stat-label" id="stat-partner-label">상대가 남긴 추억</span>
                 </div>
@@ -168,12 +168,44 @@
 <div id="detail-modal" class="modal hidden">
     <div class="modal-content detail-content">
         <div class="modal-header">
-            <h3 id="detail-date" class="detail-date"></h3>
+            <h3 id="detail-modal-title">추억 상세</h3>
             <button type="button" class="close-modal" onclick="closeDetailModal()">&times;</button>
         </div>
-        <img id="detail-image" src="" alt="추억 사진" class="hidden detail-img">
-        <h2 id="detail-title" class="detail-title"></h2>
-        <p id="detail-text" class="detail-text"></p>
+
+        <!-- 조회 영역 (JS가 채움) -->
+        <div id="detail-view"></div>
+
+        <!-- 수정 영역 (본인 추억만 · 이미지 제외) -->
+        <form id="detail-edit-form" class="hidden">
+            <div class="form-group">
+                <label>날짜</label>
+                <input type="date" id="edit-memory-date" required>
+            </div>
+            <div class="form-group">
+                <label>제목</label>
+                <input type="text" id="edit-memory-title" maxlength="60" placeholder="제목" required>
+            </div>
+            <div class="form-group">
+                <label>내용</label>
+                <textarea id="edit-memory-content" rows="5" placeholder="이야기를 작성하세요" required></textarea>
+            </div>
+            <p class="detail-edit-note">※ 사진은 수정이 불가합니다.</p>
+            <div class="detail-edit-actions">
+                <button type="button" id="detail-edit-cancel" class="cancel-edit-btn">취소</button>
+                <button type="submit" class="submit-btn">저장하기 ✨</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 통계 클릭 → 추억 목록 모달 -->
+<div id="list-modal" class="modal hidden">
+    <div class="modal-content list-content">
+        <div class="modal-header">
+            <h3 id="list-modal-title">추억</h3>
+            <button type="button" class="close-modal" id="list-modal-close">&times;</button>
+        </div>
+        <div id="list-modal-body" class="list-modal-body"></div>
     </div>
 </div>
 

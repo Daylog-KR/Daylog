@@ -17,6 +17,8 @@ public class MemoryDTO {
     private String content;
     private Double lat; // 필수 위치 데이터
     private Double lng;
+    private String placeName; // 장소 이름 (선택)
+    private String address;   // 상세 주소 (선택)
     private String mediaURL;
     private String ownerUid;
     private LocalDateTime createdAt;
@@ -31,6 +33,8 @@ public class MemoryDTO {
                 memoryEntity.getContent(),
                 memoryEntity.getLat(),
                 memoryEntity.getLng(),
+                memoryEntity.getPlaceName(),
+                memoryEntity.getAddress(),
                 memoryEntity.getMediaURL(),
                 ownerUid,
                 memoryEntity.getCreatedAt()
@@ -45,6 +49,8 @@ public class MemoryDTO {
                 .content(content)
                 .lat(lat)
                 .lng(lng)
+                .placeName(placeName)
+                .address(address)
                 .mediaURL(mediaURL)
                 .owner(owner)
                 .build();

@@ -39,4 +39,12 @@ public class MemoryController {
                                                           @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(memoryService.getAllMemories(uid, userDetails));
     }
+
+    // 본인 소유 추억 수정 (제목/내용/날짜) — JSON 본문
+    @PutMapping("/{id}")
+    public ResponseEntity<MemoryDTO> updateMemory(@PathVariable("id") Long id,
+                                                  @RequestBody MemoryDTO memoryDTO,
+                                                  @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.updateMemory(id, memoryDTO, userDetails));
+    }
 }

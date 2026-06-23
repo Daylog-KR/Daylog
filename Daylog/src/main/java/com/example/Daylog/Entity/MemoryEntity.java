@@ -27,6 +27,13 @@ public class MemoryEntity {
     @Column(nullable = false)
     private Double lng;
 
+    // 검색/선택한 장소 이름 (예: "노들섬") — 선택 사항
+    private String placeName;
+
+    // 역지오코딩된 상세 주소 (도로명/지번) — 선택 사항
+    @Column(length = 500)
+    private String address;
+
     private String mediaURL;
 
     // 작성자 연관관계 (BuildingEntity 패턴 참고)

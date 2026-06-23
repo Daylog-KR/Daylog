@@ -96,20 +96,128 @@ async function handleResponse(res) {
 }
 
 // ==========================================
+// 1-b. 사용자 이름 기반 접근 권한 (송성민 / 강미르 전용)
+// ==========================================
+const AUTH_NAMES = ['송성민', 's s', '강미르']; // 허용된 사용자 이름
+const ME_ALIAS = ['송성민', 's s'];             // '나'(송성민)로 취급할 이름
+
+// 여러 소스(localStorage / JWT)에서 로그인 사용자 name 을 최대한 확보
+function readLocalName() {
+    try {
+        const cu = JSON.parse(localStorage.getItem('currentUser') || 'null');
+        if (cu && (cu.name || cu.username)) return cu.name || cu.username;
+    } catch (_) {}
+    try {
+        const a = JSON.parse(localStorage.getItem('auth') || 'null');
+        if (a) {
+            if (a.user && (a.user.name || a.user.username)) return a.user.name || a.user.username;
+            if (a.name) return a.name;
+        }
+    } catch (_) {}
+    const p = decodeJwt(getToken());
+    if (p && (p.name || p.username)) return p.name || p.username;
+    return '';
+}
+
+// true=허용, false=차단, null=이름 모름(서버 조회 필요)
+function isAuthorizedName(name) {
+    if (!name || !String(name).trim()) return null;
+    const n = String(name).trim().toLowerCase();
+    return AUTH_NAMES.map(s => s.toLowerCase()).includes(n);
+}
+
+// 표시용 정규화: 송성민/s s -> '송성민', 그 외 허용 사용자 -> '강미르'
+function normalizeDisplayName(name) {
+    const n = String(name || '').trim().toLowerCase();
+    if (ME_ALIAS.map(s => s.toLowerCase()).includes(n)) return '송성민';
+    return '강미르';
+}
+
+let _blocked = false;
+function blockUnauthorizedUser() {
+    if (_blocked) return;
+    _blocked = true;
+    logout(); // 토큰 즉시 폐기 (로그아웃)
+
+    const ov = document.createElement('div');
+    ov.id = 'auth-block-overlay';
+    ov.innerHTML =
+        '<div class="abx-card">' +
+        '<div class="abx-icon">🔒</div>' +
+        '<p class="abx-msg">인증된 유저가 아닙니다.<br>권한을 부여받으려면 관리자에게 문의하세요.</p>' +
+        '<div class="abx-sub">잠시 후 로그인 화면으로 이동합니다…</div>' +
+        '</div>';
+    document.body.appendChild(ov);
+
+    setTimeout(() => { location.replace('login.html'); }, 2600);
+}
+
+// ==========================================
+// 1-c. 상세 모달/리스트 모달에서 공유할 컨텍스트 & 공용 헬퍼
+// ==========================================
+const Daylog = {
+    currentUid: '',
+    api: API_BASE_URL,
+    memories: [],
+    meUid: null,
+    partnerUid: null,
+    reload: function () {},
+    authHeaders: function () { return {}; },
+    handleResponse: async function (r) { return r; }
+};
+
+// 좌표 → 주소 역지오코딩 (캐시 사용)
+const _geoCache = {};
+function reverseGeocode(lat, lng, cb) {
+    if (lat == null || lng == null) { cb(''); return; }
+    const key = Number(lat).toFixed(5) + ',' + Number(lng).toFixed(5);
+    if (_geoCache[key] !== undefined) { cb(_geoCache[key]); return; }
+    if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) { cb(''); return; }
+    naver.maps.Service.reverseGeocode({
+        coords: new naver.maps.LatLng(lat, lng),
+        orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+    }, (status, response) => {
+        let addr = '';
+        if (status === naver.maps.Service.Status.OK) {
+            const r = response.v2;
+            addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress || '') : '';
+        }
+        _geoCache[key] = addr;
+        cb(addr);
+    });
+}
+
+function sortByDateDesc(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }
+
+// ==========================================
 // 2. 메인 앱 로직
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     // 페이지 진입 시 가장 먼저 인증 체크
     if (!requireAuthOrRedirect()) return;
 
+    // 로컬에 이름이 있으면 즉시 권한 확인 (없으면 프로필 로드 시 서버 이름으로 재확인)
+    const _localAuth = isAuthorizedName(readLocalName());
+    if (_localAuth === false) { blockUnauthorizedUser(); return; }
+
     let map = null;
     let selectedFile = null;
     let currentLatLng = null;
+    let currentLocationMeta = { placeName: '', address: '' }; // 장소명/상세주소 캡처
     let isWaitingForMapClick = false;
     let mapClickListener = null;
     let memoryList = [];
+    let markers = []; // 지도 마커 인스턴스 보관 (중복 생성 방지)
 
     const currentUid = getUid();
+
+    // 상세/리스트 모달(전역 함수)에서 사용할 컨텍스트 주입
+    Daylog.currentUid = currentUid;
+    Daylog.api = API_BASE_URL;
+    Daylog.authHeaders = authHeaders;
+    Daylog.handleResponse = handleResponse;
+    Daylog.reload = () => loadMemoriesFromServer();
+
     const mapWrapper = document.getElementById('map-wrapper');
     const locationMode = document.getElementById('location-mode');
     const fileInput = document.getElementById('memory-file');
@@ -198,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function reverseGeocodeAndLabel(lat, lng, prefix) {
         const tag = prefix || '🎯';
+        currentLocationMeta = { placeName: '', address: '' };
         setBadgeManual(tag + ' 위치를 확인하는 중...');
         if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) {
             setBadgeManual(tag + ' 지정한 위치로 설정되었습니다');
@@ -213,6 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const r = response.v2;
             const addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress) : '';
+            currentLocationMeta = { placeName: '', address: addr || '' };
             setBadgeManual(tag + ' ' + (addr || '지정한 위치로 설정되었습니다'));
         });
     }
@@ -268,9 +378,14 @@ document.addEventListener('DOMContentLoaded', () => {
         map.setCenter(new naver.maps.LatLng(lat, lng));
         map.setZoom(16);
 
-        const label = item.roadAddress || item.jibunAddress || (searchInput.value || '').trim();
+        const addr = item.roadAddress || item.jibunAddress || '';
+        // 사용자가 입력한 검색어(예: "노들섬")를 장소 이름으로 저장 → 그대로 표시됨
+        const typed = (searchInput.value || '').trim();
+        const placeName = typed || addr;
+        currentLocationMeta = { placeName: placeName, address: addr };
+
         const badge = document.getElementById('location-status-badge');
-        badge.innerText = "🔍 '" + label + "' 위치로 설정되었습니다";
+        badge.innerText = "🔍 '" + (placeName || addr) + "' 위치로 설정되었습니다";
         badge.className = "location-badge manual";
 
         hideSuggestions();
@@ -368,6 +483,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (gps && gps.latitude && gps.longitude) {
                     // 사진 메타데이터로 위치 자동 설정
                     currentLatLng = { lat: gps.latitude, lng: gps.longitude };
+                    currentLocationMeta = { placeName: '', address: '' };
+                    reverseGeocode(gps.latitude, gps.longitude, (addr) => {
+                        currentLocationMeta = { placeName: '', address: addr || '' };
+                    });
                     const badge = document.getElementById('location-status-badge');
                     badge.innerText = "📍 사진 위치가 자동으로 설정되었습니다!";
                     badge.className = "location-badge success";
@@ -400,6 +519,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 content: document.getElementById('memory-content').value,
                 lat: currentLatLng.lat,
                 lng: currentLatLng.lng,
+                placeName: (currentLocationMeta && currentLocationMeta.placeName) || '',
+                address: (currentLocationMeta && currentLocationMeta.address) || '',
                 createdAt: new Date(document.getElementById('memory-date').value).toISOString()
             };
 
@@ -438,51 +559,94 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(handleResponse)
             .then(memories => {
                 memoryList = memories || [];
+                Daylog.memories = memoryList;
                 updateProfileStats();
 
-                const timelineFeed = document.getElementById('timeline-feed');
-                timelineFeed.innerHTML = '';
-
-                if (memoryList.length === 0) {
-                    timelineFeed.innerHTML =
-                        '<div class="empty-state"><span class="es-icon">🤎</span>' +
-                        '<p>기록이 존재하지 않음</p></div>';
-                    return;
-                }
-
-                const sorted = [...memoryList].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-                sorted.forEach((memory, idx) => {
-                    // 1. 지도 마커
-                    if (map && memory.lat && memory.lng) {
-                        const markerHtml = memory.mediaURL
-                            ? `<div class="custom-marker"><img src="${memory.mediaURL}" alt=""></div>`
-                            : `<div class="marker-heart">💖</div>`;
-
-                        const marker = new naver.maps.Marker({
-                            position: new naver.maps.LatLng(memory.lat, memory.lng),
-                            map: map,
-                            icon: { content: markerHtml, anchor: new naver.maps.Point(24, 24) }
-                        });
-                        naver.maps.Event.addListener(marker, 'click', () => openDetailModal(memory));
-                    }
-
-                    // 2. 타임라인 카드 (등장 stagger)
-                    const formattedDate = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-                    const card = document.createElement('div');
-                    card.classList.add('memory-card');
-                    card.style.animationDelay = (idx * 0.06) + 's';
-                    card.innerHTML = `
-                        <div class="card-header">
-                            <span class="card-date">${formattedDate}</span>
-                            <h4 class="card-title">${escapeHtml(memory.title)}</h4>
-                        </div>
-                        <p class="card-text">${escapeHtml(memory.content)}</p>`;
-                    card.addEventListener('click', () => openDetailModal(memory));
-                    timelineFeed.appendChild(card);
-                });
+                const sorted = [...memoryList].sort(sortByDateDesc);
+                renderMarkers(sorted);
+                renderTimeline(sorted);
             })
             .catch(err => console.error("데이터 로드 실패:", err));
+    }
+
+    // --- 지도 마커 (줌 시 깜빡임 방지: 기존 마커 제거 후 재생성, 사진은 배경이미지) ---
+    function renderMarkers(list) {
+        if (!map) return;
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+        list.forEach(memory => {
+            if (!(memory.lat && memory.lng)) return;
+            let markerHtml;
+            if (memory.mediaURL) {
+                new Image().src = memory.mediaURL; // 사전 캐싱
+                // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
+                markerHtml = `<div class="custom-marker"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
+            } else {
+                markerHtml = `<div class="marker-heart">💖</div>`;
+            }
+            const marker = new naver.maps.Marker({
+                position: new naver.maps.LatLng(memory.lat, memory.lng),
+                map: map,
+                icon: { content: markerHtml, anchor: new naver.maps.Point(24, 24) }
+            });
+            naver.maps.Event.addListener(marker, 'click', () => openDetailModal(memory));
+            markers.push(marker);
+        });
+    }
+
+    // --- 타임라인 (날짜별 그룹 + 좌측정렬 제목/내용/위치 + 우측 썸네일) ---
+    function renderTimeline(sorted) {
+        const timelineFeed = document.getElementById('timeline-feed');
+        timelineFeed.innerHTML = '';
+
+        if (!sorted.length) {
+            timelineFeed.innerHTML =
+                '<div class="empty-state"><span class="es-icon">🤎</span>' +
+                '<p>기록이 존재하지 않음</p></div>';
+            return;
+        }
+
+        const groups = {};
+        sorted.forEach(m => {
+            const key = (m.createdAt || '').substring(0, 10) || '날짜미상';
+            (groups[key] = groups[key] || []).push(m);
+        });
+
+        let idx = 0;
+        Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateKey => {
+            const head = document.createElement('div');
+            head.className = 'tl-date-head';
+            head.innerHTML = '<span class="tl-date-dot"></span>' +
+                '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
+            timelineFeed.appendChild(head);
+
+            groups[dateKey].forEach(memory => {
+                const card = document.createElement('div');
+                card.className = 'tl-card';
+                card.style.animationDelay = (idx * 0.05) + 's';
+                idx++;
+
+                const thumb = memory.mediaURL
+                    ? `<div class="tl-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
+                    : '';
+
+                card.innerHTML =
+                    '<div class="tl-main">' +
+                        '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
+                        '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
+                        '<div class="tl-loc">' +
+                            '<span class="tl-loc-icon">📍</span>' +
+                            '<span class="tl-place"></span>' +
+                            '<span class="tl-addr"></span>' +
+                        '</div>' +
+                    '</div>' +
+                    thumb;
+
+                applyCardLocation(card, memory);
+                card.addEventListener('click', () => openDetailModal(memory));
+                timelineFeed.appendChild(card);
+            });
+        });
     }
 
     // ==========================================
@@ -513,6 +677,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 meUser = list.find(u => u.uid === currentUid) || null;
                 partnerUser = list.find(u => u.uid !== currentUid) || null;
                 currentUser = meUser;
+
+                // 서버에서 받은 본인 이름으로 권한 재확인 (허용 외 사용자는 차단)
+                if (meUser && isAuthorizedName(meUser.name) === false) { blockUnauthorizedUser(); return; }
+
+                Daylog.meUid = meUser && meUser.uid;
+                Daylog.partnerUid = partnerUser && partnerUser.uid;
+
                 if (!meUser) {
                     console.warn('[Daylog] 로그인 uid(' + currentUid + ')와 일치하는 사용자가 목록에 없습니다.');
                 }
@@ -537,6 +708,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!me) return;
                 currentUser = me;
                 meUser = me;
+                if (isAuthorizedName(me.name) === false) { blockUnauthorizedUser(); return; }
+                Daylog.meUid = me.uid;
                 renderProfileBox('me', me, '👦', '나');
                 updateProfileStats();
                 maybePromptNickname();
@@ -593,22 +766,18 @@ document.addEventListener('DOMContentLoaded', () => {
             avatar.innerHTML = fallbackEmoji;
         }
 
-        // 닉네임만 표시 (없으면 name 이 아니라 관계 라벨로)
+        // 닉네임 우선, 없으면 정규화된 실제 이름(송성민/강미르)으로 표시
         const hasNick = !!(user && user.nickname && String(user.nickname).trim());
-        nameEl.innerText = hasNick ? user.nickname : relationLabel;
-        subEl.innerText = hasNick ? relationLabel : '';
+        const realName = user ? normalizeDisplayName(user.name) : relationLabel;
+        nameEl.innerText = hasNick ? user.nickname : realName;
+        subEl.innerText = relationLabel;
 
-        // 편집 권한: 백엔드는 '로그인한 본인'만 수정 가능
-        const editable = !!(user && user.uid === currentUid);
+        // ✋ 내 정보 탭에서는 이미지 수정 불가 — 클릭 시 확대(라이트박스)만 동작
         wrap.classList.remove('editable', 'viewable');
-        editEl.classList.add('hidden');
+        editEl.classList.add('hidden'); // 📷 편집 배지 항상 숨김
         wrap.onclick = null;
 
-        if (editable) {
-            wrap.classList.add('editable');
-            editEl.classList.remove('hidden');
-            wrap.onclick = () => { editingUser = user; profileFileInput.click(); };
-        } else if (user && user.profileURL) {
+        if (user && user.profileURL) {
             wrap.classList.add('viewable');
             wrap.onclick = () => openLightbox(user.profileURL);
         }
@@ -716,6 +885,12 @@ document.addEventListener('DOMContentLoaded', () => {
             .finally(() => { btn.disabled = false; btn.innerText = '저장하기'; });
     });
 
+    function displayNameOf(user, fallback) {
+        if (!user) return fallback;
+        if (user.nickname && String(user.nickname).trim()) return user.nickname;
+        return normalizeDisplayName(user.name);
+    }
+
     function updateProfileStats() {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
         set('stat-days', daysSince(DDAY_START));
@@ -724,12 +899,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const pUid = partnerUser && partnerUser.uid;
         set('stat-me-count', memoryList.filter(m => m.ownerUid === meUid).length);
         set('stat-partner-count', memoryList.filter(m => m.ownerUid === pUid).length);
-        // 라벨에 실제 이름 반영
+        // 라벨에 정규화된 이름 반영
         const meLabel = document.getElementById('stat-me-label');
         const pLabel = document.getElementById('stat-partner-label');
-        if (meLabel && meUser) meLabel.innerText = (meUser.nickname && String(meUser.nickname).trim() ? meUser.nickname : '나') + '의 추억';
-        if (pLabel && partnerUser) pLabel.innerText = (partnerUser.nickname && String(partnerUser.nickname).trim() ? partnerUser.nickname : '상대방') + '의 추억';
+        if (meLabel && meUser) meLabel.innerText = displayNameOf(meUser, '나') + '의 추억';
+        if (pLabel && partnerUser) pLabel.innerText = displayNameOf(partnerUser, '상대방') + '의 추억';
     }
+
+    // --- 내 정보 통계 클릭 → 해당 추억 목록 / D-Day 날짜 표시 ---
+    function bindStatClicks() {
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', fn); }
+        };
+        bind('stat-card-dday', () => showDDayInfo());
+        bind('stat-card-total', () => openMemoryListModal('우리의 추억 ', [...memoryList].sort(sortByDateDesc)));
+        bind('stat-card-me', () => {
+            const meUid = meUser && meUser.uid;
+            openMemoryListModal(displayNameOf(meUser, '나') + '의 추억',
+                memoryList.filter(m => m.ownerUid === meUid).sort(sortByDateDesc));
+        });
+        bind('stat-card-partner', () => {
+            const pUid = partnerUser && partnerUser.uid;
+            openMemoryListModal(displayNameOf(partnerUser, '상대방') + '의 추억',
+                memoryList.filter(m => m.ownerUid === pUid).sort(sortByDateDesc));
+        });
+    }
+    bindStatClicks();
 
     // 첫 진입 시 프로필 로드
     loadProfiles();
@@ -837,26 +1033,200 @@ function closeMemoryModal() {
     if (lm) lm.classList.add('hidden');
 }
 
-function openDetailModal(memory) {
-    const formattedDate = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-    document.getElementById('detail-date').innerText = formattedDate;
-    document.getElementById('detail-title').innerText = memory.title;
-    document.getElementById('detail-text').innerText = memory.content;
+let _detailMemory = null;
 
-    const imgEl = document.getElementById('detail-image');
-    if (memory.mediaURL) {
-        imgEl.src = memory.mediaURL;
-        imgEl.classList.remove('hidden');
-    } else {
-        imgEl.classList.add('hidden');
-        imgEl.src = "";
-    }
+function openDetailModal(memory) {
+    _detailMemory = memory;
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+
+    const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+    const imageHtml = memory.mediaURL
+        ? `<div class="detail-image-wrap"><img src="${memory.mediaURL}" alt="추억 사진" id="detail-image"></div>`
+        : '';
+    const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
+    const contentHtml = escapeHtml(memory.content || '').replace(/\n/g, '<br>');
+
+    view.innerHTML =
+        '<div class="detail-container">' +
+            '<div class="detail-header">' +
+                '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
+                '<div class="detail-meta">' +
+                    '<span class="meta-item">📅 ' + escapeHtml(dateStr) + '</span>' +
+                    '<span class="meta-item" id="detail-loc">📍 위치 확인 중…</span>' +
+                '</div>' +
+            '</div>' +
+            imageHtml +
+            '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
+            (isOwner ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정하기</button>' : '') +
+        '</div>';
+
+    applyDetailLocation(memory);
+
+    const di = document.getElementById('detail-image');
+    if (di) di.addEventListener('click', () => { if (di.src) openLightbox(di.src); });
+
+    const eo = document.getElementById('detail-edit-open');
+    if (eo) eo.addEventListener('click', () => enterDetailEdit(memory));
+
     document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+// 상세 모달의 위치 표기 (장소명 · 상세주소) — 없으면 좌표로 역지오코딩
+function applyDetailLocation(memory) {
+    const el = document.getElementById('detail-loc');
+    if (!el) return;
+    const place = (memory.placeName || '').trim();
+    const addr = (memory.address || '').trim();
+    const compose = (p, a) => '📍 ' + [p, a].filter(Boolean).join(' · ');
+    if (place || addr) el.textContent = compose(place, addr);
+    if (!place && !addr) {
+        if (memory.lat != null && memory.lng != null) {
+            reverseGeocode(memory.lat, memory.lng, (a) => { el.textContent = a ? ('📍 ' + a) : '📍 위치 정보 없음'; });
+        } else { el.textContent = '📍 위치 정보 없음'; }
+    } else if (place && !addr && memory.lat != null && memory.lng != null) {
+        reverseGeocode(memory.lat, memory.lng, (a) => { if (a) el.textContent = compose(place, a); });
+    }
+}
+
+function enterDetailEdit(memory) {
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (!editForm) return;
+    document.getElementById('edit-memory-date').value = memory.createdAt ? memory.createdAt.substring(0, 10) : '';
+    document.getElementById('edit-memory-title').value = memory.title || '';
+    document.getElementById('edit-memory-content').value = memory.content || '';
+    if (view) view.classList.add('hidden');
+    editForm.classList.remove('hidden');
+}
+
+function exitDetailEdit() {
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+}
+
+// 본인 추억 수정 저장 (이미지 제외 · 제목/내용/날짜)
+function saveDetailEdit() {
+    const memory = _detailMemory;
+    if (!memory) return;
+    const date = document.getElementById('edit-memory-date').value;
+    const title = document.getElementById('edit-memory-title').value.trim();
+    const content = document.getElementById('edit-memory-content').value.trim();
+    if (!title || !content) { showToast('제목과 내용을 입력해주세요'); return; }
+
+    const payload = {
+        title: title,
+        content: content,
+        createdAt: date ? new Date(date).toISOString() : memory.createdAt
+    };
+    const btn = document.querySelector('#detail-edit-form .submit-btn');
+    if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
+
+    fetch(`${Daylog.api}/api/memories/${memory.id}`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true),
+        body: JSON.stringify(payload)
+    })
+        .then(Daylog.handleResponse)
+        .then(() => {
+            showToast('수정 완료 ✨');
+            closeDetailModal();
+            Daylog.reload();
+        })
+        .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주세요.'); })
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기 ✨'; } });
 }
 
 function closeDetailModal() {
     document.getElementById('detail-modal').classList.add('hidden');
+    exitDetailEdit();
+    _detailMemory = null;
 }
+
+// ===== 통계 클릭용 리스트 모달 / D-Day 정보 =====
+function openMemoryListModal(title, items) {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    titleEl.textContent = title;
+    body.innerHTML = '';
+
+    if (!items || !items.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">🤎</span><p>표시할 추억이 없습니다</p></div>';
+    } else {
+        items.forEach(memory => {
+            const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+            const thumb = memory.mediaURL
+                ? `<div class="lm-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
+                : '<div class="lm-thumb lm-thumb-empty">🤎</div>';
+            const row = document.createElement('div');
+            row.className = 'lm-row';
+            row.innerHTML =
+                thumb +
+                '<div class="lm-row-main">' +
+                    '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
+                    '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
+                    '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
+                '</div>';
+            row.addEventListener('click', () => { closeListModal(); openDetailModal(memory); });
+            body.appendChild(row);
+        });
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeListModal() {
+    const modal = document.getElementById('list-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function showDDayInfo() {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    const start = new Date(DDAY_START);
+    const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
+    const n = daysSince(DDAY_START);
+    titleEl.textContent = 'D-Day 💍';
+    body.innerHTML =
+        '<div class="dday-info">' +
+            '<div class="dday-info-emoji">📅</div>' +
+            '<div class="dday-info-label">사귀기 시작한 날</div>' +
+            '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
+            '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
+        '</div>';
+    modal.classList.remove('hidden');
+}
+
+// 타임라인/리스트 카드의 위치 표기 채우기
+function applyCardLocation(scope, memory) {
+    const placeEl = scope.querySelector('.tl-place');
+    const addrEl = scope.querySelector('.tl-addr');
+    if (!placeEl) return;
+    const place = (memory.placeName || '').trim();
+    const addr = (memory.address || '').trim();
+    if (place) placeEl.textContent = place;
+    if (addr) addrEl.textContent = addr;
+
+    if (!place && !addr) {
+        if (memory.lat != null && memory.lng != null) {
+            placeEl.textContent = '위치 확인 중…';
+            reverseGeocode(memory.lat, memory.lng, (a) => {
+                if (a) { placeEl.textContent = areaOf(a); addrEl.textContent = a; }
+                else placeEl.textContent = '위치 정보 없음';
+            });
+        } else { placeEl.textContent = '위치 정보 없음'; }
+    } else if (place && !addr && memory.lat != null && memory.lng != null) {
+        reverseGeocode(memory.lat, memory.lng, (a) => { if (a) addrEl.textContent = a; });
+    }
+}
+function areaOf(addr) { return String(addr || '').split(' ').slice(0, 2).join(' '); }
 
 const DDAY_START = "2026-05-09"; // 사귀기 시작한 날
 function daysSince(start) {
@@ -997,41 +1367,26 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-// 상세 모달 창 내용을 채워주는 함수 예시
-function renderMemoryDetail(memory) {
-    // 날짜 포맷, 줄바꿈 처리 등은 기존 로직 사용
-    const dateStr = memory.date;
-    const locationStr = memory.address || "위치 정보 없음";
+// ==========================================
+// 4. 신규 모달(상세 수정 / 리스트) 이벤트 바인딩
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    // 상세 수정 폼
+    const detailEditForm = document.getElementById('detail-edit-form');
+    if (detailEditForm) {
+        detailEditForm.addEventListener('submit', (e) => { e.preventDefault(); saveDetailEdit(); });
+    }
+    const detailEditCancel = document.getElementById('detail-edit-cancel');
+    if (detailEditCancel) detailEditCancel.addEventListener('click', exitDetailEdit);
 
-    // 내용 줄바꿈 유지 및 XSS 방지 처리
-    const contentHtml = escapeHtml(memory.content).replace(/\n/g, '<br>');
+    // 리스트 모달 닫기 (배경 클릭 / X 버튼)
+    const listModal = document.getElementById('list-modal');
+    if (listModal) {
+        listModal.addEventListener('click', (e) => { if (e.target.id === 'list-modal') closeListModal(); });
+    }
+    const listClose = document.getElementById('list-modal-close');
+    if (listClose) listClose.addEventListener('click', closeListModal);
 
-    // 이미지 태그 (이미지가 있을 때만 렌더링)
-    const imageHtml = memory.imageUrl
-        ? `<div class="detail-image-wrap"><img src="${memory.imageUrl}" alt="추억 사진"></div>`
-        : '';
-
-    const detailHtml = `
-        <div class="detail-container">
-            <!-- 헤더: 제목과 메타 정보(날짜, 위치) -->
-            <div class="detail-header">
-                <h3 class="detail-title">${escapeHtml(memory.title)}</h3>
-                <div class="detail-meta">
-                    <span class="meta-item">📅 ${dateStr}</span>
-                    <span class="meta-item">📍 ${escapeHtml(locationStr)}</span>
-                </div>
-            </div>
-
-            <!-- 사진 영역 -->
-            ${imageHtml}
-
-            <!-- 본문 영역 -->
-            <div class="detail-body">
-                <p>${contentHtml}</p>
-            </div>
-        </div>
-    `;
-
-    // 모달 내용 컨테이너(예: detailModalContent)에 주입
-    document.getElementById('detailModalContent').innerHTML = detailHtml;
-}
+    // ESC 로 리스트 모달도 닫기
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeListModal(); });
+});
