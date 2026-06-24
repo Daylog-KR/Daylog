@@ -1172,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMapButtons() {
         const toggle = document.getElementById('btn-map-toggle');
         const action = document.getElementById('btn-map-action');
-        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '💖 추억 보기' : '📌 체크리스트';
+        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '📸 추억 보기' : '📌 체크리스트';
         if (action) action.innerText = (mapMode === 'checklist') ? '📌 가볼곳 추가' : '📸 기록 남기기';
     }
 
