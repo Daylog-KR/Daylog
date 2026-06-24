@@ -863,15 +863,16 @@ document.addEventListener('DOMContentLoaded', () => {
     ptrFg.style.strokeDasharray = PTR_C;
     ptrFg.style.strokeDashoffset = PTR_C;
 
-    const PTR_THRESHOLD = 70;
+    const PTR_THRESHOLD = 112; // 더 천천히 차도록 임계 거리 증가
 
     function ptrSetProgress(p) {
         // p: 0~1 → 링이 그만큼 채워짐
         ptrFg.style.strokeDashoffset = PTR_C * (1 - Math.max(0, Math.min(1, p)));
     }
 
-    function attachPullToRefresh(scrollEl, isEnabled, onRefresh) {
+    function attachPullToRefresh(scrollEl, isEnabled, onRefresh, iconInset) {
         if (!scrollEl) return;
+        const inset = (typeof iconInset === 'number') ? iconInset : 12;
         let startY = 0, pulling = false, dist = 0, busy = false, baseTop = 0;
 
         function setVisual(d, instant) {
@@ -880,10 +881,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ptrIndicator.style.transition = instant ? 'none' : 'transform 0.32s var(--ease-soft), opacity 0.3s ease';
             // 콘텐츠는 당긴 만큼 제한 없이 따라 내려옴
             scrollEl.style.transform = d > 0 ? ('translateY(' + d + 'px)') : '';
-            // 아이콘은 위쪽에 높게 고정되며 살짝만 따라 내려옴
-            const iconY = baseTop - 34 + Math.min(d, 24);
-            ptrIndicator.style.transform = 'translateX(-50%) translateY(' + iconY + 'px)';
-            ptrIndicator.style.opacity = d > 4 ? Math.min(d / 28, 1) : 0;
+            // 아이콘은 콘텐츠(폼/타임라인)의 위쪽 안쪽에서 함께 따라 내려옴
+            const follow = Math.min(d, 120);
+            ptrIndicator.style.transform = 'translateX(-50%) translateY(' + (baseTop + follow + inset) + 'px)';
+            ptrIndicator.style.opacity = d > 4 ? Math.min(d / 30, 1) : 0;
             if (!ptrIndicator.classList.contains('spinning')) {
                 ptrSetProgress(d / PTR_THRESHOLD);
             }
@@ -903,8 +904,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!pulling || busy) return;
             const dy = e.touches[0].clientY - startY;
             if (dy <= 0 || scrollEl.scrollTop > 0) { dist = 0; setVisual(0, true); pulling = (dy > 0); return; }
-            // 제한 없이 당긴 만큼(가벼운 저항감) 따라옴
-            dist = dy * 0.6;
+            // 제한 없이 당긴 만큼(저항감) 따라옴 — 천천히 차도록 계수 축소
+            dist = dy * 0.5;
             setVisual(dist, true);
             if (dy > 5 && e.cancelable) e.preventDefault();
         }, { passive: false });
@@ -919,7 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollEl.style.transition = 'transform 0.32s var(--ease-soft)';
                 ptrIndicator.style.transition = 'transform 0.32s var(--ease-soft)';
                 scrollEl.style.transform = 'translateY(58px)';
-                ptrIndicator.style.transform = 'translateX(-50%) translateY(' + (baseTop - 12) + 'px)';
+                ptrIndicator.style.transform = 'translateX(-50%) translateY(' + (baseTop + 50 + inset) + 'px)';
                 ptrIndicator.style.opacity = 1;
                 ptrIndicator.classList.add('spinning');
                 // 회전 인디케이터용 짧은 호(arc)로 전환
@@ -956,13 +957,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const pf = document.getElementById('tab-profile');
             if (pf && pf.style.display !== 'none') loadProfiles();
             return Promise.resolve(loadMemoriesFromServer()).then(() => showToast('새로고침했어요'));
-        });
+        }, 26); // 타임라인/내정보 아이콘을 좀 더 아래로
 
-    // 추억 상세 모달 당겨서 새로고침
+    // 추억 상세 모달 당겨서 새로고침 (아이콘이 폼 내부에 표시되도록 inset 적용)
     const detailScroll = document.querySelector('#detail-modal .modal-content');
     attachPullToRefresh(detailScroll,
         () => !document.getElementById('detail-modal').classList.contains('hidden') && _detailMemory != null,
-        () => { if (_detailMemory) loadComments(_detailMemory.id); return Promise.resolve(loadMemoriesFromServer()).then(() => showToast('새로고침했어요')); });
+        () => { if (_detailMemory) loadComments(_detailMemory.id); return Promise.resolve(loadMemoriesFromServer()).then(() => showToast('새로고침했어요')); },
+        14);
 
     // '우리의 추억' / '~의 추억' 리스트 모달 당겨서 새로고침 (가로 드래그는 CSS로 잠금)
     const listScroll = document.querySelector('#list-modal .list-modal-body');
@@ -971,7 +973,8 @@ document.addEventListener('DOMContentLoaded', () => {
         () => Promise.resolve(loadMemoriesFromServer()).then(() => {
             if (Daylog._openListKind) openStatList(Daylog._openListKind);
             showToast('새로고침했어요');
-        }));
+        }),
+        14);
 
     // --- 데이터 불러오기 및 렌더링 ---
     function loadMemoriesFromServer() {
