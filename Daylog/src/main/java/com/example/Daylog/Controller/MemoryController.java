@@ -43,8 +43,65 @@ public class MemoryController {
     // 본인 소유 추억 수정 (제목/내용/날짜) — JSON 본문
     @PutMapping("/{id}")
     public ResponseEntity<MemoryDTO> updateMemory(@PathVariable("id") Long id,
-                                                  @RequestBody MemoryDTO memoryDTO,
+                                                  @RequestBody java.util.Map<String, Object> body,
                                                   @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(memoryService.updateMemory(id, memoryDTO, userDetails));
+        MemoryDTO dto = MemoryDTO.builder()
+                .title(body.get("title") != null ? String.valueOf(body.get("title")) : null)
+                .content(body.get("content") != null ? String.valueOf(body.get("content")) : null)
+                .createdAt(parseDateTime(body.get("createdAt")))
+                .build();
+        return ResponseEntity.ok(memoryService.updateMemory(id, dto, userDetails));
+    }
+
+    // 다양한 날짜 문자열("yyyy-MM-dd", ISO, 'Z' 포함)을 LocalDateTime 으로 안전 변환
+    private static java.time.LocalDateTime parseDateTime(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try {
+            if (s.length() == 10) return java.time.LocalDate.parse(s).atStartOfDay();
+            if (s.endsWith("Z")) {
+                return java.time.Instant.parse(s)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDateTime();
+            }
+            return java.time.LocalDateTime.parse(s);
+        } catch (Exception e) {
+            try {
+                return java.time.LocalDate.parse(s.substring(0, 10)).atStartOfDay();
+            } catch (Exception ex) {
+                return null;
+            }
+        }
+    }
+
+    // 휴지통으로 이동 (소프트 삭제)
+    @PutMapping("/{id}/trash")
+    public ResponseEntity<Void> moveToTrash(@PathVariable("id") Long id,
+                                            @AuthenticationPrincipal UserDetails userDetails) {
+        memoryService.moveToTrash(id, userDetails);
+        return ResponseEntity.ok().build();
+    }
+
+    // 휴지통에서 복원
+    @PutMapping("/{id}/restore")
+    public ResponseEntity<MemoryDTO> restoreMemory(@PathVariable("id") Long id,
+                                                   @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.restoreMemory(id, userDetails));
+    }
+
+    // 영구 삭제
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> permanentDelete(@PathVariable("id") Long id,
+                                                @AuthenticationPrincipal UserDetails userDetails) {
+        memoryService.permanentDelete(id, userDetails);
+        return ResponseEntity.ok().build();
+    }
+
+    // 내가 휴지통으로 보낸 추억 목록
+    @GetMapping("/trash/{uid}")
+    public ResponseEntity<List<MemoryDTO>> getTrash(@PathVariable("uid") String uid,
+                                                    @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.getTrash(uid, userDetails));
     }
 }

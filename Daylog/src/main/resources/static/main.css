@@ -363,7 +363,14 @@ button { font-family: inherit; }
 .edit-avatar-wrap .avatar { width: 110px; height: 110px; font-size: 2.8rem; }
 .edit-avatar-wrap:hover .avatar { transform: scale(1.04); }
 .edit-avatar-wrap .avatar-edit { width: 34px; height: 34px; right: 4px; font-size: 0.95rem; }
-.edit-avatar-hint { text-align: center; font-size: 0.82rem; color: var(--gray-400); margin-bottom: 24px; }
+.edit-avatar-hint { text-align: center; font-size: 0.82rem; color: var(--gray-400); margin-bottom: 12px; }
+.edit-remove-photo {
+    display: block; margin: 0 auto 24px; cursor: pointer;
+    background: transparent; border: 1px solid #e3cfc8; color: #b5462f;
+    border-radius: 20px; padding: 7px 18px; font-size: 0.83rem; font-weight: 600;
+    font-family: var(--font-main); transition: all 0.18s ease;
+}
+.edit-remove-photo:hover { background: #fbeeea; }
 
 /* ================= 모달 (화면 정중앙) ================= */
 .hidden { display: none !important; }
@@ -825,3 +832,139 @@ input[type="date"]::-webkit-date-and-time-value {
 .abx-icon { font-size: 2.8rem; margin-bottom: 16px; }
 .abx-msg { font-size: 1.02rem; font-weight: 600; color: var(--gray-800); line-height: 1.6; margin-bottom: 10px; }
 .abx-sub { font-size: 0.86rem; color: var(--gray-500); line-height: 1.6; }
+
+/* =========================================================
+   댓글 / 대댓글 · 휴지통 (Daylog 톤 매칭)
+   ========================================================= */
+
+/* 상세 모달: 수정/휴지통 버튼 한 줄 배치 */
+.detail-owner-actions { display: flex; gap: 10px; align-self: flex-start; }
+.detail-trash-btn {
+    background: #fbeeea; color: #b5462f;
+    border: none; border-radius: 12px; padding: 11px 18px;
+    font-size: 0.92rem; font-weight: 600; cursor: pointer;
+    font-family: var(--font-main); transition: all 0.2s ease;
+}
+.detail-trash-btn:hover { background: #f3d9d2; }
+
+/* ---- 댓글 섹션 ---- */
+.comments-section {
+    margin-top: 6px; padding-top: 18px;
+    border-top: 1px dashed var(--gray-200); text-align: left;
+}
+.comments-head {
+    font-size: 0.98rem; font-weight: 700; color: var(--gray-800);
+    margin-bottom: 14px; display: flex; align-items: center; gap: 7px;
+}
+.comments-count {
+    background: var(--primary-light); color: var(--primary-dark);
+    font-size: 0.78rem; font-weight: 700; padding: 1px 9px; border-radius: 20px;
+}
+.comments-list { display: flex; flex-direction: column; gap: 14px; }
+.comments-loading, .comments-empty {
+    font-size: 0.86rem; color: var(--gray-500); text-align: center; padding: 18px 8px;
+}
+
+.comment-item { display: flex; gap: 10px; align-items: flex-start; }
+.comment-item.is-reply { margin-top: 12px; }
+.c-avatar {
+    flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
+    background-size: cover; background-position: center;
+    background-color: var(--gray-100); border: 1px solid var(--gray-200);
+}
+.comment-item.is-reply .c-avatar { flex-basis: 30px; width: 30px; height: 30px; }
+.c-avatar-empty { display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.c-body { flex: 1 1 auto; min-width: 0; }
+.c-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+.c-name { font-size: 0.88rem; font-weight: 700; color: var(--gray-800); }
+.c-time { font-size: 0.72rem; color: var(--gray-500); }
+.c-content {
+    font-size: 0.9rem; color: var(--gray-600); line-height: 1.6;
+    word-break: break-word; white-space: normal;
+}
+.c-actions { display: flex; gap: 12px; margin-top: 6px; }
+.c-act-btn {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-size: 0.78rem; font-weight: 600; color: var(--gray-500);
+    font-family: var(--font-main); transition: color 0.15s ease;
+}
+.c-act-btn:hover { color: var(--primary-dark); }
+.c-act-trash:hover { color: #b5462f; }
+
+/* 대댓글 묶음 (왼쪽 들여쓰기 + 연결선) */
+.c-replies {
+    margin-top: 12px; padding-left: 14px;
+    border-left: 2px solid var(--gray-100);
+    display: flex; flex-direction: column; gap: 0;
+}
+
+/* 답글 입력 / 댓글 입력 */
+.c-reply-form { display: flex; gap: 8px; margin-top: 10px; }
+.comment-compose { display: flex; gap: 8px; margin-top: 18px; }
+.comment-input {
+    flex: 1 1 auto; min-width: 0;
+    border: 1px solid var(--gray-200); border-radius: 12px;
+    padding: 10px 14px; font-size: 0.88rem; font-family: var(--font-main);
+    background: var(--gray-50); color: var(--gray-800); outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.comment-input:focus { border-color: var(--primary-light); background: var(--white); }
+.comment-send-btn {
+    flex: 0 0 auto; border: none; border-radius: 12px; cursor: pointer;
+    padding: 0 16px; font-size: 0.85rem; font-weight: 700;
+    background: var(--primary); color: var(--white);
+    font-family: var(--font-main); transition: background 0.15s ease;
+}
+.comment-send-btn:hover { background: var(--primary-dark); }
+
+/* 댓글 인라인 수정 */
+.c-edit-area {
+    width: 100%; border: 1px solid var(--gray-200); border-radius: 10px;
+    padding: 8px 12px; font-size: 0.88rem; font-family: var(--font-main);
+    color: var(--gray-800); resize: vertical; min-height: 56px; outline: none;
+}
+.c-edit-area:focus { border-color: var(--primary-light); }
+.c-edit-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; }
+.c-edit-cancel, .c-edit-save {
+    border: none; border-radius: 9px; padding: 6px 14px; cursor: pointer;
+    font-size: 0.8rem; font-weight: 600; font-family: var(--font-main);
+}
+.c-edit-cancel { background: var(--gray-100); color: var(--gray-600); }
+.c-edit-save { background: var(--primary); color: var(--white); }
+.c-edit-save:hover { background: var(--primary-dark); }
+
+/* ---- 프로필 하단 휴지통 버튼 ---- */
+.trash-menu-btn {
+    display: block; width: 100%; margin-top: 10px;
+    background: var(--white); color: var(--gray-600);
+    border: 1px solid var(--gray-200); border-radius: 14px;
+    padding: 14px; font-size: 0.95rem; font-weight: 600;
+    font-family: var(--font-main); cursor: pointer; transition: all 0.2s ease;
+}
+.trash-menu-btn:hover { background: var(--gray-50); color: #b5462f; border-color: #e9d2cb; }
+
+/* ---- 휴지통 모달 ---- */
+.trash-body {
+    margin-top: 6px; overflow-y: auto; max-height: 70vh;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.trash-group-title {
+    font-size: 0.82rem; font-weight: 700; color: var(--primary-dark);
+    margin: 8px 2px 2px; letter-spacing: 0.3px;
+}
+.trash-row {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 14px; padding: 10px 12px;
+}
+.trash-comment-text { white-space: normal; }
+.trash-actions { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.trash-restore, .trash-delete {
+    border: none; border-radius: 9px; padding: 7px 12px; cursor: pointer;
+    font-size: 0.76rem; font-weight: 700; font-family: var(--font-main);
+    white-space: nowrap; transition: all 0.15s ease;
+}
+.trash-restore { background: var(--primary-light); color: var(--primary-dark); }
+.trash-restore:hover { background: var(--primary); color: var(--white); }
+.trash-delete { background: #fbeeea; color: #b5462f; }
+.trash-delete:hover { background: #b5462f; color: var(--white); }

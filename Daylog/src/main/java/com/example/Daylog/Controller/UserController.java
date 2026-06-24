@@ -66,6 +66,7 @@ public class UserController {
     @PutMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<UserDTO> updateUser(@RequestPart("userData") String userData, @RequestPart(value = "mediaData", required = false) MultipartFile mediaData, @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         UserDTO userDTO = mapper.readValue(userData, UserDTO.class);
         return ResponseEntity.ok(userService.updateUser(userDTO, mediaData, userDetails));
     }

@@ -36,6 +36,10 @@ public class MemoryEntity {
 
     private String mediaURL;
 
+    // 휴지통(소프트 삭제) 플래그 — true 면 휴지통으로 이동된 상태
+    @Column(nullable = false)
+    private boolean deleted;
+
     // 작성자 연관관계 (BuildingEntity 패턴 참고)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")

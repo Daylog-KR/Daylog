@@ -4,6 +4,15 @@
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
+// SNS 기본 프로필 이미지 (회색 실루엣) — 외부 파일 없이 SVG 데이터 URI 사용
+const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
+    '<rect width="100" height="100" fill="#e7e0d6"/>' +
+    '<circle cx="50" cy="40" r="17" fill="#b9afa1"/>' +
+    '<path d="M50 61c-17 0-29 11-29 27v12h58V88c0-16-12-27-29-27z" fill="#b9afa1"/>' +
+    '</svg>'
+);
+
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
 // JWT payload 디코드 (base64url)
@@ -92,7 +101,10 @@ async function handleResponse(res) {
         throw new Error(text || (res.status + ' ' + res.statusText));
     }
     if (res.status === 204) return null;
-    return res.json();
+    // 본문이 빈 200 응답(휴지통 이동/삭제 등) 안전 처리
+    const text = await res.text();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (e) { return text; }
 }
 
 // ==========================================
@@ -479,17 +491,37 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
+                // 1) 날짜 메타데이터(촬영일) 자동 적용
+                let metaAll = null;
+                try { metaAll = await exifr.parse(file); } catch (_) { metaAll = null; }
+                if (metaAll) {
+                    const shotDate = metaAll.DateTimeOriginal || metaAll.CreateDate || metaAll.ModifyDate;
+                    if (shotDate) {
+                        const dObj = (shotDate instanceof Date) ? shotDate : new Date(shotDate);
+                        if (!isNaN(dObj.getTime())) {
+                            const yyyy = dObj.getFullYear();
+                            const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+                            const dd = String(dObj.getDate()).padStart(2, '0');
+                            const dateInput = document.getElementById('memory-date');
+                            if (dateInput) dateInput.value = `${yyyy}-${mm}-${dd}`;
+                        }
+                    }
+                }
+
+                // 2) 위치 메타데이터(GPS) 자동 적용
                 const gps = await exifr.gps(file);
                 if (gps && gps.latitude && gps.longitude) {
                     // 사진 메타데이터로 위치 자동 설정
                     currentLatLng = { lat: gps.latitude, lng: gps.longitude };
                     currentLocationMeta = { placeName: '', address: '' };
-                    reverseGeocode(gps.latitude, gps.longitude, (addr) => {
-                        currentLocationMeta = { placeName: '', address: addr || '' };
-                    });
                     const badge = document.getElementById('location-status-badge');
                     badge.innerText = "📍 사진 위치가 자동으로 설정되었습니다!";
                     badge.className = "location-badge success";
+                    // 역지오코딩으로 실제 주소를 받아 뱃지에 표시
+                    reverseGeocode(gps.latitude, gps.longitude, (addr) => {
+                        currentLocationMeta = { placeName: '', address: addr || '' };
+                        if (addr) badge.innerText = "📍 " + addr;
+                    });
                     openMemoryModal();
                 } else {
                     // 메타데이터 없음 → 지도 클릭 모드
@@ -601,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!sorted.length) {
             timelineFeed.innerHTML =
-                '<div class="empty-state"><span class="es-icon">🤎</span>' +
+                '<div class="empty-state"><span class="es-icon">👾</span>' +
                 '<p>기록이 존재하지 않음</p></div>';
             return;
         }
@@ -632,13 +664,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 card.innerHTML =
                     '<div class="tl-main">' +
-                        '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
-                        '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
-                        '<div class="tl-loc">' +
-                            '<span class="tl-loc-icon">📍</span>' +
-                            '<span class="tl-place"></span>' +
-                            '<span class="tl-addr"></span>' +
-                        '</div>' +
+                    '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
+                    '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
+                    '<div class="tl-loc">' +
+                    '<span class="tl-loc-icon">📍</span>' +
+                    '<span class="tl-place"></span>' +
+                    '<span class="tl-addr"></span>' +
+                    '</div>' +
                     '</div>' +
                     thumb;
 
@@ -754,16 +786,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const wrap = document.getElementById('wrap-' + role);
         if (!avatar || !wrap) return;
 
-        // 아바타 이미지 / 기본 이모지 (이미지 로드 실패 시 이모지로 폴백)
-        if (user && user.profileURL) {
+        // 아바타 이미지 / SNS 기본 이미지 (이미지 로드 실패 시 기본 이미지로 폴백)
+        const showImg = (src) => {
             avatar.innerHTML = '';
             const img = document.createElement('img');
-            img.src = user.profileURL;
+            img.src = src;
             img.alt = '프로필';
-            img.onerror = () => { avatar.innerHTML = fallbackEmoji; };
+            img.onerror = () => { img.onerror = null; img.src = DEFAULT_AVATAR; };
             avatar.appendChild(img);
+        };
+        if (user && user.profileURL) {
+            showImg(user.profileURL);
         } else {
-            avatar.innerHTML = fallbackEmoji;
+            showImg(DEFAULT_AVATAR);
         }
 
         // 닉네임 우선, 없으면 정규화된 실제 이름(송성민/강미르)으로 표시
@@ -772,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
         nameEl.innerText = hasNick ? user.nickname : realName;
         subEl.innerText = relationLabel;
 
-        // ✋ 내 정보 탭에서는 이미지 수정 불가 — 클릭 시 확대(라이트박스)만 동작
+        // ✋ 내 정보 탭에서는 이미지 수정 불가 — 실제 사진이 있을 때만 클릭 확대(라이트박스)
         wrap.classList.remove('editable', 'viewable');
         editEl.classList.add('hidden'); // 📷 편집 배지 항상 숨김
         wrap.onclick = null;
@@ -822,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(updated => {
                     currentUser = updated || payload;
                     document.getElementById('nickname-modal').classList.add('hidden');
-                    showToast('닉네임이 설정 완료');
+                    showToast('닉네임 설정 완료');
                     loadProfiles();
                 })
                 .catch(err => { console.error(err); showToast('설정 실패: ' + (err.message || '서버 오류')); })
@@ -832,22 +867,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ----- 프로필 수정 페이지 -----
     let editPendingFile = null;
+    let editRemovePhoto = false;
     const editFileInput = document.getElementById('edit-file');
     const editPage = document.getElementById('edit-page');
+
+    // 수정 페이지 아바타 미리보기 + '사진 제거' 버튼 노출 제어
+    function setEditAvatar(src, hasPhoto) {
+        const av = document.getElementById('edit-avatar');
+        if (av) av.innerHTML = '<img src="' + src + '" alt="프로필">';
+        const rm = document.getElementById('edit-remove-photo');
+        if (rm) rm.classList.toggle('hidden', !hasPhoto);
+    }
 
     function openEditPage() {
         if (!currentUser) { showToast('사용자 정보를 불러오는 중이에요'); loadProfiles(); return; }
         editPendingFile = null;
+        editRemovePhoto = false;
         document.getElementById('edit-nickname').value = currentUser.nickname || '';
-        document.getElementById('edit-avatar').innerHTML =
-            currentUser.profileURL ? '<img src="' + currentUser.profileURL + '" alt="프로필">' : '👤';
+        setEditAvatar(currentUser.profileURL || DEFAULT_AVATAR, !!currentUser.profileURL);
         editPage.classList.add('open');
     }
     function closeEditPage() { editPage.classList.remove('open'); }
 
     document.getElementById('btn-edit-profile').addEventListener('click', openEditPage);
+    const btnTrash = document.getElementById('btn-trash');
+    if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
     document.getElementById('edit-back').addEventListener('click', closeEditPage);
     document.getElementById('edit-avatar-wrap').addEventListener('click', () => editFileInput.click());
+
+    // 사진 제거 버튼 — 현재/선택 사진을 지우고 기본 이미지로
+    const editRemoveBtn = document.getElementById('edit-remove-photo');
+    if (editRemoveBtn) {
+        editRemoveBtn.addEventListener('click', () => {
+            editPendingFile = null;
+            editRemovePhoto = true;
+            setEditAvatar(DEFAULT_AVATAR, false);
+            showToast('저장하면 사진이 제거돼요');
+        });
+    }
 
     editFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -855,10 +912,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!file) return;
         openCropper(file, (cropped) => {
             editPendingFile = cropped;
+            editRemovePhoto = false;
             const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.getElementById('edit-avatar').innerHTML = '<img src="' + ev.target.result + '" alt="프로필">';
-            };
+            reader.onload = (ev) => { setEditAvatar(ev.target.result, true); };
             reader.readAsDataURL(cropped);
         });
     });
@@ -871,12 +927,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!nick) { showToast('닉네임을 입력해주세요'); return; }
         const btn = editForm.querySelector('.submit-btn');
         btn.disabled = true; btn.innerText = '저장 중...';
-        // 닉네임과 프로필 이미지만 수정 (uid/id 는 본인 식별용)
+        // 닉네임 + (선택) 프로필 이미지 변경/제거. uid/id 는 본인 식별용
         const payload = { uid: currentUser.uid, id: currentUser.id, nickname: nick };
+        // 새 사진이 없고 '사진 제거'를 누른 경우 → profileURL 을 빈 값으로 보내 명시적 제거
+        if (!editPendingFile && editRemovePhoto) {
+            payload.profileURL = '';
+        }
         saveUser(payload, editPendingFile)
             .then(updated => {
                 currentUser = updated || payload;
+                if (editRemovePhoto && currentUser) currentUser.profileURL = '';
                 editPendingFile = null;
+                editRemovePhoto = false;
                 showToast('프로필 저장 완료');
                 closeEditPage();
                 loadProfiles();
@@ -913,7 +975,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', fn); }
         };
         bind('stat-card-dday', () => showDDayInfo());
-        bind('stat-card-total', () => openMemoryListModal('우리의 추억 ', [...memoryList].sort(sortByDateDesc)));
+        bind('stat-card-total', () => openMemoryListModal('우리의 추억', [...memoryList].sort(sortByDateDesc)));
         bind('stat-card-me', () => {
             const meUid = meUser && meUser.uid;
             openMemoryListModal(displayNameOf(meUser, '나') + '의 추억',
@@ -1051,16 +1113,30 @@ function openDetailModal(memory) {
 
     view.innerHTML =
         '<div class="detail-container">' +
-            '<div class="detail-header">' +
-                '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
-                '<div class="detail-meta">' +
-                    '<span class="meta-item">📅 ' + escapeHtml(dateStr) + '</span>' +
-                    '<span class="meta-item" id="detail-loc">📍 위치 확인 중…</span>' +
-                '</div>' +
-            '</div>' +
-            imageHtml +
-            '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
-            (isOwner ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정하기</button>' : '') +
+        '<div class="detail-header">' +
+        '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
+        '<div class="detail-meta">' +
+        '<span class="meta-item">📅 ' + escapeHtml(dateStr) + '</span>' +
+        '<span class="meta-item" id="detail-loc">📍 위치 확인 중…</span>' +
+        '</div>' +
+        '</div>' +
+        imageHtml +
+        '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
+        (isOwner
+            ? '<div class="detail-owner-actions">' +
+            '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정하기</button>' +
+            '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️ 휴지통</button>' +
+            '</div>'
+            : '') +
+        // 댓글 영역
+        '<div class="comments-section">' +
+        '<div class="comments-head">💬 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
+        '<div class="comments-list" id="comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
+        '<div class="comment-compose">' +
+        '<input type="text" class="comment-input" id="new-comment-input" placeholder="댓글을 남겨보세요" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" id="new-comment-send">등록</button>' +
+        '</div>' +
+        '</div>' +
         '</div>';
 
     applyDetailLocation(memory);
@@ -1070,6 +1146,19 @@ function openDetailModal(memory) {
 
     const eo = document.getElementById('detail-edit-open');
     if (eo) eo.addEventListener('click', () => enterDetailEdit(memory));
+
+    const to = document.getElementById('detail-trash-open');
+    if (to) to.addEventListener('click', () => trashMemory(memory.id));
+
+    // 댓글 작성 바인딩
+    const sendBtn = document.getElementById('new-comment-send');
+    const newInput = document.getElementById('new-comment-input');
+    if (sendBtn) sendBtn.addEventListener('click', () => submitComment(memory.id, null, 'new-comment-input'));
+    if (newInput) newInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitComment(memory.id, null, 'new-comment-input'); }
+    });
+
+    loadComments(memory.id);
 
     document.getElementById('detail-modal').classList.remove('hidden');
 }
@@ -1121,7 +1210,7 @@ function saveDetailEdit() {
     const payload = {
         title: title,
         content: content,
-        createdAt: date ? new Date(date).toISOString() : memory.createdAt
+        createdAt: date ? date : (memory.createdAt || null)
     };
     const btn = document.querySelector('#detail-edit-form .submit-btn');
     if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
@@ -1147,6 +1236,293 @@ function closeDetailModal() {
     _detailMemory = null;
 }
 
+// ==========================================
+//  댓글 / 대댓글
+// ==========================================
+const _commentCache = {};
+
+function commentAuthorName(c) {
+    if (c.ownerNickname && c.ownerNickname.trim()) return c.ownerNickname.trim();
+    if (typeof normalizeDisplayName === 'function' && c.ownerName) return normalizeDisplayName(c.ownerName);
+    return c.ownerName || '익명';
+}
+
+function commentTimeLabel(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diff = (now - d) / 1000; // 초
+    if (diff < 60) return '방금 전';
+    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+    const yyyy = d.getFullYear(), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}.${mm}.${dd}`;
+}
+
+function commentAvatarHtml(c) {
+    const src = (c.ownerProfileURL && c.ownerProfileURL.trim()) ? c.ownerProfileURL : DEFAULT_AVATAR;
+    return '<div class="c-avatar" style="background-image:url(\'' + src + '\')"></div>';
+}
+
+function commentItemHtml(c, memoryId, isReply) {
+    _commentCache[c.id] = c;
+    const isOwner = !!(c.ownerUid && Daylog.currentUid && c.ownerUid === Daylog.currentUid);
+    const contentHtml = escapeHtml(c.content || '').replace(/\n/g, '<br>');
+
+    let actions =
+        '<div class="c-actions">' +
+        (isReply ? '' : '<button type="button" class="c-act-btn" onclick="toggleReplyForm(' + c.id + ')">답글</button>') +
+        (isOwner ? '<button type="button" class="c-act-btn" onclick="enterCommentEdit(' + c.id + ',' + memoryId + ')">수정</button>' : '') +
+        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + c.id + ',' + memoryId + ')">🗑️</button>' : '') +
+        '</div>';
+
+    let replyForm = isReply ? '' :
+        '<div class="c-reply-form hidden" id="reply-form-' + c.id + '">' +
+        '<input type="text" class="comment-input" id="reply-input-' + c.id + '" placeholder="답글을 입력하세요" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" onclick="submitComment(' + memoryId + ',' + c.id + ',\'reply-input-' + c.id + '\')">등록</button>' +
+        '</div>';
+
+    let repliesHtml = '';
+    if (!isReply && c.replies && c.replies.length) {
+        repliesHtml = '<div class="c-replies">' +
+            c.replies.map(r => commentItemHtml(r, memoryId, true)).join('') +
+            '</div>';
+    }
+
+    return '' +
+        '<div class="comment-item' + (isReply ? ' is-reply' : '') + '" data-id="' + c.id + '">' +
+        commentAvatarHtml(c) +
+        '<div class="c-body">' +
+        '<div class="c-meta">' +
+        '<span class="c-name">' + escapeHtml(commentAuthorName(c)) + '</span>' +
+        '<span class="c-time">' + commentTimeLabel(c.createdAt) + '</span>' +
+        '</div>' +
+        '<div class="c-content" id="c-content-' + c.id + '">' + contentHtml + '</div>' +
+        actions +
+        replyForm +
+        repliesHtml +
+        '</div>' +
+        '</div>';
+}
+
+function loadComments(memoryId) {
+    const list = document.getElementById('comments-list');
+    if (!list) return;
+    fetch(`${Daylog.api}/comment/memory/${memoryId}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(comments => {
+            comments = comments || [];
+            const countEl = document.getElementById('comments-count');
+            let total = comments.length;
+            comments.forEach(c => { total += (c.replies ? c.replies.length : 0); });
+            if (countEl) countEl.textContent = total;
+
+            if (!comments.length) {
+                list.innerHTML = '<div class="comments-empty">댓글이 존재하지 않습니다.</div>';
+                return;
+            }
+            list.innerHTML = comments.map(c => commentItemHtml(c, memoryId, false)).join('');
+        })
+        .catch(err => {
+            console.error(err);
+            list.innerHTML = '<div class="comments-empty">댓글을 조회 실패</div>';
+        });
+}
+
+function submitComment(memoryId, parentId, inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const content = input.value.trim();
+    if (!content) { showToast('댓글을 입력해주세요'); return; }
+
+    fetch(`${Daylog.api}/comment`, {
+        method: 'POST',
+        headers: Daylog.authHeaders(true),
+        body: JSON.stringify({ memoryId: memoryId, parentId: parentId, content: content })
+    })
+        .then(Daylog.handleResponse)
+        .then(() => {
+            input.value = '';
+            loadComments(memoryId);
+        })
+        .catch(err => { console.error(err); showToast('댓글 등록 실패'); });
+}
+
+function toggleReplyForm(commentId) {
+    const form = document.getElementById('reply-form-' + commentId);
+    if (!form) return;
+    form.classList.toggle('hidden');
+    if (!form.classList.contains('hidden')) {
+        const inp = document.getElementById('reply-input-' + commentId);
+        if (inp) inp.focus();
+    }
+}
+
+function enterCommentEdit(commentId, memoryId) {
+    const c = _commentCache[commentId];
+    const box = document.getElementById('c-content-' + commentId);
+    if (!c || !box) return;
+    box.innerHTML =
+        '<textarea class="c-edit-area" id="c-edit-' + commentId + '" maxlength="1000">' + escapeHtml(c.content || '') + '</textarea>' +
+        '<div class="c-edit-actions">' +
+        '<button type="button" class="c-edit-cancel" onclick="loadComments(' + memoryId + ')">취소</button>' +
+        '<button type="button" class="c-edit-save" onclick="saveCommentEdit(' + commentId + ',' + memoryId + ')">저장</button>' +
+        '</div>';
+    const ta = document.getElementById('c-edit-' + commentId);
+    if (ta) { ta.focus(); ta.value = c.content || ''; }
+}
+
+function saveCommentEdit(commentId, memoryId) {
+    const ta = document.getElementById('c-edit-' + commentId);
+    if (!ta) return;
+    const content = ta.value.trim();
+    if (!content) { showToast('내용을 입력해주세요'); return; }
+    fetch(`${Daylog.api}/comment/${commentId}`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true),
+        body: JSON.stringify({ content: content })
+    })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('댓글 수정 완료'); loadComments(memoryId); })
+        .catch(err => { console.error(err); showToast('수정 실패'); });
+}
+
+function trashComment(commentId, memoryId) {
+    if (!confirm('이 댓글을 휴지통으로 옮길까요?')) return;
+    fetch(`${Daylog.api}/comment/${commentId}/trash`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true)
+    })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('휴지통으로 이동했어요'); loadComments(memoryId); })
+        .catch(err => { console.error(err); showToast('이동 실패'); });
+}
+
+// ==========================================
+//  추억 휴지통 이동
+// ==========================================
+function trashMemory(memoryId) {
+    if (!confirm('이 추억을 휴지통으로 옮길까요?')) return;
+    fetch(`${Daylog.api}/api/memories/${memoryId}/trash`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true)
+    })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('휴지통으로 이동했어요'); closeDetailModal(); Daylog.reload(); })
+        .catch(err => { console.error(err); showToast('이동 실패'); });
+}
+
+// ==========================================
+//  휴지통 모달
+// ==========================================
+function openTrashModal() {
+    const modal = document.getElementById('trash-modal');
+    const body = document.getElementById('trash-modal-body');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="comments-loading">휴지통을 불러오는 중…</div>';
+    modal.classList.remove('hidden');
+
+    const uid = Daylog.currentUid;
+    Promise.all([
+        fetch(`${Daylog.api}/api/memories/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
+        fetch(`${Daylog.api}/comment/trash`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
+    ]).then(([memories, comments]) => {
+        renderTrash(memories || [], comments || []);
+    });
+}
+
+function closeTrashModal() {
+    const modal = document.getElementById('trash-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderTrash(memories, comments) {
+    const body = document.getElementById('trash-modal-body');
+    if (!body) return;
+
+    if (!memories.length && !comments.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">🗑️</span><p>휴지통이 비어 있어요</p></div>';
+        return;
+    }
+
+    let html = '';
+
+    if (memories.length) {
+        html += '<div class="trash-group-title">추억 ' + memories.length + '</div>';
+        memories.forEach(m => {
+            const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+            const thumb = m.mediaURL
+                ? '<div class="lm-thumb" style="background-image:url(\'' + m.mediaURL + '\')"></div>'
+                : '<div class="lm-thumb lm-thumb-empty">👾</div>';
+            html +=
+                '<div class="trash-row">' +
+                thumb +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(m.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(m.content || '') + '</div>' +
+                '</div>' +
+                '<div class="trash-actions">' +
+                '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' +
+                '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' +
+                '</div>' +
+                '</div>';
+        });
+    }
+
+    if (comments.length) {
+        html += '<div class="trash-group-title">댓글 ' + comments.length + '</div>';
+        comments.forEach(c => {
+            const onTitle = c.memoryTitle ? ('"' + escapeHtml(c.memoryTitle) + '" 에 남긴 댓글') : '댓글';
+            html +=
+                '<div class="trash-row">' +
+                '<div class="lm-thumb lm-thumb-empty">💬</div>' +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + onTitle + '</div>' +
+                '<div class="lm-row-text trash-comment-text">' + escapeHtml(c.content || '') + '</div>' +
+                '</div>' +
+                '<div class="trash-actions">' +
+                '<button type="button" class="trash-restore" onclick="restoreComment(' + c.id + ')">복원</button>' +
+                '<button type="button" class="trash-delete" onclick="deleteCommentForever(' + c.id + ')">영구삭제</button>' +
+                '</div>' +
+                '</div>';
+        });
+    }
+
+    body.innerHTML = html;
+}
+
+function restoreMemory(id) {
+    fetch(`${Daylog.api}/api/memories/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('복원했어요'); openTrashModal(); Daylog.reload(); })
+        .catch(err => { console.error(err); showToast('복원 실패'); });
+}
+
+function deleteMemoryForever(id) {
+    if (!confirm('이 추억을 영구적으로 삭제할까요?\n삭제하면 되돌릴 수 없어요.')) return;
+    fetch(`${Daylog.api}/api/memories/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('삭제 실패'); });
+}
+
+function restoreComment(id) {
+    fetch(`${Daylog.api}/comment/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('복원했어요'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('복원 실패'); });
+}
+
+function deleteCommentForever(id) {
+    if (!confirm('이 댓글을 영구적으로 삭제할까요?\n삭제하면 되돌릴 수 없어요.')) return;
+    fetch(`${Daylog.api}/comment/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('삭제 실패'); });
+}
+
 // ===== 통계 클릭용 리스트 모달 / D-Day 정보 =====
 function openMemoryListModal(title, items) {
     const modal = document.getElementById('list-modal');
@@ -1157,21 +1533,21 @@ function openMemoryListModal(title, items) {
     body.innerHTML = '';
 
     if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">🤎</span><p>표시할 추억이 없습니다</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">👾</span><p>표시할 추억이 없습니다</p></div>';
     } else {
         items.forEach(memory => {
             const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = memory.mediaURL
                 ? `<div class="lm-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
-                : '<div class="lm-thumb lm-thumb-empty">🤎</div>';
+                : '<div class="lm-thumb lm-thumb-empty">👾</div>';
             const row = document.createElement('div');
             row.className = 'lm-row';
             row.innerHTML =
                 thumb +
                 '<div class="lm-row-main">' +
-                    '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
-                    '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
-                    '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
+                '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
                 '</div>';
             row.addEventListener('click', () => { closeListModal(); openDetailModal(memory); });
             body.appendChild(row);
@@ -1196,10 +1572,10 @@ function showDDayInfo() {
     titleEl.textContent = 'D-Day 💍';
     body.innerHTML =
         '<div class="dday-info">' +
-            '<div class="dday-info-emoji">📅</div>' +
-            '<div class="dday-info-label">사귀기 시작한 날</div>' +
-            '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
-            '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
+        '<div class="dday-info-emoji">📅</div>' +
+        '<div class="dday-info-label">사귀기 시작한 날</div>' +
+        '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
+        '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
         '</div>';
     modal.classList.remove('hidden');
 }
@@ -1387,6 +1763,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const listClose = document.getElementById('list-modal-close');
     if (listClose) listClose.addEventListener('click', closeListModal);
 
+    // 휴지통 모달 닫기 (배경 클릭 / X 버튼)
+    const trashModal = document.getElementById('trash-modal');
+    if (trashModal) {
+        trashModal.addEventListener('click', (e) => { if (e.target.id === 'trash-modal') closeTrashModal(); });
+    }
+    const trashClose = document.getElementById('trash-modal-close');
+    if (trashClose) trashClose.addEventListener('click', closeTrashModal);
+
     // ESC 로 리스트 모달도 닫기
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeListModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeListModal(); closeTrashModal(); } });
 });

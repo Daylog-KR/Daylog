@@ -21,6 +21,7 @@ public class MemoryDTO {
     private String address;   // 상세 주소 (선택)
     private String mediaURL;
     private String ownerUid;
+    private boolean deleted;
     private LocalDateTime createdAt;
 
     // Entity -> DTO 변환 (BuildingDTO 패턴 오마주)
@@ -37,6 +38,7 @@ public class MemoryDTO {
                 memoryEntity.getAddress(),
                 memoryEntity.getMediaURL(),
                 ownerUid,
+                memoryEntity.isDeleted(),
                 memoryEntity.getCreatedAt()
         );
     }
@@ -53,6 +55,7 @@ public class MemoryDTO {
                 .address(address)
                 .mediaURL(mediaURL)
                 .owner(owner)
+                .deleted(deleted)
                 .build();
     }
 }

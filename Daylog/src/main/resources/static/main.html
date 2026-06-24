@@ -110,6 +110,7 @@
             </div>
 
             <button type="button" id="btn-edit-profile" class="edit-profile-btn">✏️ 프로필 수정</button>
+            <button type="button" id="btn-trash" class="trash-menu-btn">🗑️ 휴지통</button>
 
             <p class="version-text">Daylog v2.0.0</p>
         </div>
@@ -189,7 +190,7 @@
                 <label>내용</label>
                 <textarea id="edit-memory-content" rows="5" placeholder="이야기를 작성하세요" required></textarea>
             </div>
-            <p class="detail-edit-note">※ 사진은 수정이 불가합니다.</p>
+            <p class="detail-edit-note">※ 사진은 수정할 수 없어요.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="detail-edit-cancel" class="cancel-edit-btn">취소</button>
                 <button type="submit" class="submit-btn">저장하기 ✨</button>
@@ -206,6 +207,17 @@
             <button type="button" class="close-modal" id="list-modal-close">&times;</button>
         </div>
         <div id="list-modal-body" class="list-modal-body"></div>
+    </div>
+</div>
+
+<!-- 휴지통 모달 -->
+<div id="trash-modal" class="modal hidden">
+    <div class="modal-content list-content">
+        <div class="modal-header">
+            <h3>🗑️ 휴지통</h3>
+            <button type="button" class="close-modal" id="trash-modal-close">&times;</button>
+        </div>
+        <div id="trash-modal-body" class="trash-body"></div>
     </div>
 </div>
 
@@ -260,6 +272,7 @@
             <span class="avatar-edit">📷</span>
         </div>
         <p class="edit-avatar-hint">사진을 눌러 변경</p>
+        <button type="button" id="edit-remove-photo" class="edit-remove-photo hidden">사진 제거</button>
 
         <form id="edit-form">
             <div class="form-group">

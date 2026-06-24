@@ -26,6 +26,7 @@ public class MemoryService {
 
     private final MemoryRepository memoryRepository;
     private final UserRepository userRepository;
+    private final CommentService commentService;
     private final Storage storage;
 
     @Value("${google.cloud.credentials.header}")
@@ -81,7 +82,7 @@ public class MemoryService {
 
     @Transactional(readOnly = true)
     public List<MemoryDTO> getAllMemories(String uid, UserDetails userDetails) {
-        return memoryRepository.findAll().stream()
+        return memoryRepository.findByDeletedFalse().stream()
                 .map(MemoryDTO::entityToDto)
                 .collect(Collectors.toList());
     }
@@ -104,5 +105,49 @@ public class MemoryService {
         if (memoryDTO.getCreatedAt() != null) memory.setCreatedAt(memoryDTO.getCreatedAt());
 
         return MemoryDTO.entityToDto(memoryRepository.save(memory));
+    }
+
+    // 소유자 검증 후 추억 반환
+    private MemoryEntity getOwnedMemory(Long id, UserDetails userDetails) {
+        MemoryEntity memory = memoryRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
+        String ownerUid = (memory.getOwner() != null) ? memory.getOwner().getUid() : null;
+        if (userDetails == null || ownerUid == null || !ownerUid.equals(userDetails.getUsername())) {
+            throw new RuntimeException("권한이 없습니다");
+        }
+        return memory;
+    }
+
+    // 휴지통으로 이동 (소프트 삭제)
+    @Transactional
+    public void moveToTrash(Long id, UserDetails userDetails) {
+        MemoryEntity memory = getOwnedMemory(id, userDetails);
+        memory.setDeleted(true);
+        memoryRepository.save(memory);
+    }
+
+    // 휴지통에서 복원
+    @Transactional
+    public MemoryDTO restoreMemory(Long id, UserDetails userDetails) {
+        MemoryEntity memory = getOwnedMemory(id, userDetails);
+        memory.setDeleted(false);
+        return MemoryDTO.entityToDto(memoryRepository.save(memory));
+    }
+
+    // 영구 삭제 (연관 댓글 일괄 제거 포함)
+    @Transactional
+    public void permanentDelete(Long id, UserDetails userDetails) {
+        MemoryEntity memory = getOwnedMemory(id, userDetails);
+        commentService.deleteAllByMemory(id);
+        memoryRepository.delete(memory);
+    }
+
+    // 내가 휴지통으로 보낸 추억 목록
+    @Transactional(readOnly = true)
+    public List<MemoryDTO> getTrash(String uid, UserDetails userDetails) {
+        UserEntity user = getAuthorizedUser(uid, userDetails);
+        return memoryRepository.findByOwnerUidAndDeletedTrue(user.getUid()).stream()
+                .map(MemoryDTO::entityToDto)
+                .collect(Collectors.toList());
     }
 }

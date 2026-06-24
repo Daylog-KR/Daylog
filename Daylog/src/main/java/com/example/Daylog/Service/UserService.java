@@ -153,10 +153,15 @@ public class UserService {
         if (userDTO.getAge() != null) userEntity.setAge(userDTO.getAge());
         if (userDTO.getGender() != null) userEntity.setGender(userDTO.getGender());
 
-        // 새 이미지가 있을 때만 프로필 이미지 교체 (없으면 기존 프로필 유지)
+        // 새 이미지가 있으면 교체, 새 이미지가 없고 profileURL 이 빈 문자열("")로 명시되면 제거
         if (mediaFile != null && !mediaFile.isEmpty()) {
             userEntity.setProfileURL(uploadProfileImage(mediaFile));
+        } else if (userDTO.getProfileURL() != null && userDTO.getProfileURL().isEmpty()) {
+            // 명시적 비움 처리 — 기존 GCS 파일은 best-effort 로 정리 (실패해도 무시)
+            deleteProfileImageQuietly(userEntity.getProfileURL());
+            userEntity.setProfileURL(null);
         }
+        // (그 외: profileURL == null 이고 새 이미지도 없으면 기존 프로필 그대로 유지)
 
         UserEntity updatedUser = userRepository.save(userEntity);
         logger.info(userEntity.getId() + "번 사용자 정보 업데이트 완료!");
@@ -191,6 +196,20 @@ public class UserService {
             return googleCouldHeader + fileName;
         } catch (IOException e) {
             throw new RuntimeException("미디어 파일 업로드 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    // 프로필 이미지 GCS 파일 삭제 (best-effort, 실패해도 흐름 막지 않음)
+    private void deleteProfileImageQuietly(String profileURL) {
+        try {
+            if (profileURL == null || profileURL.isEmpty()) return;
+            if (googleCouldHeader == null || !profileURL.startsWith(googleCouldHeader)) return;
+            String fileName = profileURL.substring(googleCouldHeader.length());
+            if (!fileName.isEmpty()) {
+                storage.delete(BlobId.of(bucket, fileName));
+            }
+        } catch (Exception e) {
+            logger.warn("기존 프로필 이미지 삭제 실패(무시): {}", e.getMessage());
         }
     }
 
