@@ -182,7 +182,7 @@ const Daylog = {
 const CHECKLIST_TYPES = {
     CAFE: { label: '카페',  emoji: '☕', color: '#b06a4f' },
     FOOD: { label: '식당',  emoji: '🍴', color: '#c0563f' },
-    SPOT: { label: '명소',  emoji: '📍', color: '#3f7fb0' },
+    SPOT: { label: '장소',  emoji: '📍', color: '#3f7fb0' },
     ETC:  { label: '기타',  emoji: '✨', color: '#7a756e' }
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
@@ -1181,7 +1181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMapButtons() {
         const toggle = document.getElementById('btn-map-toggle');
         const action = document.getElementById('btn-map-action');
-        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '💖 추억 보기' : '📌 체크리스트';
+        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '📸 추억 보기' : '📌 체크리스트';
         if (action) action.innerText = (mapMode === 'checklist') ? '📌 가볼곳 추가' : '📸 기록 남기기';
     }
 
@@ -1444,6 +1444,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const runClKeyword = () => { _clKeyword = clKw ? clKw.value : ''; applyChecklistFilter(); };
     if (clKwBtn) clKwBtn.addEventListener('click', runClKeyword);
     if (clKw) clKw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runClKeyword(); } });
+    // 초기화 — 검색어/카테고리/방문여부 모두 리셋 후 즉시 전체 표시
+    const clKwReset = document.getElementById('cl-keyword-reset');
+    if (clKwReset) clKwReset.addEventListener('click', () => {
+        _clKeyword = '';
+        _clFilter = 'ALL';
+        _clVisitedFilter = 'ALL';
+        if (clKw) clKw.value = '';
+        document.querySelectorAll('#cl-filter-bar .cl-filter-chip').forEach(c => c.classList.toggle('selected', c.dataset.filter === 'ALL'));
+        document.querySelectorAll('#cl-visited-filter-bar .cl-vfilter-chip').forEach(c => c.classList.toggle('selected', c.dataset.vfilter === 'ALL'));
+        applyChecklistFilter();
+    });
     const clFilterBar = document.getElementById('cl-filter-bar');
     if (clFilterBar) {
         clFilterBar.querySelectorAll('.cl-filter-chip').forEach(chip => {

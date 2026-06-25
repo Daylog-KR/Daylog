@@ -1511,4 +1511,5 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 .filter-search-row input[type="text"]:focus { border-color: var(--primary); background: var(--white); }
 .filter-search-row .filter-search-btn { flex: 0 0 64px; }
+.filter-search-row .filter-reset-btn { flex: 0 0 64px; padding: 10px 0; }
 .cl-search-row { margin-bottom: 10px; }
