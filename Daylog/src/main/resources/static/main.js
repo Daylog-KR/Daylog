@@ -1143,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(item.lat, item.lng),
                 map: map,
-                icon: { content: markerHtml, anchor: new naver.maps.Point(20, 46) }
+                icon: { content: markerHtml, anchor: new naver.maps.Point(16, 38) }
             });
             marker._checklistId = item.id;
             naver.maps.Event.addListener(marker, 'click', () => openChecklistDetail(item));
@@ -1172,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMapButtons() {
         const toggle = document.getElementById('btn-map-toggle');
         const action = document.getElementById('btn-map-action');
-        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '📸 추억 보기' : '📌 체크리스트';
+        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '💖 추억 보기' : '📌 체크리스트';
         if (action) action.innerText = (mapMode === 'checklist') ? '📌 가볼곳 추가' : '📸 기록 남기기';
     }
 
