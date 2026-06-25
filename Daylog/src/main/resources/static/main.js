@@ -1064,20 +1064,25 @@ document.addEventListener('DOMContentLoaded', () => {
     attachPullToRefresh(containerEl,
         () => {
             const tl = document.getElementById('tab-timeline');
+            const cl = document.getElementById('tab-checklist');
             const pf = document.getElementById('tab-profile');
-            return (tl && tl.style.display !== 'none') || (pf && pf.style.display !== 'none');
+            return (tl && tl.style.display !== 'none')
+                || (cl && cl.style.display !== 'none')
+                || (pf && pf.style.display !== 'none');
         },
         () => {
+            const cl = document.getElementById('tab-checklist');
             const pf = document.getElementById('tab-profile');
             if (pf && pf.style.display !== 'none') loadProfiles();
-            return Promise.resolve(loadMemoriesFromServer()).then(() => showToast('새로고침했어요'));
-        }, 26); // 타임라인/내정보 아이콘을 좀 더 아래로
+            if (cl && cl.style.display !== 'none') return Promise.resolve(loadChecklistsFromServer());
+            return Promise.resolve(loadMemoriesFromServer());
+        }, 26); // 타임라인/가볼곳/내정보 아이콘을 좀 더 아래로
 
     // 추억 상세 모달 당겨서 새로고침 — 폼은 고정(움직이지 않음), 링만 위쪽에 표시
     const detailScroll = document.querySelector('#detail-modal .modal-content');
     attachPullToRefresh(detailScroll,
         () => !document.getElementById('detail-modal').classList.contains('hidden') && _detailMemory != null,
-        () => { if (_detailMemory) loadComments(_detailMemory.id); return Promise.resolve(loadMemoriesFromServer()).then(() => showToast('새로고침했어요')); },
+        () => { if (_detailMemory) loadComments(_detailMemory.id); return Promise.resolve(loadMemoriesFromServer()); },
         -10, true);
 
     // '우리의 추억' / '~의 추억' 리스트 모달 당겨서 새로고침 (가로 드래그는 CSS로 잠금)
@@ -1086,7 +1091,6 @@ document.addEventListener('DOMContentLoaded', () => {
         () => !document.getElementById('list-modal').classList.contains('hidden'),
         () => Promise.resolve(loadMemoriesFromServer()).then(() => {
             if (Daylog._openListKind) openStatList(Daylog._openListKind);
-            showToast('새로고침했어요');
         }),
         14);
 
@@ -1390,6 +1394,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const tlFilterBar = document.getElementById('tl-filter-bar');
     if (tlFilterToggle && tlFilterBar) {
         tlFilterToggle.addEventListener('click', () => tlFilterBar.classList.toggle('hidden'));
+    }
+    const clFilterToggle = document.getElementById('cl-filter-toggle');
+    const clFilterWrap = document.getElementById('cl-filter-wrap');
+    if (clFilterToggle && clFilterWrap) {
+        clFilterToggle.addEventListener('click', () => clFilterWrap.classList.toggle('hidden'));
     }
     const tlFilterSearch = document.getElementById('tl-filter-search');
     if (tlFilterSearch) tlFilterSearch.addEventListener('click', applyTimelineFilter);

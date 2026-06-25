@@ -66,19 +66,32 @@ button { font-family: inherit; }
 .header-map-controls { display: none; align-items: center; gap: 8px; }
 .header-map-controls .map-fab { padding: 7px 11px; font-size: 0.72rem; box-shadow: 0 3px 9px rgba(176, 137, 104, 0.32); }
 body[data-active-tab="tab-map"] .header-map-controls { display: flex; margin-left: auto; }
-/* 지도 탭: 디데이는 중앙 배치, 로그아웃만 숨김 */
-body[data-active-tab="tab-map"] #btn-logout { display: none; }
-body[data-active-tab="tab-map"] .dday-counter {
-    position: absolute; left: 50%; transform: translateX(-50%); margin-left: 0;
-}
+/* 지도 탭: 디데이/로그아웃 모두 숨김 */
+body[data-active-tab="tab-map"] #btn-logout,
+body[data-active-tab="tab-map"] .dday-counter { display: none; }
 /* 위치 선택 모드 동안에는 헤더 컨트롤 숨김 */
 body.picking .header-map-controls { display: none !important; }
 
 /* 헤더 안의 타임라인 검색 버튼 — 타임라인 탭에서만 오른쪽에 노출 */
 .header-timeline-controls { display: none; align-items: center; }
 body[data-active-tab="tab-timeline"] .header-timeline-controls { display: flex; margin-left: auto; }
-body[data-active-tab="tab-timeline"] .dday-counter,
 body[data-active-tab="tab-timeline"] #btn-logout { display: none; }
+
+/* 헤더 안의 가볼곳 검색 버튼 — 가볼곳 탭에서만 오른쪽에 노출 */
+.header-checklist-controls { display: none; align-items: center; }
+body[data-active-tab="tab-checklist"] .header-checklist-controls { display: flex; margin-left: auto; }
+body[data-active-tab="tab-checklist"] #btn-logout { display: none; }
+/* 가볼곳 필터(카테고리+방문여부) — 검색 버튼으로 토글 */
+.cl-filter-wrap { animation: dropIn 0.28s var(--ease-soft); }
+
+/* 디데이 정중앙 표시: 타임라인 / 가볼곳 / 내정보 탭에서만 */
+body[data-active-tab="tab-timeline"] .dday-counter,
+body[data-active-tab="tab-checklist"] .dday-counter,
+body[data-active-tab="tab-profile"] .dday-counter {
+    position: absolute; left: 50%; transform: translateX(-50%); margin-left: 0;
+}
+/* 내정보 탭: 로그아웃은 오른쪽 정렬 (디데이가 absolute라 auto 마진 대체) */
+body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 .dday-counter {
     margin-left: auto;
     font-size: 0.85rem; font-weight: 500; color: var(--gray-600);

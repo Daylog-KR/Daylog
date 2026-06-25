@@ -23,6 +23,9 @@
     <div id="header-timeline-controls" class="header-timeline-controls">
         <button type="button" id="tl-filter-toggle" class="filter-toggle-btn">🔍 검색</button>
     </div>
+    <div id="header-checklist-controls" class="header-checklist-controls">
+        <button type="button" id="cl-filter-toggle" class="filter-toggle-btn">🔍 검색</button>
+    </div>
     <div class="dday-counter">
         <span class="heart-icon"></span> D +<span id="dday-count">0</span>
     </div>
@@ -92,17 +95,19 @@
         <div class="content-wrapper">
             <section class="timeline-section">
                 <h3 class="section-title">가볼곳 📌</h3>
-                <div id="cl-filter-bar" class="cl-filter-bar">
-                    <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
-                    <button type="button" class="cl-filter-chip" data-filter="CAFE">☕ 카페</button>
-                    <button type="button" class="cl-filter-chip" data-filter="FOOD">🍴 식당</button>
-                    <button type="button" class="cl-filter-chip" data-filter="SPOT">📍 명소</button>
-                    <button type="button" class="cl-filter-chip" data-filter="ETC">✨ 기타</button>
-                </div>
-                <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
-                    <button type="button" class="cl-vfilter-chip selected" data-vfilter="ALL">전체</button>
-                    <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED">✓ 다녀온 곳</button>
-                    <button type="button" class="cl-vfilter-chip" data-vfilter="TODO">가볼 곳</button>
+                <div id="cl-filter-wrap" class="cl-filter-wrap hidden">
+                    <div id="cl-filter-bar" class="cl-filter-bar">
+                        <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
+                        <button type="button" class="cl-filter-chip" data-filter="CAFE">☕ 카페</button>
+                        <button type="button" class="cl-filter-chip" data-filter="FOOD">🍴 식당</button>
+                        <button type="button" class="cl-filter-chip" data-filter="SPOT">📍 명소</button>
+                        <button type="button" class="cl-filter-chip" data-filter="ETC">✨ 기타</button>
+                    </div>
+                    <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
+                        <button type="button" class="cl-vfilter-chip selected" data-vfilter="ALL">전체</button>
+                        <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED">✓ 다녀온 곳</button>
+                        <button type="button" class="cl-vfilter-chip" data-vfilter="TODO">가볼 곳</button>
+                    </div>
                 </div>
                 <div id="checklist-feed"></div>
             </section>
