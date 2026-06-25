@@ -543,7 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if (map) { map.setCenter(new naver.maps.LatLng(lat, lng)); map.setZoom(16); }
             updateCenterLabel();
-            showToast("현재 위치로 이동했어요. '이 위치로 설정하기'를 눌러 확정하세요.");
+            showToast("현재 위치로 이동 완료");
         }, (err) => {
             lmCurrentBtn.disabled = false; lmCurrentBtn.innerText = prev;
             console.warn('현재 위치 실패:', err);
@@ -557,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 위치 재설정 취소 → 입력하던 폼 그대로 복귀
             pickReturnsToForm = false;
             if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
-            showToast('위치 변경을 취소했어요');
+            showToast('위치 변경이 취소됨');
         } else if (pickTarget === 'checklist') {
             pickTarget = 'memory';
             showToast('가볼곳 추가를 취소함');
@@ -749,14 +749,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigator.geolocation.getCurrentPosition((pos) => {
                     currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                     currentLocationMeta = { placeName: '', address: '' };
-                    if (badge) { badge.innerText = '📍 현재 위치로 설정되었습니다!'; badge.className = 'location-badge success'; }
+                    if (badge) { badge.innerText = '📍 현재 위치로 설정 완료'; badge.className = 'location-badge success'; }
                     reverseGeocode(currentLatLng.lat, currentLatLng.lng, (addr) => {
                         currentLocationMeta = splitKoreanAddress(addr);
                         if (addr && badge) badge.innerText = '📍 ' + addr;
                     });
                     openMemoryModal();
                 }, () => {
-                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없어요 · 직접 설정'; badge.className = 'location-badge manual'; }
+                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없음 · 직접 설정'; badge.className = 'location-badge manual'; }
                     openMemoryModal();
                 }, { enableHighAccuracy: true, timeout: 8000 });
             } else {
@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 촬영 → 위치(현재 GPS)·날짜(오늘) 자동 설정 → 작성 폼 오픈
     function capturePhoto() {
-        if (!camVideo || !camVideo.videoWidth) { showToast('카메라가 준비되지 않았어요'); return; }
+        if (!camVideo || !camVideo.videoWidth) { showToast('카메라가 준비되지 않음'); return; }
         const canvas = document.getElementById('camera-canvas');
         canvas.width = camVideo.videoWidth;
         canvas.height = camVideo.videoHeight;
@@ -941,11 +941,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }, (err) => {
                     console.warn('위치 가져오기 실패:', err);
-                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없어요 · 아래에서 직접 설정'; badge.className = 'location-badge manual'; }
-                    showToast('위치 접근이 거부되었어요. 위치를 직접 설정해주세요.');
+                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없음 · 아래에서 직접 설정'; badge.className = 'location-badge manual'; }
+                    showToast('위치 접근이 거부됨. 위치를 직접 설정해주세요.');
                 }, { enableHighAccuracy: true, timeout: 8000 });
             } else if (badge) {
-                badge.innerText = '📍 위치 기능을 사용할 수 없어요 · 직접 설정';
+                badge.innerText = '📍 위치 기능을 사용할 수 없음 · 직접 설정';
                 badge.className = 'location-badge manual';
             }
 
@@ -1227,7 +1227,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!feed) return;
         feed.innerHTML = '';
         if (!sorted.length) {
-            feed.innerHTML = '<div class="empty-state"><span class="es-icon">📌</span><p>아직 등록된 가볼곳이 없어요</p></div>';
+            feed.innerHTML = '<div class="empty-state"><span class="es-icon">📌</span><p>아직 등록된 체크리스트가 없음</p></div>';
             return;
         }
         let idx = 0;
@@ -1299,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasImage = !!(imgInput && imgInput.files && imgInput.files[0]);
         // '다녀왔어요'가 체크된 경우 이미지는 필수
         if (visited && !hasImage) {
-            showToast('다녀왔다면 사진을 첨부해주세요');
+            showToast('다녀왔다면 사진 첨부는 필수입니다');
             return;
         }
         const dto = {
@@ -1325,7 +1325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(handleResponse)
             .then(() => {
                 closeChecklistModal();
-                showToast('가볼곳을 추가했어요 📌');
+                showToast('체크리스트 추가 완료');
                 pickTarget = 'memory';
                 if (mapMode !== 'checklist') setMapMode('checklist');
                 else loadChecklistsFromServer();
@@ -2047,7 +2047,7 @@ document.addEventListener('DOMContentLoaded', () => {
             preview.src = url;
             preview.classList.remove('hidden');
         }
-        showToast('편집한 사진을 적용했어요');
+        showToast('편집 성공');
     }
 
     // ===== 사진 편집기(자르기/회전) 이벤트 =====
@@ -2196,7 +2196,7 @@ function openChecklistDetail(item) {
 
     const visitedHtml = item.visited
         ? '<span class="meta-item cl-meta-visited">✓ 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
-        : '<span class="meta-item cl-meta-todo">아직 안 가봤어요</span>';
+        : '<span class="meta-item cl-meta-todo">아직 안가봄</span>';
     const imageHtml = item.mediaURL
         ? '<div class="detail-image-wrap"><img src="' + item.mediaURL + '" alt="가볼곳 사진" id="cl-detail-image"></div>'
         : '';
@@ -2334,7 +2334,7 @@ function trashChecklist(id) {
     if (!confirm('이 가볼곳을 휴지통으로 옮길까요?')) return;
     fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('휴지통으로 이동했어요'); closeChecklistDetail(); Daylog.reloadChecklists(); })
+        .then(() => { showToast('휴지통으로 이동 완료'); closeChecklistDetail(); Daylog.reloadChecklists(); })
         .catch(err => { console.error(err); showToast('이동 실패. 다시 시도해주세요.'); });
 }
 
@@ -2704,7 +2704,7 @@ function trashComment(commentId, memoryId) {
         headers: Daylog.authHeaders(true)
     })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('휴지통으로 이동했어요'); loadComments(memoryId); })
+        .then(() => { showToast('휴지통으로 이동 완료'); loadComments(memoryId); })
         .catch(err => { console.error(err); showToast('이동 실패'); });
 }
 
@@ -2718,7 +2718,7 @@ function trashMemory(memoryId) {
         headers: Daylog.authHeaders(true)
     })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('휴지통으로 이동했어요'); closeDetailModal(); Daylog.reload(); })
+        .then(() => { showToast('휴지통으로 이동 완료'); closeDetailModal(); Daylog.reload(); })
         .catch(err => { console.error(err); showToast('이동 실패'); });
 }
 
@@ -2753,7 +2753,7 @@ function renderTrash(memories, comments, checklists) {
     checklists = checklists || [];
 
     if (!memories.length && !comments.length && !checklists.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">🗑️</span><p>휴지통이 비어 있어요</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">🗑️</span><p>휴지통이 비어 있음</p></div>';
         return;
     }
 
@@ -2828,7 +2828,7 @@ function renderTrash(memories, comments, checklists) {
 function restoreMemory(id) {
     fetch(`${Daylog.api}/api/memories/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('복원했어요'); openTrashModal(); Daylog.reload(); })
+        .then(() => { showToast('복원 완료'); openTrashModal(); Daylog.reload(); })
         .catch(err => { console.error(err); showToast('복원 실패'); });
 }
 
@@ -2836,14 +2836,14 @@ function deleteMemoryForever(id) {
     if (!confirm('이 추억을 영구적으로 삭제할까요?\n삭제하면 되돌릴 수 없어요.')) return;
     fetch(`${Daylog.api}/api/memories/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); })
+        .then(() => { showToast('영구 삭제 완료'); openTrashModal(); })
         .catch(err => { console.error(err); showToast('삭제 실패'); });
 }
 
 function restoreComment(id) {
     fetch(`${Daylog.api}/comment/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('복원했어요'); openTrashModal(); })
+        .then(() => { showToast('복원 완료'); openTrashModal(); })
         .catch(err => { console.error(err); showToast('복원 실패'); });
 }
 
@@ -2851,14 +2851,14 @@ function deleteCommentForever(id) {
     if (!confirm('이 댓글을 영구적으로 삭제할까요?\n삭제하면 되돌릴 수 없어요.')) return;
     fetch(`${Daylog.api}/comment/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); })
+        .then(() => { showToast('영구 삭제 완료'); openTrashModal(); })
         .catch(err => { console.error(err); showToast('삭제 실패'); });
 }
 
 function restoreChecklist(id) {
     fetch(`${Daylog.api}/api/checklists/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('복원했어요'); openTrashModal(); Daylog.reloadChecklists(); })
+        .then(() => { showToast('복원 완료'); openTrashModal(); Daylog.reloadChecklists(); })
         .catch(err => { console.error(err); showToast('복원 실패'); });
 }
 
@@ -2866,7 +2866,7 @@ function deleteChecklistForever(id) {
     if (!confirm('이 가볼곳을 영구적으로 삭제할까요?\n삭제하면 되돌릴 수 없어요.')) return;
     fetch(`${Daylog.api}/api/checklists/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
-        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); })
+        .then(() => { showToast('영구 삭제 완료'); openTrashModal(); })
         .catch(err => { console.error(err); showToast('삭제 실패'); });
 }
 
