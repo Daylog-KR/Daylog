@@ -181,8 +181,8 @@ const Daylog = {
 // 가볼곳(체크리스트) 타입 메타 — 라벨/이모지/색상을 한 곳에서 관리
 const CHECKLIST_TYPES = {
     CAFE: { label: '카페',  emoji: '☕', color: '#b06a4f' },
-    FOOD: { label: '식당',  emoji: '🍴', color: '#c0563f' },
-    SPOT: { label: '장소',  emoji: '📍', color: '#3f7fb0' },
+    FOOD: { label: '식당',  emoji: '🍴', color: '#3f7fb0' },
+    SPOT: { label: '장소',  emoji: '📍', color: '#5f9e6f' },
     ETC:  { label: '기타',  emoji: '✨', color: '#7a756e' }
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
@@ -2186,7 +2186,7 @@ function openChecklistDetail(item) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
-              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
+            '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
 
@@ -2369,7 +2369,7 @@ function openDetailModal(memory) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
-              '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
+            '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }
 
