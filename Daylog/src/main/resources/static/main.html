@@ -45,9 +45,6 @@
                 <div class="lm-vignette"></div>
                 <div class="lm-reticle"></div>
                 <div class="lm-top">
-                    <div class="lm-banner" id="lm-center-label">
-                        <span class="lm-pin">📍</span> 지도를 움직여 중앙에 위치를 맞춰주세요
-                    </div>
                     <div class="lm-search">
                         <span class="lm-search-icon">🔍</span>
                         <input type="text" id="lm-search-input" placeholder="장소·상세주소 검색 (예: 강남대로 396)" autocomplete="off">
@@ -55,10 +52,15 @@
                         <ul id="lm-suggestions" class="lm-suggestions hidden"></ul>
                     </div>
                 </div>
-                <div class="lm-actions">
-                    <button type="button" id="lm-current" class="lm-current-btn">🎯 현재 위치</button>
-                    <button type="button" id="lm-confirm" class="lm-confirm-btn">이 위치로 설정</button>
-                    <button type="button" id="lm-cancel" class="lm-cancel">취소</button>
+                <div class="lm-bottom">
+                    <div class="lm-banner" id="lm-center-label">
+                        <span class="lm-pin">📍</span> 지도를 움직여 중앙에 위치를 맞춰주세요
+                    </div>
+                    <div class="lm-actions">
+                        <button type="button" id="lm-current" class="lm-current-btn">🎯 현재 위치</button>
+                        <button type="button" id="lm-confirm" class="lm-confirm-btn">이 위치로 설정</button>
+                        <button type="button" id="lm-cancel" class="lm-cancel">취소</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -112,7 +114,7 @@
                         <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
                         <button type="button" class="cl-filter-chip" data-filter="CAFE">☕ 카페</button>
                         <button type="button" class="cl-filter-chip" data-filter="FOOD">🍴 식당</button>
-                        <button type="button" class="cl-filter-chip" data-filter="SPOT">📍 장소</button>
+                        <button type="button" class="cl-filter-chip" data-filter="SPOT">📍 명소</button>
                         <button type="button" class="cl-filter-chip" data-filter="ETC">✨ 기타</button>
                     </div>
                     <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
@@ -298,7 +300,7 @@
                 <div class="cl-type-options" id="cl-type-options">
                     <button type="button" class="cl-type-chip" data-type="CAFE">☕ 카페</button>
                     <button type="button" class="cl-type-chip" data-type="FOOD">🍴 식당</button>
-                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 장소</button>
+                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 명소</button>
                     <button type="button" class="cl-type-chip" data-type="ETC">✨ 기타</button>
                 </div>
             </div>
@@ -353,7 +355,7 @@
                 <div class="cl-type-options" id="cl-edit-type-options">
                     <button type="button" class="cl-type-chip" data-type="CAFE">☕ 카페</button>
                     <button type="button" class="cl-type-chip" data-type="FOOD">🍴 식당</button>
-                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 장소</button>
+                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 명소</button>
                     <button type="button" class="cl-type-chip" data-type="ETC">✨ 기타</button>
                 </div>
             </div>

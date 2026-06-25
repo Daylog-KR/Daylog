@@ -240,12 +240,16 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 .lm-suggestions .sg-empty { color: var(--gray-400); font-size: 0.88rem; cursor: default; text-align: center; }
 .lm-suggestions .sg-empty:hover { background: var(--white); }
 
-/* 위치 선택 하단 액션 바 — 가로 정렬(작게) */
-.lm-actions {
+/* 위치 선택 하단 영역 — (위) 현재 위치 라벨 · (아래) 액션 버튼 */
+.lm-bottom {
     position: absolute; bottom: calc(20px + env(safe-area-inset-bottom));
     left: 50%; transform: translateX(-50%);
-    width: min(94%, 420px); display: flex; flex-direction: row; align-items: stretch;
-    gap: 7px; pointer-events: auto; z-index: 3;
+    width: min(94%, 420px); display: flex; flex-direction: column; align-items: stretch;
+    gap: 10px; pointer-events: none; z-index: 3;
+}
+.lm-actions {
+    display: flex; flex-direction: row; align-items: stretch;
+    gap: 7px; pointer-events: auto;
 }
 .lm-current-btn, .lm-confirm-btn, .lm-cancel {
     cursor: pointer; font-family: var(--font-main); font-weight: 700;
@@ -291,9 +295,21 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 }
 .map-fab:hover { box-shadow: 0 10px 26px rgba(176, 137, 104, 0.55); transform: translateY(-2px); }
 .map-fab:active { transform: scale(0.94); }
-/* 토글 버튼은 살짝 옅은 톤으로 구분 */
-.toggle-fab { background: var(--white); color: var(--primary-dark); border: 1px solid var(--primary-light); }
-.toggle-fab:hover { background: var(--primary-light); }
+
+/* 헤더 지도 버튼: 고정 폭(텍스트 전환 시 크기 변동 방지) + 가운데 정렬 */
+.header-map-controls .map-fab { text-align: center; white-space: nowrap; }
+.header-map-controls #btn-map-toggle { width: 108px; }
+.header-map-controls #btn-map-action { width: 120px; }
+
+/* 데이터 종류별 색 구분 — 초록=가볼곳, 갈색(primary)=추억 */
+.toggle-fab.to-checklist,
+.action-fab.act-checklist { background: #5f9e6f; color: #fff; border: none; }
+.toggle-fab.to-checklist:hover,
+.action-fab.act-checklist:hover { background: #538b61; }
+.toggle-fab.to-memory,
+.action-fab.act-memory { background: var(--primary); color: #fff; border: none; }
+.toggle-fab.to-memory:hover,
+.action-fab.act-memory:hover { background: var(--primary-dark); }
 /* 위치 선택 모드일 땐 버튼 숨김 */
 .location-mode:not(.hidden) ~ .floating-camera-zone { opacity: 0; pointer-events: none; }
 

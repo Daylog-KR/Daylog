@@ -182,7 +182,7 @@ const Daylog = {
 const CHECKLIST_TYPES = {
     CAFE: { label: '카페',  emoji: '☕', color: '#b06a4f' },
     FOOD: { label: '식당',  emoji: '🍴', color: '#c0563f' },
-    SPOT: { label: '장소',  emoji: '📍', color: '#3f7fb0' },
+    SPOT: { label: '명소',  emoji: '📍', color: '#3f7fb0' },
     ETC:  { label: '기타',  emoji: '✨', color: '#7a756e' }
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
@@ -366,6 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 재진입 시 페이드 애니메이션 다시 트리거
                 if (show) { tab.classList.remove('tab-content'); void tab.offsetWidth; tab.classList.add('tab-content'); }
             });
+            // 메뉴 이동 시 항상 맨 위로 (이전 스크롤 위치 잔존 방지)
+            const containerScroll = document.querySelector('main.container');
+            if (containerScroll) containerScroll.scrollTop = 0;
+            window.scrollTo(0, 0);
             if (targetTab === 'tab-map' && map) {
                 naver.maps.Event.trigger(map, 'resize');
             }
@@ -1181,8 +1185,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMapButtons() {
         const toggle = document.getElementById('btn-map-toggle');
         const action = document.getElementById('btn-map-action');
-        if (toggle) toggle.innerText = (mapMode === 'checklist') ? '📸 추억 보기' : '📌 체크리스트';
-        if (action) action.innerText = (mapMode === 'checklist') ? '📌 가볼곳 추가' : '📸 기록 남기기';
+        const isCl = (mapMode === 'checklist');
+        if (toggle) {
+            toggle.innerText = isCl ? '💖 추억 보기' : '📌 체크리스트';
+            // 전환 대상에 따라 색 구분: 추억 보기=메모리색 / 체크리스트=가볼곳색
+            toggle.classList.toggle('to-memory', isCl);
+            toggle.classList.toggle('to-checklist', !isCl);
+        }
+        if (action) {
+            action.innerText = isCl ? '📌 가볼곳 추가' : '📸 기록 남기기';
+            action.classList.toggle('act-checklist', isCl);
+            action.classList.toggle('act-memory', !isCl);
+        }
     }
 
     // 가볼곳 목록(탭) 렌더 — 타임라인과 유사한 카드 리스트
@@ -2180,7 +2194,10 @@ function openChecklistDetail(item) {
     const dl = document.getElementById('cl-detail-del-open');
     if (dl) dl.addEventListener('click', () => trashChecklist(item.id));
 
-    document.getElementById('checklist-detail-modal').classList.remove('hidden');
+    const cdm = document.getElementById('checklist-detail-modal');
+    cdm.classList.remove('hidden');
+    const cdmScroll = cdm.querySelector('.modal-content');
+    if (cdmScroll) cdmScroll.scrollTop = 0;
 }
 
 function enterChecklistEdit(item) {
@@ -2380,7 +2397,11 @@ function openDetailModal(memory) {
 
     loadComments(memory.id);
 
-    document.getElementById('detail-modal').classList.remove('hidden');
+    const dm = document.getElementById('detail-modal');
+    dm.classList.remove('hidden');
+    // 다른 추억으로 이동 시 항상 맨 위에서 시작 (이전 스크롤 위치 잔존 방지)
+    const dmScroll = dm.querySelector('.modal-content');
+    if (dmScroll) dmScroll.scrollTop = 0;
 }
 
 // 상세/수정 모달의 위치 표기 (장소명 + 상세주소) — 없으면 좌표로 역지오코딩
@@ -2833,6 +2854,7 @@ function openMemoryListModal(title, items) {
             body.appendChild(row);
         });
     }
+    if (body) body.scrollTop = 0;
     modal.classList.remove('hidden');
 }
 
@@ -2877,6 +2899,7 @@ function openChecklistListModal(title, items) {
             body.appendChild(row);
         });
     }
+    if (body) body.scrollTop = 0;
     modal.classList.remove('hidden');
 }
 
