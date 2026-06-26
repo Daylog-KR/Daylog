@@ -261,6 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let mapMode = 'memory';        // 지도 표시 데이터: 'memory' | 'checklist'
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
+    let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
     let _clFilter = 'ALL';         // 가볼곳 카테고리 필터
     let _clVisitedFilter = 'ALL';  // 가볼곳 방문여부 필터 (ALL | VISITED | TODO)
     let _tlPlaceFilter = '';       // 타임라인 장소(placeName) 필터 (''=전체)
@@ -362,10 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!targetTab) return;
             document.body.setAttribute('data-active-tab', targetTab);
             tabContents.forEach(tab => {
-                const show = (tab.id === targetTab);
-                tab.style.display = show ? 'block' : 'none';
-                // 재진입 시 페이드 애니메이션 다시 트리거
-                if (show) { tab.classList.remove('tab-content'); void tab.offsetWidth; tab.classList.add('tab-content'); }
+                tab.style.display = (tab.id === targetTab) ? 'block' : 'none';
             });
             // 메뉴 이동 시 항상 맨 위로 (이전 스크롤 위치 잔존 방지)
             const containerScroll = document.querySelector('main.container');
@@ -374,10 +372,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetTab === 'tab-map' && map) {
                 naver.maps.Event.trigger(map, 'resize');
             }
-            if (targetTab === 'tab-profile') {
+            // 데이터는 '처음 한 번'만 불러오고, 이후엔 캐시된 화면을 그대로 보여줘 즉시 전환.
+            // 최신화는 당겨서 새로고침(PTR)과 생성/삭제 시점에 이미 처리됨.
+            if (targetTab === 'tab-profile' && !profilesLoaded) {
                 loadProfiles();
             }
-            if (targetTab === 'tab-checklist') {
+            if (targetTab === 'tab-checklist' && !checklistLoaded) {
                 loadChecklistsFromServer();
             }
         });
@@ -1719,6 +1719,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 renderProfileBox('me', meUser, '👦', '나');
                 renderProfileBox('partner', partnerUser, '👧', '상대방');
+                profilesLoaded = true;
                 updateProfileStats();
                 // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
                 if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();

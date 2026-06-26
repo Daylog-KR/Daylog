@@ -151,7 +151,8 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 }
 
 /* 탭 전환 페이드/슬라이드 */
-.tab-content { animation: tabIn 0.4s var(--ease-soft); }
+.tab-content { animation: tabFade 0.18s ease; }
+@keyframes tabFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tabIn {
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0); }
