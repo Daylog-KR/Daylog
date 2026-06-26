@@ -262,6 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
     let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
+    let _memSig = null, _clSig = null, _profSig = null; // 변경 감지용 시그니처(같으면 재렌더 생략)
+    function _listSig(v) { try { return JSON.stringify(v); } catch (e) { return String(Math.random()); } }
     let _clFilter = 'ALL';         // 가볼곳 카테고리 필터
     let _clVisitedFilter = 'ALL';  // 가볼곳 방문여부 필터 (ALL | VISITED | TODO)
     let _tlPlaceFilter = '';       // 타임라인 장소(placeName) 필터 (''=전체)
@@ -372,14 +374,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetTab === 'tab-map' && map) {
                 naver.maps.Event.trigger(map, 'resize');
             }
-            // 데이터는 '처음 한 번'만 불러오고, 이후엔 캐시된 화면을 그대로 보여줘 즉시 전환.
-            // 최신화는 당겨서 새로고침(PTR)과 생성/삭제 시점에 이미 처리됨.
-            if (targetTab === 'tab-profile' && !profilesLoaded) {
-                loadProfiles();
-            }
-            if (targetTab === 'tab-checklist' && !checklistLoaded) {
-                loadChecklistsFromServer();
-            }
+            // 즉시 캐시 화면을 보여주고(이미 그려져 있음), 백그라운드에서 조용히 최신화.
+            // 데이터가 실제로 바뀐 경우에만 다시 그리므로 전환 속도 유지 + 깜빡임 없음.
+            if (targetTab === 'tab-profile') loadProfiles();
+            if (targetTab === 'tab-checklist') loadChecklistsFromServer();
+            if (targetTab === 'tab-timeline') loadMemoriesFromServer();
         });
     });
 
@@ -1197,7 +1196,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(memories => {
-                memoryList = memories || [];
+                const list = memories || [];
+                const sig = _listSig(list);
+                if (sig === _memSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
+                _memSig = sig;
+                memoryList = list;
                 Daylog.memories = memoryList;
                 updateProfileStats();
 
@@ -1217,8 +1220,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(list => {
-                checklistList = list || [];
+                const arr = list || [];
                 checklistLoaded = true;
+                const sig = _listSig(arr);
+                if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
+                _clSig = sig;
+                checklistList = arr;
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
                 if (mapMode === 'checklist') renderChecklistMarkers(checklistList);
@@ -1693,7 +1700,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let editingUser = null;
     const profileFileInput = document.getElementById('profile-file');
 
-    function loadProfiles() {
+    function loadProfiles(force) {
+        if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
         if (!requireAuthOrRedirect()) return;
         fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
@@ -1717,10 +1725,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!meUser) {
                     console.warn('[Daylog] 로그인 uid(' + currentUid + ')와 일치하는 사용자가 목록에 없습니다.');
                 }
-                renderProfileBox('me', meUser, '👦', '나');
-                renderProfileBox('partner', partnerUser, '👧', '상대방');
+                // 이름/아바타는 실제로 바뀌었을 때만 다시 그림(이미지 재로딩 깜빡임 방지)
+                const sig = _listSig(list);
+                if (sig !== _profSig) {
+                    _profSig = sig;
+                    renderProfileBox('me', meUser, '👦', '나');
+                    renderProfileBox('partner', partnerUser, '👧', '상대방');
+                }
                 profilesLoaded = true;
-                updateProfileStats();
+                updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
                 // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
                 if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();
                 maybePromptNickname();
@@ -1836,7 +1849,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveUser({ uid: user.uid, id: user.id }, file)
             .then(() => {
                 showToast('프로필 사진이 변경 완료');
-                loadProfiles();
+                loadProfiles(true);
             })
             .catch(err => {
                 console.error(err);
@@ -1860,7 +1873,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentUser = updated || payload;
                     document.getElementById('nickname-modal').classList.add('hidden');
                     showToast('닉네임이 설정 완료');
-                    loadProfiles();
+                    loadProfiles(true);
                 })
                 .catch(err => { console.error(err); showToast('설정 실패: ' + (err.message || '서버 오류')); })
                 .finally(() => { btn.disabled = false; btn.innerText = '시작하기 ✨'; });
@@ -1953,7 +1966,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 editRemovePhoto = false;
                 showToast('프로필 저장 완료');
                 closeEditPage();
-                loadProfiles();
+                loadProfiles(true);
             })
             .catch(err => { console.error(err); showToast('저장 실패: ' + (err.message || '서버 오류')); })
             .finally(() => { btn.disabled = false; btn.innerText = '저장하기'; });
@@ -2293,7 +2306,7 @@ function openChecklistDetail(item) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
-              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
+            '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
 
@@ -2476,7 +2489,7 @@ function openDetailModal(memory) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
-              '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
+            '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }
 
