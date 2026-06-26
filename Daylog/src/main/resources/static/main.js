@@ -277,6 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let mapMode = 'memory';        // 지도 표시 데이터: 'memory' | 'checklist'
     let _mapMemDate = '';          // 지도 필터: 추억 날짜 (''=전체)
     let _mapClVisited = 'ALL';     // 지도 필터: 가볼곳 방문여부 (ALL | VISITED | TODO)
+    let _mapClCat = 'ALL';         // 지도 필터: 가볼곳 카테고리 (ALL | CAFE | FOOD | SPOT | ETC)
     let _suppressDrop = false;     // 위치 클릭(focus) 시 마커 등장(markerDrop) 애니메이션 억제 → 흔들기만
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
@@ -357,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mapNav) mapNav.click();
         _suppressDrop = true;        // 등장 애니메이션 끄고 '흔들기'만
         _mapClVisited = 'ALL';       // 방문여부 필터로 가려지지 않게
+        _mapClCat = 'ALL';           // 카테고리 필터로 가려지지 않게
         if (mapMode !== 'checklist') setMapMode('checklist');
         else refreshMapMarkers();
         setTimeout(() => {
@@ -1304,6 +1306,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let list = [...checklistList];
             if (_mapClVisited === 'VISITED') list = list.filter(c => c.visited);
             else if (_mapClVisited === 'TODO') list = list.filter(c => !c.visited);
+            if (_mapClCat !== 'ALL') list = list.filter(c => (c.type || 'ETC') === _mapClCat);
             renderChecklistMarkers(list);
         } else {
             let list = [...memoryList].sort(sortByDateDesc);
@@ -1489,13 +1492,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const pop = document.getElementById('map-filter-pop');
         if (!pop) return;
         if (mapMode === 'checklist') {
-            const opts = [['ALL', '전체'], ['VISITED', '가본 곳'], ['TODO', '안 가본 곳']];
-            pop.innerHTML = '<div class="mfp-title">가볼곳 필터</div><div class="mfp-chips">' +
-                opts.map(o => '<button type="button" class="mfp-chip' + (_mapClVisited === o[0] ? ' active' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>').join('') +
-                '</div>';
-            pop.querySelectorAll('.mfp-chip').forEach(b => b.addEventListener('click', () => {
+            const vOpts = [['ALL', '전체'], ['VISITED', '가본 곳'], ['TODO', '안 가본 곳']];
+            const cOpts = [['ALL', '전체'], ['CAFE', '카페'], ['FOOD', '식당'], ['SPOT', '장소'], ['ETC', '기타']];
+            pop.innerHTML =
+                '<div class="mfp-group">' +
+                '<div class="mfp-title">방문 여부</div>' +
+                '<div class="mfp-chips" id="mfp-visited">' +
+                vOpts.map(o => '<button type="button" class="mfp-chip' + (_mapClVisited === o[0] ? ' active' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>').join('') +
+                '</div></div>' +
+                '<div class="mfp-group">' +
+                '<div class="mfp-title">카테고리</div>' +
+                '<div class="mfp-chips" id="mfp-cat">' +
+                cOpts.map(o => '<button type="button" class="mfp-chip' + (_mapClCat === o[0] ? ' active' : '') + '" data-c="' + o[0] + '">' + o[1] + '</button>').join('') +
+                '</div></div>';
+            pop.querySelectorAll('#mfp-visited .mfp-chip').forEach(b => b.addEventListener('click', () => {
                 _mapClVisited = b.dataset.v;
-                pop.querySelectorAll('.mfp-chip').forEach(x => x.classList.toggle('active', x === b));
+                pop.querySelectorAll('#mfp-visited .mfp-chip').forEach(x => x.classList.toggle('active', x === b));
+                renderActiveMapMarkers();
+            }));
+            pop.querySelectorAll('#mfp-cat .mfp-chip').forEach(b => b.addEventListener('click', () => {
+                _mapClCat = b.dataset.c;
+                pop.querySelectorAll('#mfp-cat .mfp-chip').forEach(x => x.classList.toggle('active', x === b));
                 renderActiveMapMarkers();
             }));
         } else {

@@ -323,16 +323,13 @@ body.picking .map-fab-stack { display: none; }
 .header-map-controls .map-fab { text-align: center; white-space: nowrap; }
 
 /* 데이터 종류별 색 구분 — 초록=가볼곳, 갈색(primary)=추억 */
+/* 보기 전환(토글) 버튼: 흰색 — 아이콘으로 모드 구분 (📌 체크리스트 / 💖 추억) */
 .toggle-fab.to-checklist,
-.action-fab.act-checklist { background: #5f9e6f; color: #fff; border: none; }
+.toggle-fab.to-memory { background: #fff; color: var(--primary-dark); border: 1px solid var(--gray-200); box-shadow: 0 4px 14px rgba(0,0,0,0.14); }
+.toggle-fab.to-checklist:hover,
+.toggle-fab.to-memory:hover { background: var(--gray-50); }
 /* 추가 버튼은 모드와 무관하게 항상 고정 색(primary) 유지 */
 .map-fab-stack .action-fab { background: var(--primary); color: #fff; border: none; }
-.toggle-fab.to-checklist:hover,
-.action-fab.act-checklist:hover { background: #538b61; }
-.toggle-fab.to-memory,
-.action-fab.act-memory { background: var(--primary); color: #fff; border: none; }
-.toggle-fab.to-memory:hover,
-.action-fab.act-memory:hover { background: var(--primary-dark); }
 /* 위치 선택 모드일 땐 버튼 숨김 */
 .location-mode:not(.hidden) ~ .floating-camera-zone { opacity: 0; pointer-events: none; }
 
@@ -1620,16 +1617,24 @@ html, body { -webkit-font-smoothing: antialiased; }
 /* 아이콘 바로 아래로 살짝 떠서 나오는 필터 폼 */
 .map-filter-pop {
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 300;
-    min-width: 168px; background: var(--white); border: 1px solid var(--gray-100);
-    border-radius: 14px; box-shadow: var(--shadow-md); padding: 12px;
-    animation: dropIn 0.18s var(--ease-spring);
+    min-width: 258px; background: var(--white); border: 1px solid var(--gray-100);
+    border-radius: 14px; box-shadow: var(--shadow-md); padding: 14px;
+    transform-origin: top right;
+    animation: mfpDrop 0.26s cubic-bezier(.22,.61,.36,1);
 }
-.map-filter-pop .mfp-title { font-size: 0.78rem; color: var(--gray-500); font-weight: 600; margin-bottom: 8px; }
-.map-filter-pop .mfp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+@keyframes mfpDrop {
+    from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.map-filter-pop .mfp-group { margin-bottom: 12px; }
+.map-filter-pop .mfp-group:last-child { margin-bottom: 0; }
+.map-filter-pop .mfp-title { font-size: 0.76rem; color: var(--gray-500); font-weight: 600; margin-bottom: 7px; }
+.map-filter-pop .mfp-chips { display: flex; flex-wrap: nowrap; gap: 6px; }
 .map-filter-pop .mfp-chip {
+    flex: 1; text-align: center; white-space: nowrap;
     border: 1px solid var(--gray-200); background: var(--gray-50);
-    color: var(--gray-700); border-radius: 16px; padding: 6px 12px;
-    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    color: var(--gray-700); border-radius: 14px; padding: 7px 4px;
+    font-size: 0.8rem; font-weight: 600; cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .map-filter-pop .mfp-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
@@ -1638,7 +1643,7 @@ html, body { -webkit-font-smoothing: antialiased; }
     border: 1px solid var(--gray-200); border-radius: 10px; padding: 8px 10px;
     font-family: var(--font-main); font-size: 0.85rem; color: var(--gray-800); background: var(--gray-50); outline: none;
 }
-.map-filter-pop .mfp-allbtn { width: 100%; }
+.map-filter-pop .mfp-allbtn { width: 100%; flex: none; }
 
 /* ===== 지도 몰입 모드: 지도 탭에서 화면 터치 시 헤더/하단바 숨김 (네이버 지도 앱 스타일) ===== */
 body.map-immersive .navbar,
@@ -1690,8 +1695,8 @@ body.map-immersive .container { height: 100vh; height: 100dvh; }
 .carousel-arrow.prev { left: 8px; } .carousel-arrow.next { right: 8px; }
 .carousel-arrow:disabled { opacity: 0; pointer-events: none; }
 .carousel-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
-.carousel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-300); transition: background 0.2s, width 0.2s; }
-.carousel-dot.active { background: var(--primary); width: 18px; border-radius: 4px; }
+.carousel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-400); transition: background 0.2s, width 0.2s; }
+.carousel-dot.active { background: var(--gray-600); width: 18px; border-radius: 4px; }
 .carousel-count { position: absolute; top: 8px; right: 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.72rem; padding: 2px 9px; border-radius: 11px; z-index: 2; }
 
 /* ================= 라이트박스: 좌우 이동 ================= */
