@@ -869,10 +869,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (fileInput) {
         fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
+            const files = Array.from(e.target.files || []);
             fileInput.value = '';
+            if (!files.length) return;
             cameraMode = false;
-            handlePickedImage(file, false);
+            // 첫 장으로 위치/날짜(EXIF) 기준을 잡고 그리드 시드 → 나머지는 뒤에 추가
+            handlePickedImage(files[0], false);
+            if (files.length > 1 && window._memCreateMgr) window._memCreateMgr.addFiles(files.slice(1));
         });
     }
 
@@ -1449,10 +1452,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch(`${API_BASE_URL}/api/checklists`, { method: 'POST', headers: authHeaders(false), body: fd })
             .then(handleResponse)
-            .then(() => {
+            .then((created) => {
                 closeChecklistModal();
                 showToast('가볼곳을 추가했어요 📌');
                 pickTarget = 'memory';
+                // 다녀온 곳으로 추가하면 동일 위치에 추억도 자동 생성
+                if (created && created.visited) {
+                    createMemoryFromChecklist(created)
+                        .then(() => showToast('다녀온 곳이라 추억에도 기록했어요 ✨'))
+                        .catch(err => console.warn('추억 자동 생성 실패', err));
+                }
                 if (mapMode !== 'checklist') setMapMode('checklist');
                 else loadChecklistsFromServer();
             })
@@ -1706,7 +1715,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
                 markerHtml = `<div class="custom-marker${nd}"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
             } else {
-                markerHtml = `<div class="marker-heart${nd}">💖</div>`;
+                markerHtml = `<div class="marker-heart${nd}">👾</div>`;
             }
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(memory.lat, memory.lng),
@@ -2412,8 +2421,8 @@ function openChecklistDetail(item) {
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️</button>' +
-              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
+            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">✏️</button>' +
+              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">🗑️</button>'
             : '';
     }
 
@@ -2478,9 +2487,34 @@ function exitChecklistEdit() {
     if (view) view.classList.remove('hidden');
 }
 
+// 가볼곳을 '다녀옴'으로 표시하면 동일 위치/제목/내용/이미지로 추억을 자동 생성
+// (이미지는 이미 업로드된 URL을 mediaOrder로 그대로 재사용 → 재업로드 없음)
+function createMemoryFromChecklist(cl) {
+    if (!cl || cl.lat == null || cl.lng == null) return Promise.resolve();
+    const urls = mediaUrlsOf(cl);
+    const dateStr = cl.visitedDate ? String(cl.visitedDate).substring(0, 10) : new Date().toISOString().substring(0, 10);
+    const memoryData = {
+        title: cl.title || '',
+        content: cl.content || '',
+        lat: cl.lat,
+        lng: cl.lng,
+        placeName: cl.placeName || '',
+        address: cl.address || '',
+        createdAt: dateStr + 'T00:00:00',
+        mediaOrder: urls
+    };
+    const fd = new FormData();
+    fd.append('uid', Daylog.currentUid);
+    fd.append('memoryData', JSON.stringify(memoryData));
+    // mediaData(새 파일) 없음 → 백엔드가 mediaOrder의 기존 URL을 그대로 보존
+    return fetch(`${Daylog.api}/api/memories`, { method: 'POST', headers: Daylog.authHeaders(false), body: fd })
+        .then(Daylog.handleResponse);
+}
+
 function saveChecklistEdit() {
     const item = _detailChecklist;
     if (!item) return;
+    const wasVisited = !!item.visited; // 수정 전 방문여부 (새로 체크된 경우에만 추억 생성)
     const title = document.getElementById('cl-edit-title').value.trim();
     if (!title) { showToast('제목을 입력해주세요'); return; }
     const visited = document.getElementById('cl-edit-visited').checked;
@@ -2511,10 +2545,16 @@ function saveChecklistEdit() {
         body: fd
     })
         .then(Daylog.handleResponse)
-        .then(() => {
+        .then((updated) => {
             showToast('수정 완료 ✨');
             closeChecklistDetail();
             Daylog.reloadChecklists();
+            // 이번 수정에서 처음으로 '다녀옴'이 된 경우에만 추억 자동 생성
+            if (updated && updated.visited && !wasVisited) {
+                createMemoryFromChecklist(updated)
+                    .then(() => showToast('다녀온 곳이라 추억에도 기록했어요 ✨'))
+                    .catch(err => console.warn('추억 자동 생성 실패', err));
+            }
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주세요.'); })
         .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기 ✨'; } });
@@ -2594,8 +2634,8 @@ function openDetailModal(memory) {
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️</button>' +
-              '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
+            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">✏️</button>' +
+              '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">🗑️</button>'
             : '';
     }
 
@@ -3571,6 +3611,12 @@ function bindCarousel(rootEl, urls) {
     slides.forEach((s, si) => s.querySelector('img').addEventListener('click', () => { if (!moved) openLightbox(urls, s.querySelector('img'), si); }));
 
     const vp = car.querySelector('.carousel-viewport');
+    // 뷰포트 높이를 '첫 번째 사진' 비율로 맞춤 (나머지는 잘리지 않고 contain)
+    if (vp && urls[0]) {
+        const im0 = new Image();
+        im0.onload = () => { if (im0.naturalWidth && im0.naturalHeight) vp.style.aspectRatio = im0.naturalWidth + ' / ' + im0.naturalHeight; };
+        im0.src = urls[0];
+    }
     vp.addEventListener('pointerdown', (e) => { dragging = true; moved = false; startX = e.clientX; dx = 0; track.style.transition = 'none'; });
     vp.addEventListener('pointermove', (e) => {
         if (!dragging) return;
