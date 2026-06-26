@@ -259,6 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let pickReturnsToForm = false; // 위치 재설정 후 작성 폼으로 복귀(데이터 유지)
     let checklistList = [];        // 가볼곳(체크리스트) 목록
     let mapMode = 'memory';        // 지도 표시 데이터: 'memory' | 'checklist'
+    let _mapMemDate = '';          // 지도 필터: 추억 날짜 (''=전체)
+    let _mapClVisited = 'ALL';     // 지도 필터: 가볼곳 방문여부 (ALL | VISITED | TODO)
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
     let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
@@ -1205,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateProfileStats();
 
                 const sorted = [...memoryList].sort(sortByDateDesc);
-                if (mapMode === 'memory') renderMarkers(sorted);
+                if (mapMode === 'memory') renderActiveMapMarkers();
                 buildTimelinePlaceOptions();
                 applyTimelineFilter();
             })
@@ -1228,7 +1230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 checklistList = arr;
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
-                if (mapMode === 'checklist') renderChecklistMarkers(checklistList);
+                if (mapMode === 'checklist') renderActiveMapMarkers();
             })
             .catch(err => console.error("가볼곳 로드 실패:", err));
     }
@@ -1261,16 +1263,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // 현재 모드 + 지도 필터를 적용해 마커 렌더
+    function renderActiveMapMarkers() {
+        if (mapMode === 'checklist') {
+            let list = [...checklistList];
+            if (_mapClVisited === 'VISITED') list = list.filter(c => c.visited);
+            else if (_mapClVisited === 'TODO') list = list.filter(c => !c.visited);
+            renderChecklistMarkers(list);
+        } else {
+            let list = [...memoryList].sort(sortByDateDesc);
+            if (_mapMemDate) list = list.filter(m => (m.createdAt || '').substring(0, 10) === _mapMemDate);
+            renderMarkers(list);
+        }
+    }
+
     // 현재 모드에 맞춰 지도 마커 재렌더
     function refreshMapMarkers() {
-        if (mapMode === 'checklist') renderChecklistMarkers(checklistList);
-        else renderMarkers([...memoryList].sort(sortByDateDesc));
+        renderActiveMapMarkers();
     }
 
     // 지도 표시 데이터 전환 (추억 ↔ 가볼곳)
     function setMapMode(mode) {
         mapMode = mode;
         updateMapButtons();
+        closeMapFilterPop(); // 모드 바뀌면 필터 폼 내용이 달라지므로 닫음
         if (mode === 'checklist' && !checklistLoaded) {
             loadChecklistsFromServer(); // 로드 완료 시 내부에서 마커 렌더
         } else {
@@ -1278,19 +1294,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 우측 하단 버튼 라벨/동작 갱신
+    // 우측 원형 아이콘 버튼 갱신 (아이콘만 표시)
     function updateMapButtons() {
         const toggle = document.getElementById('btn-map-toggle');
         const action = document.getElementById('btn-map-action');
         const isCl = (mapMode === 'checklist');
         if (toggle) {
-            toggle.innerText = isCl ? '📸 추억 보기' : '📌 체크리스트';
-            // 전환 대상에 따라 색 구분: 추억 보기=메모리색 / 체크리스트=가볼곳색
+            toggle.innerText = isCl ? '💖' : '📌';
+            toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
             toggle.classList.toggle('to-memory', isCl);
             toggle.classList.toggle('to-checklist', !isCl);
         }
         if (action) {
-            action.innerText = isCl ? '📌 가볼곳 추가' : '📸 기록 남기기';
+            action.innerText = isCl ? '➕' : '📸';
+            action.title = isCl ? '가볼곳 추가' : '기록 남기기';
             action.classList.toggle('act-checklist', isCl);
             action.classList.toggle('act-memory', !isCl);
         }
@@ -1419,6 +1436,57 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mapActionBtn) mapActionBtn.addEventListener('click', () => {
         if (mapMode === 'checklist') startChecklistCreate();
         else { pickTarget = 'memory'; document.getElementById('memory-file').click(); }
+    });
+
+    // ===== 지도 헤더 필터(➕) — 모드별 폼이 아이콘 아래로 살짝 뜨고, 누르면 즉시 적용 =====
+    function closeMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (pop) pop.classList.add('hidden');
+    }
+    function buildMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (!pop) return;
+        if (mapMode === 'checklist') {
+            const opts = [['ALL', '전체'], ['VISITED', '가본 곳'], ['TODO', '안 가본 곳']];
+            pop.innerHTML = '<div class="mfp-title">가볼곳 필터</div><div class="mfp-chips">' +
+                opts.map(o => '<button type="button" class="mfp-chip' + (_mapClVisited === o[0] ? ' active' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>').join('') +
+                '</div>';
+            pop.querySelectorAll('.mfp-chip').forEach(b => b.addEventListener('click', () => {
+                _mapClVisited = b.dataset.v;
+                pop.querySelectorAll('.mfp-chip').forEach(x => x.classList.toggle('active', x === b));
+                renderActiveMapMarkers();
+            }));
+        } else {
+            pop.innerHTML = '<div class="mfp-title">추억 날짜</div>' +
+                '<input type="date" id="mfp-date" class="mfp-date" value="' + (_mapMemDate || '') + '">' +
+                '<button type="button" id="mfp-date-all" class="mfp-chip mfp-allbtn' + (!_mapMemDate ? ' active' : '') + '">전체 보기</button>';
+            const d = pop.querySelector('#mfp-date');
+            const all = pop.querySelector('#mfp-date-all');
+            if (d) d.addEventListener('change', () => {
+                _mapMemDate = d.value || '';
+                if (all) all.classList.toggle('active', !_mapMemDate);
+                renderActiveMapMarkers();
+            });
+            if (all) all.addEventListener('click', () => {
+                _mapMemDate = '';
+                if (d) d.value = '';
+                all.classList.add('active');
+                renderActiveMapMarkers();
+            });
+        }
+    }
+    function toggleMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (!pop) return;
+        if (pop.classList.contains('hidden')) { buildMapFilterPop(); pop.classList.remove('hidden'); }
+        else pop.classList.add('hidden');
+    }
+    const mapFilterBtn = document.getElementById('btn-map-filter');
+    if (mapFilterBtn) mapFilterBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMapFilterPop(); });
+    document.addEventListener('click', (e) => {
+        const wrap = document.getElementById('header-map-filter');
+        const pop = document.getElementById('map-filter-pop');
+        if (pop && !pop.classList.contains('hidden') && wrap && !wrap.contains(e.target)) pop.classList.add('hidden');
     });
     // 가볼곳 위치 다시 설정
     const clResetLoc = document.getElementById('cl-reset-location');
@@ -2306,7 +2374,7 @@ function openChecklistDetail(item) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
-            '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
+              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
 
@@ -2489,7 +2557,7 @@ function openDetailModal(memory) {
     if (headerActions) {
         headerActions.innerHTML = isOwner
             ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
-            '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
+              '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }
 
