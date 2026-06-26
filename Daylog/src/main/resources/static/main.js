@@ -1300,13 +1300,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = document.getElementById('btn-map-action');
         const isCl = (mapMode === 'checklist');
         if (toggle) {
-            toggle.innerText = isCl ? '💖' : '📌';
+            toggle.innerText = isCl ? '📸' : '📌';
             toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
             toggle.classList.toggle('to-memory', isCl);
             toggle.classList.toggle('to-checklist', !isCl);
         }
         if (action) {
-            action.innerText = isCl ? '➕' : '📸';
+            action.innerText = isCl ? '➕' : '➕';
             action.title = isCl ? '가볼곳 추가' : '기록 남기기';
             action.classList.toggle('act-checklist', isCl);
             action.classList.toggle('act-memory', !isCl);
