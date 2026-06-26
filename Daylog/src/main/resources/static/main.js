@@ -261,6 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let mapMode = 'memory';        // 지도 표시 데이터: 'memory' | 'checklist'
     let _mapMemDate = '';          // 지도 필터: 추억 날짜 (''=전체)
     let _mapClVisited = 'ALL';     // 지도 필터: 가볼곳 방문여부 (ALL | VISITED | TODO)
+    let _suppressDrop = false;     // 위치 클릭(focus) 시 마커 등장(markerDrop) 애니메이션 억제 → 흔들기만
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
     let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
@@ -306,13 +307,18 @@ document.addEventListener('DOMContentLoaded', () => {
         closeDetailModal();
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click(); // 탭 전환 + map resize 트리거
+        _suppressDrop = true;       // 등장 애니메이션 끄고 '흔들기'만
+        _mapMemDate = '';           // 날짜 필터로 가려지지 않게
+        // 가볼곳 모드였다면 추억 모드로 전환하며 추억 마커 렌더
+        if (mapMode !== 'memory') setMapMode('memory');
+        else refreshMapMarkers();
         setTimeout(() => {
             if (!map) return;
             map.setZoom(16);
             map.panTo(new naver.maps.LatLng(memory.lat, memory.lng));
-            // 이동/리렌더가 끝난 뒤 흔들기
-            setTimeout(() => shakeMarker(memory), 420);
-        }, 80);
+            setTimeout(() => shakeMarker(memory), 460);
+        }, 120);
+        setTimeout(() => { _suppressDrop = false; }, 1400);
     };
 
     // 가볼곳 상세에서 위치 클릭 → 지도(체크리스트 모드)로 이동 + 마커 흔들기
@@ -333,13 +339,17 @@ document.addEventListener('DOMContentLoaded', () => {
         closeChecklistDetail();
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click();
+        _suppressDrop = true;        // 등장 애니메이션 끄고 '흔들기'만
+        _mapClVisited = 'ALL';       // 방문여부 필터로 가려지지 않게
         if (mapMode !== 'checklist') setMapMode('checklist');
+        else refreshMapMarkers();
         setTimeout(() => {
             if (!map) return;
             map.setZoom(16);
             map.panTo(new naver.maps.LatLng(item.lat, item.lng));
             setTimeout(() => shakeChecklistMarker(item), 460);
         }, 120);
+        setTimeout(() => { _suppressDrop = false; }, 1400);
     };
 
     const mapWrapper = document.getElementById('map-wrapper');
@@ -1246,7 +1256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const visitedCls = item.visited ? ' visited' : '';
             const check = item.visited ? '<span class="cl-marker-check">✓</span>' : '';
             const markerHtml =
-                '<div class="cl-marker' + visitedCls + '" style="--cl-color:' + meta.color + '">' +
+                '<div class="cl-marker' + visitedCls + (_suppressDrop ? ' nodrop' : '') + '" style="--cl-color:' + meta.color + '">' +
                 check +
                 '<span class="cl-marker-emoji">' + meta.emoji + '</span>' +
                 '<span class="cl-marker-title">' + escapeHtml(item.title || '가볼곳') + '</span>' +
@@ -1300,13 +1310,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = document.getElementById('btn-map-action');
         const isCl = (mapMode === 'checklist');
         if (toggle) {
-            toggle.innerText = isCl ? '📸' : '📌';
+            toggle.innerText = isCl ? '💖' : '📌';
             toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
             toggle.classList.toggle('to-memory', isCl);
             toggle.classList.toggle('to-checklist', !isCl);
         }
         if (action) {
-            action.innerText = isCl ? '➕' : '➕';
+            action.innerText = isCl ? '➕' : '📸';
             action.title = isCl ? '가볼곳 추가' : '기록 남기기';
             action.classList.toggle('act-checklist', isCl);
             action.classList.toggle('act-memory', !isCl);
@@ -1678,12 +1688,13 @@ document.addEventListener('DOMContentLoaded', () => {
         list.forEach(memory => {
             if (!(memory.lat && memory.lng)) return;
             let markerHtml;
+            const nd = _suppressDrop ? ' nodrop' : '';
             if (memory.mediaURL) {
                 new Image().src = memory.mediaURL; // 사전 캐싱
                 // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
-                markerHtml = `<div class="custom-marker"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
+                markerHtml = `<div class="custom-marker${nd}"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
             } else {
-                markerHtml = `<div class="marker-heart">💖</div>`;
+                markerHtml = `<div class="marker-heart${nd}">💖</div>`;
             }
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(memory.lat, memory.lng),
