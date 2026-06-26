@@ -325,6 +325,8 @@ body.picking .map-fab-stack { display: none; }
 /* 데이터 종류별 색 구분 — 초록=가볼곳, 갈색(primary)=추억 */
 .toggle-fab.to-checklist,
 .action-fab.act-checklist { background: #5f9e6f; color: #fff; border: none; }
+/* 추가 버튼은 모드와 무관하게 항상 고정 색(primary) 유지 */
+.map-fab-stack .action-fab { background: var(--primary); color: #fff; border: none; }
 .toggle-fab.to-checklist:hover,
 .action-fab.act-checklist:hover { background: #538b61; }
 .toggle-fab.to-memory,

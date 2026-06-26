@@ -1318,8 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (action) {
             action.innerText = isCl ? '➕' : '➕';
             action.title = isCl ? '가볼곳 추가' : '기록 남기기';
-            action.classList.toggle('act-checklist', isCl);
-            action.classList.toggle('act-memory', !isCl);
+            // 추가 버튼은 색이 바뀌지 않도록 모드별 색 클래스를 적용하지 않음
         }
     }
 
@@ -2384,7 +2383,7 @@ function openChecklistDetail(item) {
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
               '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
@@ -2567,7 +2566,7 @@ function openDetailModal(memory) {
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
               '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }
