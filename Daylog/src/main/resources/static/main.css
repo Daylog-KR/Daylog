@@ -1644,3 +1644,62 @@ html, body { -webkit-font-smoothing: antialiased; }
 body.map-immersive .navbar,
 body.map-immersive .bottom-nav { display: none; }
 body.map-immersive .container { height: 100vh; height: 100dvh; }
+
+/* ================= 다중 이미지: 미리보기 그리드 ================= */
+.media-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    margin: 4px 0 6px;
+}
+.media-tile {
+    position: relative; aspect-ratio: 1/1; border-radius: 12px;
+    background-size: cover; background-position: center;
+    background-color: var(--gray-100); box-shadow: var(--shadow-sm);
+    touch-action: none; cursor: grab; user-select: none;
+    transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.media-tile.dragging { transform: scale(1.08); box-shadow: 0 8px 20px rgba(0,0,0,0.25); opacity: 0.92; z-index: 5; cursor: grabbing; }
+.media-remove {
+    position: absolute; top: -6px; right: -6px; width: 22px; height: 22px;
+    border-radius: 50%; border: 2px solid var(--white); background: rgba(30,30,30,0.82);
+    color: #fff; font-size: 14px; line-height: 1; cursor: pointer; z-index: 3;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.media-cover {
+    position: absolute; left: 5px; bottom: 5px; font-size: 0.62rem; font-weight: 700;
+    color: #fff; background: rgba(176,137,104,0.92); padding: 2px 7px; border-radius: 10px;
+}
+.media-add {
+    aspect-ratio: 1/1; border-radius: 12px; border: 2px dashed var(--primary-light);
+    background: var(--gray-50); color: var(--primary); font-size: 1.5rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.media-add:hover { background: var(--primary-light); }
+.media-edit-label { display: block; font-size: 0.82rem; color: var(--gray-600); margin-bottom: 6px; }
+
+/* ================= 상세: 이미지 캐러셀 ================= */
+.detail-carousel { position: relative; width: 100%; margin: 0 0 4px; }
+.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); }
+.carousel-track { display: flex; transition: transform 0.32s cubic-bezier(.22,.61,.36,1); }
+.carousel-slide { min-width: 100%; aspect-ratio: 4/3; }
+.carousel-slide img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+.carousel-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
+    border-radius: 50%; border: none; background: rgba(0,0,0,0.4); color: #fff; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2;
+}
+.carousel-arrow.prev { left: 8px; } .carousel-arrow.next { right: 8px; }
+.carousel-arrow:disabled { opacity: 0; pointer-events: none; }
+.carousel-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.carousel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-300); transition: background 0.2s, width 0.2s; }
+.carousel-dot.active { background: var(--primary); width: 18px; border-radius: 4px; }
+.carousel-count { position: absolute; top: 8px; right: 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.72rem; padding: 2px 9px; border-radius: 11px; z-index: 2; }
+
+/* ================= 라이트박스: 좌우 이동 ================= */
+.lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px;
+    border-radius: 50%; border: none; background: rgba(255,255,255,0.16); color: #fff; font-size: 22px;
+    cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center;
+}
+.lightbox-nav.prev { left: 14px; } .lightbox-nav.next { right: 14px; }
+.lightbox-nav.hidden { display: none; }
+.lightbox-counter { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 0.9rem; z-index: 30; opacity: 0.85; }

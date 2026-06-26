@@ -797,14 +797,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pickTarget = 'memory';
         selectedFile = file;
 
-        // 미리보기
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const preview = document.getElementById('image-preview');
-            preview.src = ev.target.result;
-            preview.classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
+        // 첫 사진을 그리드에 시드 (이후 ＋로 추가, 꾹 눌러 정렬 가능)
+        if (window._memCreateMgr) window._memCreateMgr.reset([{ kind: 'file', file: file }]);
 
         // 다시 촬영 버튼: 카메라 경유면 노출, 갤러리면 숨김
         const retake = document.getElementById('btn-retake-photo');
@@ -906,10 +900,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 createdAt: _dateVal ? (_dateVal + 'T00:00:00') : null
             };
 
+            const mgr = window._memCreateMgr;
+            const files = mgr ? mgr.getNewFiles() : (selectedFile ? [selectedFile] : []);
+            if (!files.length) { showToast('사진을 1장 이상 추가해주세요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기 ✨'; return; }
+            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기 ✨'; return; }
+            memoryDTO.mediaOrder = mgr ? mgr.getMediaOrder() : files.map(() => '$NEW$');
+
             const formData = new FormData();
             formData.append("uid", currentUid);
             formData.append("memoryData", JSON.stringify(memoryDTO));
-            if (selectedFile) formData.append("mediaData", selectedFile);
+            files.forEach(f => formData.append("mediaData", f));
 
             fetch(`${API_BASE_URL}/api/memories`, {
                 method: 'POST',
@@ -1018,11 +1018,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraReturnToForm = false; // 촬영 성공 → 닫기 복귀 로직 비활성화
             closeCameraModal();
 
-            // 미리보기
-            const preview = document.getElementById('image-preview');
-            const url = URL.createObjectURL(blob);
-            preview.src = url;
-            preview.classList.remove('hidden');
+            // 첫 사진을 그리드에 시드
+            if (window._memCreateMgr) window._memCreateMgr.reset([{ kind: 'file', file: file }]);
             // 다시 촬영 버튼 노출
             const retake = document.getElementById('btn-retake-photo');
             if (retake) retake.classList.remove('hidden');
@@ -1404,9 +1401,8 @@ document.addEventListener('DOMContentLoaded', () => {
             titleEl.value = window._pendingPlaceTitle;
         }
         window._pendingPlaceTitle = '';
+        if (window._clCreateMgr) window._clCreateMgr.reset([]);
     };
-
-    // 가볼곳 추가 버튼 → 위치 선택 모드 진입 (체크리스트용)
     function startChecklistCreate() {
         pickTarget = 'checklist';
         enterPickMode();
@@ -1421,14 +1417,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!title) { showToast('제목을 입력해주세요'); return; }
         const visited = document.getElementById('cl-visited').checked;
         const visitedDate = document.getElementById('cl-visited-date').value;
-        const imgInput = document.getElementById('cl-image');
-        const hasImage = !!(imgInput && imgInput.files && imgInput.files[0]);
+        const clMgr = window._clCreateMgr;
+        const clFiles = clMgr ? clMgr.getNewFiles() : [];
+        const hasImage = clFiles.length > 0;
         // '다녀왔어요'가 체크된 경우 이미지는 필수
         if (visited && !hasImage) {
             showToast('다녀왔어요로 표시하려면 사진을 첨부해주세요');
             alert('다녀온 곳은 사진을 반드시 첨부해야 합니다.');
             return;
         }
+        if (clFiles.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); return; }
         const dto = {
             title: title,
             content: document.getElementById('cl-content').value,
@@ -1438,12 +1436,13 @@ document.addEventListener('DOMContentLoaded', () => {
             address: (currentLocationMeta && currentLocationMeta.address) || '',
             type: window._clSelectedType || 'ETC',
             visited: visited,
-            visitedDate: (visited && visitedDate) ? visitedDate : null
+            visitedDate: (visited && visitedDate) ? visitedDate : null,
+            mediaOrder: clMgr ? clMgr.getMediaOrder() : []
         };
         const fd = new FormData();
         fd.append('uid', currentUid);
         fd.append('checklistData', JSON.stringify(dto));
-        if (hasImage) fd.append('mediaData', imgInput.files[0]);
+        clFiles.forEach(f => fd.append('mediaData', f));
 
         const submitBtn = document.querySelector('#checklist-form .submit-btn');
         if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = '추가하는 중...'; }
@@ -1573,17 +1572,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (clEditForm) clEditForm.addEventListener('submit', (e) => { e.preventDefault(); saveChecklistEdit(); });
     const clEditCancel = document.getElementById('cl-edit-cancel');
     if (clEditCancel) clEditCancel.addEventListener('click', exitChecklistEdit);
-    // 새 사진 선택 시 미리보기 교체
-    const clEditImgFile = document.getElementById('cl-edit-image-file');
-    if (clEditImgFile) clEditImgFile.addEventListener('change', (e) => {
-        const f = e.target.files && e.target.files[0];
-        if (!f) return;
-        const wrap = document.getElementById('cl-edit-image-wrap');
-        const img = document.getElementById('cl-edit-image');
-        const reader = new FileReader();
-        reader.onload = (ev) => { if (img) img.src = ev.target.result; if (wrap) wrap.classList.remove('hidden'); };
-        reader.readAsDataURL(f);
-    });
 
     // 모달 바깥 클릭으로 닫기
     const clModal = document.getElementById('checklist-modal');
@@ -2178,6 +2166,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const lbHint = document.getElementById('lightbox-hint');
 
     document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+    const lbPrev = document.getElementById('lightbox-prev');
+    const lbNext = document.getElementById('lightbox-next');
+    if (lbPrev) lbPrev.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx - 1); });
+    if (lbNext) lbNext.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx + 1); });
 
     // 이미지 탭 → 확대/축소 토글
     lbImg.addEventListener('click', (e) => {
@@ -2189,8 +2181,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lbHint) lbHint.style.opacity = (_lb.scale === 1) ? '1' : '0';
     });
 
-    // 확대 상태에서 드래그하여 이동
+    // 확대 상태에서 드래그하여 이동 / 기본 상태에서 좌우 스와이프로 이미지 전환
     lbStage.addEventListener('pointerdown', (e) => {
+        _lb.swStartX = e.clientX; _lb.swStartY = e.clientY; _lb.swiping = (_lb.scale === 1);
         if (_lb.scale === 1) return;
         _lb.dragging = true; _lb.moved = false;
         _lb.sx = e.clientX; _lb.sy = e.clientY; _lb.bx = _lb.x; _lb.by = _lb.y;
@@ -2203,7 +2196,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _lb.moved = true;
         _lb.x = _lb.bx + dx; _lb.y = _lb.by + dy; _lbApply();
     });
-    function _lbEndDrag() { _lb.dragging = false; lbImg.classList.remove('dragging'); }
+    function _lbEndDrag(e) {
+        _lb.dragging = false; lbImg.classList.remove('dragging');
+        // 기본 상태 좌우 스와이프 → 이전/다음 이미지
+        if (_lb.swiping && _lb.list && _lb.list.length > 1) {
+            const dx = e.clientX - _lb.swStartX, dy = e.clientY - _lb.swStartY;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+                _lb.moved = true; // 스와이프를 탭으로 오인하지 않도록
+                if (dx < 0) _lbShow(_lb.idx + 1); else _lbShow(_lb.idx - 1);
+            }
+        }
+        _lb.swiping = false;
+    }
     lbStage.addEventListener('pointerup', _lbEndDrag);
     lbStage.addEventListener('pointercancel', _lbEndDrag);
 
@@ -2326,6 +2330,7 @@ function closeMemoryModal() {
     document.getElementById('memory-modal').classList.add('hidden');
     document.getElementById('memory-form').reset();
     document.getElementById('image-preview').classList.add('hidden');
+    if (window._memCreateMgr) window._memCreateMgr.reset([]);
     const rt = document.getElementById('btn-retake-photo');
     if (rt) rt.classList.add('hidden');
     const lm = document.getElementById('location-mode');
@@ -2383,9 +2388,8 @@ function openChecklistDetail(item) {
     const visitedHtml = item.visited
         ? '<span class="meta-item cl-meta-visited">✓ 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
         : '<span class="meta-item cl-meta-todo">아직 안 가봤어요</span>';
-    const imageHtml = item.mediaURL
-        ? '<div class="detail-image-wrap"><img src="' + item.mediaURL + '" alt="가볼곳 사진" id="cl-detail-image"></div>'
-        : '';
+    const _clUrls = mediaUrlsOf(item);
+    const imageHtml = carouselHtml(_clUrls);
 
     view.innerHTML =
         '<div class="detail-container">' +
@@ -2413,8 +2417,7 @@ function openChecklistDetail(item) {
             : '';
     }
 
-    const di = document.getElementById('cl-detail-image');
-    if (di) di.addEventListener('click', () => { if (di.src) openLightbox(di.src, di); });
+    bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
     const av = document.getElementById('cl-author-avatar');
     if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
     const locEl = document.getElementById('cl-detail-loc');
@@ -2448,14 +2451,10 @@ function enterChecklistEdit(item) {
         c.classList.toggle('selected', c.dataset.type === window._clEditSelectedType);
     });
 
-    // 현재 사진 미리보기 + 파일 입력 초기화
-    const imgWrap = document.getElementById('cl-edit-image-wrap');
-    const img = document.getElementById('cl-edit-image');
-    const fileInput = document.getElementById('cl-edit-image-file');
-    if (fileInput) fileInput.value = '';
-    if (imgWrap && img) {
-        if (item.mediaURL) { img.src = item.mediaURL; imgWrap.classList.remove('hidden'); }
-        else { img.removeAttribute('src'); imgWrap.classList.add('hidden'); }
+    // 사진 편집 그리드 시드 (기존 이미지 → url 항목)
+    if (window._clEditMgr) {
+        const urls = mediaUrlsOf(item);
+        window._clEditMgr.reset(urls.map(u => ({ kind: 'url', url: u })));
     }
 
     document.getElementById('cl-edit-title').value = item.title || '';
@@ -2486,17 +2485,22 @@ function saveChecklistEdit() {
     if (!title) { showToast('제목을 입력해주세요'); return; }
     const visited = document.getElementById('cl-edit-visited').checked;
     const visitedDate = document.getElementById('cl-edit-visited-date').value;
+    const mgr = window._clEditMgr;
+    const order = mgr ? mgr.getMediaOrder() : null;
+    const newFiles = mgr ? mgr.getNewFiles() : [];
+    if (visited && (!order || order.length === 0)) { showToast('다녀온 곳은 사진을 1장 이상 첨부해주세요'); return; }
+    if (order && order.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); return; }
     const dto = {
         title: title,
         content: document.getElementById('cl-edit-content').value,
         type: window._clEditSelectedType || item.type || 'ETC',
         visited: visited,
-        visitedDate: (visited && visitedDate) ? visitedDate : null
+        visitedDate: (visited && visitedDate) ? visitedDate : null,
+        mediaOrder: order
     };
     const fd = new FormData();
     fd.append('checklistData', JSON.stringify(dto));
-    const fileInput = document.getElementById('cl-edit-image-file');
-    if (fileInput && fileInput.files && fileInput.files[0]) fd.append('mediaData', fileInput.files[0]);
+    newFiles.forEach(f => fd.append('mediaData', f));
 
     const btn = document.querySelector('#cl-edit-form .submit-btn');
     if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
@@ -2543,9 +2547,8 @@ function openDetailModal(memory) {
     if (view) view.classList.remove('hidden');
 
     const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-    const imageHtml = memory.mediaURL
-        ? `<div class="detail-image-wrap"><img src="${memory.mediaURL}" alt="추억 사진" id="detail-image"></div>`
-        : '';
+    const _memUrls = mediaUrlsOf(memory);
+    const imageHtml = carouselHtml(_memUrls);
     const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
     const contentHtml = escapeHtml(memory.content || '').replace(/\n/g, '<br>');
 
@@ -2606,8 +2609,8 @@ function openDetailModal(memory) {
         });
     }
 
-    const di = document.getElementById('detail-image');
-    if (di) di.addEventListener('click', () => { if (di.src) openLightbox(di.src, di); });
+    // 이미지 캐러셀 바인딩 (좌우 스와이프 + 탭 확대)
+    bindCarousel(document.getElementById('detail-view'), _memUrls);
 
     // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
     const da = document.getElementById('detail-author-avatar');
@@ -2662,17 +2665,10 @@ function enterDetailEdit(memory) {
     const editForm = document.getElementById('detail-edit-form');
     if (!editForm) return;
 
-    // 사진 표시 (수정 불가)
-    const imgWrap = document.getElementById('edit-image-wrap');
-    const img = document.getElementById('edit-image');
-    if (imgWrap && img) {
-        if (memory.mediaURL) {
-            img.src = memory.mediaURL;
-            imgWrap.classList.remove('hidden');
-        } else {
-            img.removeAttribute('src');
-            imgWrap.classList.add('hidden');
-        }
+    // 사진 편집 그리드 시드 (기존 이미지 → url 항목, 추가/삭제/정렬 가능)
+    if (window._memEditMgr) {
+        const urls = mediaUrlsOf(memory);
+        window._memEditMgr.reset(urls.map(u => ({ kind: 'url', url: u })));
     }
     // 위치 표시 (수정 불가)
     fillLocationInto('edit-loc', memory);
@@ -2700,18 +2696,28 @@ function saveDetailEdit() {
     const content = document.getElementById('edit-memory-content').value.trim();
     if (!title) { showToast('제목을 입력해주세요'); return; }
 
-    const payload = {
-        title: title,
-        content: content,
-        createdAt: date ? date : (memory.createdAt || null)
-    };
+    const mgr = window._memEditMgr;
+    const order = mgr ? mgr.getMediaOrder() : null;
+    const newFiles = mgr ? mgr.getNewFiles() : [];
+    if (order && order.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); return; }
+
+    // createdAt: LocalDateTime("yyyy-MM-ddT00:00:00") 형식으로 전송
+    let createdAt = null;
+    if (date) createdAt = date + 'T00:00:00';
+    else if (memory.createdAt) createdAt = (String(memory.createdAt).length === 10) ? (memory.createdAt + 'T00:00:00') : memory.createdAt;
+
+    const memoryData = { title: title, content: content, createdAt: createdAt, mediaOrder: order };
+    const fd = new FormData();
+    fd.append('memoryData', JSON.stringify(memoryData));
+    newFiles.forEach(f => fd.append('mediaData', f));
+
     const btn = document.querySelector('#detail-edit-form .submit-btn');
     if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
 
     fetch(`${Daylog.api}/api/memories/${memory.id}`, {
         method: 'PUT',
-        headers: Daylog.authHeaders(true),
-        body: JSON.stringify(payload)
+        headers: Daylog.authHeaders(false), // FormData → Content-Type 자동
+        body: fd
     })
         .then(Daylog.handleResponse)
         .then(() => {
@@ -3393,24 +3399,255 @@ function closePhotoEditor() {
     _ped.onDone = null; _ped.drag = null;
 }
 
+// ============================================================
+//  다중 이미지 공용 모듈 — 미리보기 그리드(✕삭제·꾹눌러 드래그 정렬) + 캐러셀
+// ============================================================
+const MEDIA_MAX = 10;
+
+// obj: 추억/가볼곳 객체 → 이미지 URL 배열(첫 장이 대표)
+function mediaUrlsOf(obj) {
+    if (!obj) return [];
+    if (Array.isArray(obj.mediaUrls) && obj.mediaUrls.length) return obj.mediaUrls.filter(Boolean);
+    if (obj.mediaURL) return [obj.mediaURL];
+    return [];
+}
+
+function createMediaManager(opts) {
+    const grid = opts.grid, input = opts.input, onTileTap = opts.onTileTap;
+    let items = []; // { kind:'url'|'file', url?, file?, _obj? }
+
+    function objURL(it) {
+        if (it.kind === 'url') return it.url;
+        if (!it._obj) it._obj = URL.createObjectURL(it.file);
+        return it._obj;
+    }
+    function revokeAll() { items.forEach(it => { if (it._obj) { try { URL.revokeObjectURL(it._obj); } catch (_) {} it._obj = null; } }); }
+    function reset(initial) { revokeAll(); items = (initial || []).slice(); render(); }
+    function count() { return items.length; }
+    function addFiles(fileList) {
+        const files = Array.from(fileList || []);
+        for (const f of files) {
+            if (!f || !f.type || f.type.indexOf('image/') !== 0) continue;
+            if (items.length >= MEDIA_MAX) { showToast('이미지는 최대 ' + MEDIA_MAX + '장까지 첨부할 수 있어요'); break; }
+            items.push({ kind: 'file', file: f });
+        }
+        render();
+    }
+    function replaceAt(i, f) {
+        if (!items[i]) return;
+        if (items[i]._obj) { try { URL.revokeObjectURL(items[i]._obj); } catch (_) {} }
+        items[i] = { kind: 'file', file: f };
+        render();
+    }
+    function removeAt(i) {
+        const it = items[i];
+        if (it && it._obj) { try { URL.revokeObjectURL(it._obj); } catch (_) {} }
+        items.splice(i, 1);
+        render();
+    }
+    function getNewFiles() { return items.filter(it => it.kind === 'file').map(it => it.file); }
+    function getMediaOrder() { return items.map(it => it.kind === 'url' ? it.url : '$NEW$'); }
+
+    function render() {
+        if (!grid) return;
+        grid.innerHTML = '';
+        items.forEach((it, i) => {
+            const tile = document.createElement('div');
+            tile.className = 'media-tile';
+            tile.dataset.idx = i;
+            tile._item = it;
+            tile.style.backgroundImage = "url('" + objURL(it) + "')";
+            if (i === 0) { const b = document.createElement('span'); b.className = 'media-cover'; b.textContent = '대표'; tile.appendChild(b); }
+            const rm = document.createElement('button');
+            rm.type = 'button'; rm.className = 'media-remove'; rm.innerHTML = '&times;';
+            rm.addEventListener('click', (e) => { e.stopPropagation(); removeAt(i); });
+            tile.appendChild(rm);
+            if (onTileTap) tile.addEventListener('click', (e) => { if (e.target.closest('.media-remove')) return; if (!grid._didDrag) onTileTap(it, i, replaceAt); });
+            grid.appendChild(tile);
+        });
+        if (items.length < MEDIA_MAX) {
+            const add = document.createElement('button');
+            add.type = 'button'; add.className = 'media-add'; add.innerHTML = '<span>＋</span>';
+            add.addEventListener('click', () => { if (input) input.click(); });
+            grid.appendChild(add);
+        }
+    }
+
+    // 꾹 눌러(롱프레스) 드래그 → 순서 변경 (마우스/터치 공통). DOM 노드를 직접 이동해 포인터 캡처 유지.
+    if (grid && !grid._reorderBound) {
+        grid._reorderBound = true;
+        let pressTimer = null, dragNode = null, isDragging = false, sx = 0, sy = 0;
+        grid.addEventListener('pointerdown', (e) => {
+            const tile = e.target.closest('.media-tile');
+            if (!tile || e.target.closest('.media-remove')) return;
+            sx = e.clientX; sy = e.clientY; grid._didDrag = false;
+            clearTimeout(pressTimer);
+            pressTimer = setTimeout(() => {
+                isDragging = true; dragNode = tile; grid._didDrag = true;
+                tile.classList.add('dragging');
+                try { tile.setPointerCapture(e.pointerId); } catch (_) {}
+            }, 200);
+        });
+        grid.addEventListener('pointermove', (e) => {
+            if (!isDragging) {
+                if (pressTimer && (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12)) { clearTimeout(pressTimer); pressTimer = null; }
+                return;
+            }
+            e.preventDefault();
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            const over = el && el.closest ? el.closest('.media-tile') : null;
+            if (over && over !== dragNode && over.parentElement === grid) {
+                const r = over.getBoundingClientRect();
+                const after = (e.clientX - r.left) > r.width / 2;
+                grid.insertBefore(dragNode, after ? over.nextSibling : over);
+            }
+        }, { passive: false });
+        const endDrag = () => {
+            clearTimeout(pressTimer); pressTimer = null;
+            if (isDragging) {
+                isDragging = false;
+                if (dragNode) dragNode.classList.remove('dragging');
+                // DOM 순서 → items 재구성
+                const tiles = Array.from(grid.querySelectorAll('.media-tile'));
+                items = tiles.map(t => t._item).filter(Boolean);
+                dragNode = null;
+                render();
+                setTimeout(() => { grid._didDrag = false; }, 50);
+            }
+        };
+        grid.addEventListener('pointerup', endDrag);
+        grid.addEventListener('pointercancel', endDrag);
+    }
+
+    return { reset, addFiles, replaceAt, removeAt, count, getNewFiles, getMediaOrder, render };
+}
+
+// 상세 화면 캐러셀 HTML
+function carouselHtml(urls) {
+    if (!urls || !urls.length) return '';
+    if (urls.length === 1) {
+        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" alt="사진" class="detail-single-img"></div>';
+    }
+    let slides = '';
+    urls.forEach(u => { slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진"></div>'; });
+    let dots = '';
+    urls.forEach((u, i) => { dots += '<span class="carousel-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '"></span>'; });
+    return '<div class="detail-carousel">' +
+        '<div class="carousel-count"><span class="cc-cur">1</span>/' + urls.length + '</div>' +
+        '<div class="carousel-viewport"><div class="carousel-track">' + slides + '</div></div>' +
+        '<button type="button" class="carousel-arrow prev" disabled>&#8249;</button>' +
+        '<button type="button" class="carousel-arrow next">&#8250;</button>' +
+        '<div class="carousel-dots">' + dots + '</div>' +
+        '</div>';
+}
+
+// 캐러셀 동작 바인딩 (스와이프 + 화살표 + 점 + 탭→라이트박스)
+function bindCarousel(rootEl, urls) {
+    if (!rootEl) return;
+    const single = rootEl.querySelector('.detail-single-img');
+    if (single) { single.addEventListener('click', () => openLightbox(urls, single, 0)); return; }
+    const car = rootEl.querySelector('.detail-carousel');
+    if (!car) return;
+    const track = car.querySelector('.carousel-track');
+    const slides = car.querySelectorAll('.carousel-slide');
+    const dots = car.querySelectorAll('.carousel-dot');
+    const prev = car.querySelector('.carousel-arrow.prev');
+    const next = car.querySelector('.carousel-arrow.next');
+    const cur = car.querySelector('.cc-cur');
+    let idx = 0, startX = 0, dx = 0, dragging = false, moved = false;
+
+    function go(i) {
+        idx = Math.max(0, Math.min(urls.length - 1, i));
+        track.style.transition = 'transform 0.32s cubic-bezier(.22,.61,.36,1)';
+        track.style.transform = 'translateX(' + (-idx * 100) + '%)';
+        dots.forEach((d, di) => d.classList.toggle('active', di === idx));
+        if (prev) prev.disabled = idx === 0;
+        if (next) next.disabled = idx === urls.length - 1;
+        if (cur) cur.textContent = (idx + 1);
+    }
+    if (prev) prev.addEventListener('click', () => go(idx - 1));
+    if (next) next.addEventListener('click', () => go(idx + 1));
+    dots.forEach(d => d.addEventListener('click', () => go(+d.dataset.i)));
+    slides.forEach((s, si) => s.querySelector('img').addEventListener('click', () => { if (!moved) openLightbox(urls, s.querySelector('img'), si); }));
+
+    const vp = car.querySelector('.carousel-viewport');
+    vp.addEventListener('pointerdown', (e) => { dragging = true; moved = false; startX = e.clientX; dx = 0; track.style.transition = 'none'; });
+    vp.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        dx = e.clientX - startX;
+        if (Math.abs(dx) > 6) moved = true;
+        track.style.transform = 'translateX(calc(' + (-idx * 100) + '% + ' + dx + 'px))';
+    });
+    const endSwipe = () => {
+        if (!dragging) return;
+        dragging = false;
+        if (dx < -50 && idx < urls.length - 1) go(idx + 1);
+        else if (dx > 50 && idx > 0) go(idx - 1);
+        else go(idx);
+        setTimeout(() => { moved = false; }, 30);
+    };
+    vp.addEventListener('pointerup', endSwipe);
+    vp.addEventListener('pointercancel', endSwipe);
+    go(0);
+}
+
 // ===== 라이트박스 상태 & 제어 =====
-const _lb = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, moved: false, originRect: null, targetRect: null, animating: false };
+const _lb = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, moved: false, originRect: null, targetRect: null, animating: false, list: [], idx: 0, swiping: false, swStartX: 0, swStartY: 0 };
 function _lbApply() {
     const img = document.getElementById('lightbox-img');
     if (img) img.style.transform = 'translate(' + _lb.x + 'px, ' + _lb.y + 'px) scale(' + _lb.scale + ')';
+}
+// 라이트박스 좌우 이동 UI 갱신
+function _lbUpdateNav() {
+    const prev = document.getElementById('lightbox-prev');
+    const next = document.getElementById('lightbox-next');
+    const counter = document.getElementById('lightbox-counter');
+    const many = _lb.list && _lb.list.length > 1;
+    if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
+    if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
+    if (counter) {
+        counter.classList.toggle('hidden', !many);
+        if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
+    }
+}
+// 라이트박스에서 다른 이미지로 전환 (확대 상태 초기화)
+function _lbShow(idx) {
+    if (!_lb.list || !_lb.list.length) return;
+    _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, idx));
+    const img = document.getElementById('lightbox-img');
+    if (!img) return;
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+    _lb.originRect = null; // 전환 후에는 제자리 축소 애니메이션 생략
+    img.style.transition = 'opacity 0.15s ease';
+    img.style.opacity = '0';
+    setTimeout(() => {
+        img.src = _lb.list[_lb.idx];
+        img.style.transform = 'none';
+        img.style.borderRadius = '0';
+        img.onload = () => { img.onload = null; img.style.opacity = '1'; };
+        if (img.complete && img.naturalWidth) img.style.opacity = '1';
+    }, 150);
+    _lbUpdateNav();
 }
 function _rectOf(el) {
     const r = el.getBoundingClientRect();
     return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
 }
 // 메타(스레드/인스타)식: 원본 위치에서 확대되어 나타나고, 닫을 때 제자리로 축소
-function openLightbox(src, originEl) {
-    if (!src) return;
+function openLightbox(srcOrList, originEl, index) {
+    const list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
+    if (!list.length) return;
+    _lb.list = list;
+    _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
+    const src = list[_lb.idx];
     const lb = document.getElementById('lightbox');
     const img = document.getElementById('lightbox-img');
     const hint = document.getElementById('lightbox-hint');
     if (!lb || !img) return;
 
+    _lbUpdateNav();
+
+    if (img) img.style.opacity = '1';
     _lb.scale = 1; _lb.x = 0; _lb.y = 0;
     _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
     if (hint) hint.style.opacity = '1';
@@ -3471,12 +3708,12 @@ function closeLightbox() {
             lb.classList.add('hidden');
             lb.style.opacity = '';
             lb.style.transition = '';
-            if (img) { img.src = ''; img.style.transition = ''; img.style.transform = ''; img.style.borderRadius = ''; }
+            if (img) { img.src = ''; img.style.transition = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
             _lb.originRect = null; _lb.targetRect = null;
         }, 300);
     } else {
         lb.classList.add('hidden');
-        if (img) { img.src = ''; img.style.transform = ''; img.style.borderRadius = ''; }
+        if (img) { img.src = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
         _lb.originRect = null; _lb.targetRect = null;
     }
 }
@@ -3501,6 +3738,21 @@ function escapeHtml(text) {
 // 4. 신규 모달(상세 수정 / 리스트) 이벤트 바인딩
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+    // ===== 다중 이미지 매니저 초기화 (생성/수정 4종) =====
+    const _mkMgr = (gridId, inputId, onTileTap) => {
+        const grid = document.getElementById(gridId);
+        const input = document.getElementById(inputId);
+        if (!grid) return null;
+        const mgr = createMediaManager({ grid, input, onTileTap });
+        if (input) input.addEventListener('change', (e) => { mgr.addFiles(e.target.files); e.target.value = ''; });
+        return mgr;
+    };
+    window._memCreateMgr = _mkMgr('memory-media-grid', 'memory-media-input',
+        (it, i, replaceAt) => { if (it.kind === 'file' && typeof openPhotoEditor === 'function') openPhotoEditor(it.file, (nf) => replaceAt(i, nf)); });
+    window._clCreateMgr = _mkMgr('cl-media-grid', 'cl-image');
+    window._memEditMgr = _mkMgr('edit-media-grid', 'edit-media-input');
+    window._clEditMgr = _mkMgr('cl-edit-media-grid', 'cl-edit-image-file');
+
     // 상세 수정 폼
     const detailEditForm = document.getElementById('detail-edit-form');
     if (detailEditForm) {

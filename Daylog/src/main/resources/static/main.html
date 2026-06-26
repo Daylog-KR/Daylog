@@ -231,7 +231,9 @@
         </div>
         <form id="memory-form">
             <div class="preview-zone">
-                <img id="image-preview" src="" alt="미리보기" class="hidden">
+                <div class="media-grid" id="memory-media-grid"></div>
+                <img id="image-preview" src="" alt="미리보기" class="hidden" style="display:none">
+                <input type="file" id="memory-media-input" accept="image/*" multiple style="display:none">
             </div>
             <button type="button" id="btn-retake-photo" class="retake-photo-btn hidden">📷 다시 촬영하기</button>
             <div id="location-status-badge" class="location-badge">위치 설정 중...</div>
@@ -268,9 +270,9 @@
         <!-- 수정 영역 (본인 추억만 · 사진/위치는 표시만, 수정 불가) -->
         <form id="detail-edit-form" class="hidden">
             <div class="detail-edit-readonly">
-                <div class="detail-image-wrap edit-locked hidden" id="edit-image-wrap">
-                    <img src="" alt="추억 사진" id="edit-image">
-                </div>
+                <label class="media-edit-label">사진 (최대 10장 · 꾹 눌러 정렬 / ✕ 삭제)</label>
+                <div class="media-grid" id="edit-media-grid"></div>
+                <input type="file" id="edit-media-input" accept="image/*" multiple style="display:none">
                 <span class="meta-item edit-loc-line" id="edit-loc">📍 위치 확인 중…</span>
             </div>
             <div class="form-group">
@@ -285,7 +287,7 @@
                 <label>내용</label>
                 <textarea id="edit-memory-content" rows="5" placeholder="이야기를 작성하세요 (선택)"></textarea>
             </div>
-            <p class="detail-edit-note">※ 사진과 위치는 수정할 수 없어요.</p>
+            <p class="detail-edit-note">※ 위치는 수정할 수 없어요.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="detail-edit-cancel" class="cancel-edit-btn">취소</button>
                 <button type="submit" class="submit-btn">저장하기 ✨</button>
@@ -329,8 +331,9 @@
                 <input type="date" id="cl-visited-date" disabled>
             </div>
             <div class="form-group">
-                <label>사진 (선택)</label>
-                <input type="file" id="cl-image" accept="image/*" class="cl-file-input">
+                <label>사진 (선택 · 최대 10장)</label>
+                <div class="media-grid" id="cl-media-grid"></div>
+                <input type="file" id="cl-image" accept="image/*" multiple class="cl-file-input" style="display:none">
             </div>
             <button type="submit" class="submit-btn">추가하기 📌</button>
         </form>
@@ -353,12 +356,10 @@
                 <span class="meta-item edit-loc-line" id="cl-edit-loc">📍</span>
             </div>
             <div class="form-group">
-                <label>사진</label>
-                <div class="cl-edit-image-wrap hidden" id="cl-edit-image-wrap">
-                    <img src="" alt="가볼곳 사진" id="cl-edit-image">
-                </div>
-                <input type="file" id="cl-edit-image-file" accept="image/*" class="cl-file-input">
-                <p class="cl-img-hint">새 사진을 선택하면 기존 사진이 교체돼요.</p>
+                <label>사진 (최대 10장)</label>
+                <div class="media-grid" id="cl-edit-media-grid"></div>
+                <input type="file" id="cl-edit-image-file" accept="image/*" multiple class="cl-file-input" style="display:none">
+                <p class="cl-img-hint">사진을 꾹 눌러 순서를 바꾸고, ✕로 삭제할 수 있어요.</p>
             </div>
             <div class="form-group">
                 <label>타입</label>
@@ -524,10 +525,13 @@
 <!-- 이미지 라이트박스 -->
 <div id="lightbox" class="lightbox hidden">
     <button type="button" class="lightbox-close" id="lightbox-close">&times;</button>
+    <div class="lightbox-counter hidden" id="lightbox-counter"></div>
+    <button type="button" class="lightbox-nav prev hidden" id="lightbox-prev">&#8249;</button>
+    <button type="button" class="lightbox-nav next hidden" id="lightbox-next">&#8250;</button>
     <div class="lightbox-stage" id="lightbox-stage">
         <img id="lightbox-img" src="" alt="확대 이미지" draggable="false">
     </div>
-    <div class="lightbox-hint" id="lightbox-hint">탭하면 확대 · 드래그하여 이동</div>
+    <div class="lightbox-hint" id="lightbox-hint">탭하면 확대 · 좌우로 넘기기</div>
 </div>
 
 <script src="config.js?v=1.0.0"></script>
