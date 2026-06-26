@@ -2383,7 +2383,7 @@ function openChecklistDetail(item) {
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️</button>' +
               '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
@@ -2566,7 +2566,7 @@ function openDetailModal(memory) {
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️</button>' +
               '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }
