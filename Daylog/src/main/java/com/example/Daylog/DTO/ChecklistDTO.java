@@ -6,6 +6,8 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -20,7 +22,9 @@ public class ChecklistDTO {
     private Double lng;
     private String placeName; // 큰 영역 (주소)
     private String address;   // 상세 주소
-    private String mediaURL;  // 이미지 (선택)
+    private String mediaURL;            // 첫 이미지(호환용 · 썸네일)
+    private List<String> mediaUrls;     // 전체 이미지(순서)
+    private List<String> mediaOrder;    // 입력 전용: 정렬 토큰(기존 URL 또는 "$NEW$")
     private String type;      // 타입 (카페/식당/장소 등)
     private boolean deleted;  // 휴지통 여부
     private boolean visited;  // 다녀왔는지 여부
@@ -30,23 +34,29 @@ public class ChecklistDTO {
 
     // Entity -> DTO
     public static ChecklistDTO entityToDto(ChecklistEntity e) {
+        List<String> urls = (e.getMediaUrls() != null) ? new ArrayList<>(e.getMediaUrls()) : new ArrayList<>();
+        if (urls.isEmpty() && e.getMediaURL() != null && !e.getMediaURL().isEmpty()) {
+            urls.add(e.getMediaURL());
+        }
+        String first = !urls.isEmpty() ? urls.get(0) : null;
         String ownerUid = (e.getOwner() != null) ? e.getOwner().getUid() : null;
-        return new ChecklistDTO(
-                e.getId(),
-                e.getTitle(),
-                e.getContent(),
-                e.getLat(),
-                e.getLng(),
-                e.getPlaceName(),
-                e.getAddress(),
-                e.getMediaURL(),
-                e.getType(),
-                e.isDeleted(),
-                e.isVisited(),
-                e.getVisitedDate(),
-                ownerUid,
-                e.getCreatedAt()
-        );
+        return ChecklistDTO.builder()
+                .id(e.getId())
+                .title(e.getTitle())
+                .content(e.getContent())
+                .lat(e.getLat())
+                .lng(e.getLng())
+                .placeName(e.getPlaceName())
+                .address(e.getAddress())
+                .mediaURL(first)
+                .mediaUrls(urls)
+                .type(e.getType())
+                .deleted(e.isDeleted())
+                .visited(e.isVisited())
+                .visitedDate(e.getVisitedDate())
+                .ownerUid(ownerUid)
+                .createdAt(e.getCreatedAt())
+                .build();
     }
 
     // DTO -> Entity
@@ -60,6 +70,7 @@ public class ChecklistDTO {
                 .placeName(placeName)
                 .address(address)
                 .mediaURL(mediaURL)
+                .mediaUrls(mediaUrls != null ? new ArrayList<>(mediaUrls) : new ArrayList<>())
                 .type(type)
                 .deleted(deleted)
                 .visited(visited)

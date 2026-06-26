@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -63,18 +64,57 @@ public class MemoryService {
         }
     }
 
+    private static final int MAX_IMAGES = 10;
+
+    // 여러 파일 업로드 → URL 리스트(순서 유지)
+    private List<String> uploadMediaList(List<MultipartFile> files) {
+        List<String> urls = new ArrayList<>();
+        if (files == null) return urls;
+        for (MultipartFile f : files) {
+            String u = uploadMedia(f);
+            if (u != null) urls.add(u);
+        }
+        return urls;
+    }
+
+    // 정렬 토큰(order)으로 최종 이미지 순서 구성: "$NEW$"=업로드한 새 파일 순서대로, 그 외=유지할 기존 URL
+    private List<String> buildOrderedUrls(List<String> order, List<String> uploaded) {
+        List<String> result = new ArrayList<>();
+        if (order == null || order.isEmpty()) {
+            result.addAll(uploaded);
+            return result;
+        }
+        int ni = 0;
+        for (String token : order) {
+            if (token == null) continue;
+            if ("$NEW$".equals(token)) {
+                if (ni < uploaded.size()) result.add(uploaded.get(ni++));
+            } else {
+                result.add(token);
+            }
+        }
+        while (ni < uploaded.size()) result.add(uploaded.get(ni++));
+        return result;
+    }
+
     @Transactional
-    public MemoryDTO createMemory(String uid, MemoryDTO memoryDTO, MultipartFile mediaFile, UserDetails userDetails) {
+    public MemoryDTO createMemory(String uid, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
 
         // 위치 데이터가 넘어오지 않은 경우 예외 처리
-        if(memoryDTO.getLat() == null || memoryDTO.getLng() == null) {
+        if (memoryDTO.getLat() == null || memoryDTO.getLng() == null) {
             throw new IllegalArgumentException("위치 정보가 필수입니다.");
         }
 
         MemoryEntity memoryEntity = memoryDTO.dtoToEntity(owner);
-        String mediaURL = uploadMedia(mediaFile);
-        if (mediaURL != null) memoryEntity.setMediaURL(mediaURL);
+
+        List<String> uploaded = uploadMediaList(mediaFiles);
+        List<String> finalUrls = buildOrderedUrls(memoryDTO.getMediaOrder(), uploaded);
+        if (finalUrls.size() > MAX_IMAGES) {
+            throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+        }
+        memoryEntity.setMediaUrls(finalUrls);
+        memoryEntity.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
 
         MemoryEntity saved = memoryRepository.save(memoryEntity);
         return MemoryDTO.entityToDto(saved);
@@ -87,9 +127,9 @@ public class MemoryService {
                 .collect(Collectors.toList());
     }
 
-    // 본인 소유 추억의 제목/내용/날짜만 수정 (이미지는 변경하지 않음)
+    // 본인 소유 추억 수정 (제목/내용/날짜 + 이미지 정렬/추가/삭제)
     @Transactional
-    public MemoryDTO updateMemory(Long id, MemoryDTO memoryDTO, UserDetails userDetails) {
+    public MemoryDTO updateMemory(Long id, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         MemoryEntity memory = memoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
 
@@ -99,10 +139,29 @@ public class MemoryService {
             throw new RuntimeException("권한이 없습니다");
         }
 
-        // 이미지(mediaURL)와 위치(lat/lng)는 변경하지 않음
         if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
         if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
         if (memoryDTO.getCreatedAt() != null) memory.setCreatedAt(memoryDTO.getCreatedAt());
+
+        // 이미지: mediaOrder 가 오면 그 순서대로 재구성(기존 유지 + 새 파일 삽입), 없으면 변경하지 않음
+        List<String> order = memoryDTO.getMediaOrder();
+        List<String> uploaded = uploadMediaList(mediaFiles);
+        if (order != null) {
+            List<String> finalUrls = buildOrderedUrls(order, uploaded);
+            if (finalUrls.size() > MAX_IMAGES) {
+                throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+            }
+            memory.setMediaUrls(finalUrls);
+            memory.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
+        } else if (!uploaded.isEmpty()) {
+            List<String> cur = (memory.getMediaUrls() != null) ? new ArrayList<>(memory.getMediaUrls()) : new ArrayList<>();
+            cur.addAll(uploaded);
+            if (cur.size() > MAX_IMAGES) {
+                throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+            }
+            memory.setMediaUrls(cur);
+            memory.setMediaURL(cur.isEmpty() ? null : cur.get(0));
+        }
 
         return MemoryDTO.entityToDto(memoryRepository.save(memory));
     }

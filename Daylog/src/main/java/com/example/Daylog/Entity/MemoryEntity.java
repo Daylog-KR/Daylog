@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity(name = "memories")
 @NoArgsConstructor
@@ -34,7 +36,15 @@ public class MemoryEntity {
     @Column(length = 500)
     private String address;
 
-    private String mediaURL;
+    private String mediaURL; // 첫 번째 이미지(호환용 · 썸네일)
+
+    // 여러 장 이미지(순서 보존). 첫 번째가 대표 이미지.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "memory_media", joinColumns = @JoinColumn(name = "memory_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "media_url", length = 1000)
+    @Builder.Default
+    private List<String> mediaUrls = new ArrayList<>();
 
     // 휴지통(소프트 삭제) 플래그 — true 면 휴지통으로 이동된 상태
     @Column(nullable = false)

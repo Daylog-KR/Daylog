@@ -6,6 +6,8 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity(name = "checklists")
 @NoArgsConstructor
@@ -36,8 +38,16 @@ public class ChecklistEntity {
     @Column(length = 500)
     private String address;
 
-    // 이미지(선택) — 지도 마커에는 표시하지 않지만 속성으로 보관
+    // 이미지(선택) — 첫 번째 이미지(호환용 · 썸네일)
     private String mediaURL;
+
+    // 여러 장 이미지(순서 보존). 첫 번째가 대표 이미지.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "checklist_media", joinColumns = @JoinColumn(name = "checklist_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "media_url", length = 1000)
+    @Builder.Default
+    private List<String> mediaUrls = new ArrayList<>();
 
     // 타입 (CAFE / FOOD / SPOT / SHOPPING / ETC 등)
     private String type;

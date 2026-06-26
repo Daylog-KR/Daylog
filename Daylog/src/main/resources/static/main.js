@@ -1,6 +1,18 @@
 // ==========================================
 // 1. JWT 인증 및 공통 유틸 (부동산 프로젝트 패턴 동일)
 // ==========================================
+
+// 뒤로가기로 oauth-redirect.html 등 이전 페이지로 빠져나가 OAuth 절차가 꼬이는 것 방지:
+// main.html 진입 시 히스토리에 가드 항목을 넣고, 뒤로가기를 가로채 현재 페이지에 머무르게 한다.
+(function preventBackToOAuth() {
+    try {
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', function () {
+            history.pushState(null, '', location.href);
+        });
+    } catch (e) { /* noop */ }
+})();
+
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
@@ -85,6 +97,10 @@ function requireAuthOrRedirect() {
 
 // 공통 fetch 응답 처리
 async function handleResponse(res) {
+    // 업로드 용량 초과 → 로그인 튕김 대신 친절한 안내
+    if (res.status === 413) {
+        throw new Error('이미지 용량이 너무 큽니다. 사진 수를 줄이거나 더 작은 이미지를 사용해주세요.');
+    }
     // 1. 401(Unauthorized), 403(Forbidden) 또는 500(Internal Server Error)이 발생하면 튕겨냄
     if (res.status === 401 || res.status === 403 || res.status === 500) {
         redirectToLogin('토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주세요.');
@@ -383,6 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const containerScroll = document.querySelector('main.container');
             if (containerScroll) containerScroll.scrollTop = 0;
             window.scrollTo(0, 0);
+            document.body.classList.remove('map-immersive'); // 지도 몰입모드 해제 → 헤더/하단바 복귀
             if (targetTab === 'tab-map' && map) {
                 naver.maps.Event.trigger(map, 'resize');
             }
@@ -451,6 +468,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         loadMemoriesFromServer();
         locateMe(true, false); // 지도 처음 진입 시 현재 위치로 이동 + 마커 (실패해도 조용히)
+
+        // 지도(빈 영역) 탭 → 헤더/하단바 숨김·표시 토글 (마커 클릭은 상세보기라 제외)
+        naver.maps.Event.addListener(map, 'click', () => {
+            if (isWaitingForMapClick) return; // 위치 선택 중에는 토글 안 함
+            document.body.classList.toggle('map-immersive');
+            setTimeout(() => { if (map) naver.maps.Event.trigger(map, 'resize'); }, 60);
+        });
     }
 
     // 지도 우하단 '내 위치' 버튼 → 현재 위치로 이동
@@ -464,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function enterPickMode() {
         isWaitingForMapClick = true;
         window._pendingPlaceTitle = '';
+        document.body.classList.remove('map-immersive'); // 헤더(검색창) 필요하므로 몰입모드 해제
         locationMode.classList.remove('hidden');
         mapWrapper.classList.add('picking');
         document.body.classList.add('picking');
@@ -1310,13 +1335,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = document.getElementById('btn-map-action');
         const isCl = (mapMode === 'checklist');
         if (toggle) {
-            toggle.innerText = isCl ? '📸' : '📌';
+            toggle.innerText = isCl ? '💖' : '📌';
             toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
             toggle.classList.toggle('to-memory', isCl);
             toggle.classList.toggle('to-checklist', !isCl);
         }
         if (action) {
-            action.innerText = isCl ? '➕' : '➕';
+            action.innerText = isCl ? '➕' : '📸';
             action.title = isCl ? '가볼곳 추가' : '기록 남기기';
             // 추가 버튼은 색이 바뀌지 않도록 모드별 색 클래스를 적용하지 않음
         }
@@ -2383,7 +2408,7 @@ function openChecklistDetail(item) {
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open">✏️ 수정</button>' +
               '<button type="button" class="detail-trash-btn" id="cl-detail-del-open">🗑️</button>'
             : '';
     }
@@ -2566,7 +2591,7 @@ function openDetailModal(memory) {
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️</button>' +
+            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open">✏️ 수정</button>' +
               '<button type="button" class="detail-trash-btn" id="detail-trash-open">🗑️</button>'
             : '';
     }

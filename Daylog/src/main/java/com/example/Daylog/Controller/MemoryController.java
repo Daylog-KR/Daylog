@@ -22,11 +22,12 @@ public class MemoryController {
 
     private final MemoryService memoryService;
 
+    // 생성 — 이미지 여러 장(mediaData 반복) 가능
     @SneakyThrows
     @PostMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<MemoryDTO> createMemory(@RequestPart("uid") String uid,
                                                   @RequestPart("memoryData") String memoryData,
-                                                  @RequestPart(value = "mediaData") MultipartFile mediaData,
+                                                  @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
                                                   @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -40,39 +41,17 @@ public class MemoryController {
         return ResponseEntity.ok(memoryService.getAllMemories(uid, userDetails));
     }
 
-    // 본인 소유 추억 수정 (제목/내용/날짜) — JSON 본문
-    @PutMapping("/{id}")
+    // 본인 소유 추억 수정 (제목/내용/날짜 + 이미지 정렬/추가/삭제) — multipart
+    @SneakyThrows
+    @PutMapping(value = "/{id}", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<MemoryDTO> updateMemory(@PathVariable("id") Long id,
-                                                  @RequestBody java.util.Map<String, Object> body,
+                                                  @RequestPart("memoryData") String memoryData,
+                                                  @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
                                                   @AuthenticationPrincipal UserDetails userDetails) {
-        MemoryDTO dto = MemoryDTO.builder()
-                .title(body.get("title") != null ? String.valueOf(body.get("title")) : null)
-                .content(body.get("content") != null ? String.valueOf(body.get("content")) : null)
-                .createdAt(parseDateTime(body.get("createdAt")))
-                .build();
-        return ResponseEntity.ok(memoryService.updateMemory(id, dto, userDetails));
-    }
-
-    // 다양한 날짜 문자열("yyyy-MM-dd", ISO, 'Z' 포함)을 LocalDateTime 으로 안전 변환
-    private static java.time.LocalDateTime parseDateTime(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        if (s.isEmpty()) return null;
-        try {
-            if (s.length() == 10) return java.time.LocalDate.parse(s).atStartOfDay();
-            if (s.endsWith("Z")) {
-                return java.time.Instant.parse(s)
-                        .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalDateTime();
-            }
-            return java.time.LocalDateTime.parse(s);
-        } catch (Exception e) {
-            try {
-                return java.time.LocalDate.parse(s.substring(0, 10)).atStartOfDay();
-            } catch (Exception ex) {
-                return null;
-            }
-        }
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        MemoryDTO dto = mapper.readValue(memoryData, MemoryDTO.class);
+        return ResponseEntity.ok(memoryService.updateMemory(id, dto, mediaData, userDetails));
     }
 
     // 휴지통으로 이동 (소프트 삭제)

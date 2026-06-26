@@ -22,12 +22,12 @@ public class ChecklistController {
 
     private final ChecklistService checklistService;
 
-    // 생성 — 이미지는 선택(required=false)
+    // 생성 — 이미지 여러 장(mediaData 반복) 선택
     @SneakyThrows
     @PostMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<ChecklistDTO> createChecklist(@RequestPart("uid") String uid,
                                                         @RequestPart("checklistData") String checklistData,
-                                                        @RequestPart(value = "mediaData", required = false) MultipartFile mediaData,
+                                                        @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
                                                         @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -42,12 +42,12 @@ public class ChecklistController {
         return ResponseEntity.ok(checklistService.getAllChecklists(uid, userDetails));
     }
 
-    // 본인 소유 수정 (제목/내용/타입/방문여부/방문일/이미지) — 이미지는 선택
+    // 본인 소유 수정 (제목/내용/타입/방문여부/방문일 + 이미지 정렬/추가/삭제) — 이미지 여러 장 선택
     @SneakyThrows
     @PutMapping(value = "/{id}", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<ChecklistDTO> updateChecklist(@PathVariable("id") Long id,
                                                         @RequestPart("checklistData") String checklistData,
-                                                        @RequestPart(value = "mediaData", required = false) MultipartFile mediaData,
+                                                        @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
                                                         @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());

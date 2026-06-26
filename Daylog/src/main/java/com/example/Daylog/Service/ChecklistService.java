@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -73,8 +74,39 @@ public class ChecklistService {
         }
     }
 
+    private static final int MAX_IMAGES = 10;
+
+    private List<String> uploadMediaList(List<MultipartFile> files) {
+        List<String> urls = new ArrayList<>();
+        if (files == null) return urls;
+        for (MultipartFile f : files) {
+            String u = uploadMedia(f);
+            if (u != null) urls.add(u);
+        }
+        return urls;
+    }
+
+    private List<String> buildOrderedUrls(List<String> order, List<String> uploaded) {
+        List<String> result = new ArrayList<>();
+        if (order == null || order.isEmpty()) {
+            result.addAll(uploaded);
+            return result;
+        }
+        int ni = 0;
+        for (String token : order) {
+            if (token == null) continue;
+            if ("$NEW$".equals(token)) {
+                if (ni < uploaded.size()) result.add(uploaded.get(ni++));
+            } else {
+                result.add(token);
+            }
+        }
+        while (ni < uploaded.size()) result.add(uploaded.get(ni++));
+        return result;
+    }
+
     @Transactional
-    public ChecklistDTO createChecklist(String uid, ChecklistDTO dto, MultipartFile mediaFile, UserDetails userDetails) {
+    public ChecklistDTO createChecklist(String uid, ChecklistDTO dto, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
 
         if (dto.getLat() == null || dto.getLng() == null) {
@@ -86,8 +118,14 @@ public class ChecklistService {
         }
 
         ChecklistEntity entity = dto.dtoToEntity(owner);
-        String mediaURL = uploadMedia(mediaFile);
-        if (mediaURL != null) entity.setMediaURL(mediaURL);
+
+        List<String> uploaded = uploadMediaList(mediaFiles);
+        List<String> finalUrls = buildOrderedUrls(dto.getMediaOrder(), uploaded);
+        if (finalUrls.size() > MAX_IMAGES) {
+            throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+        }
+        entity.setMediaUrls(finalUrls);
+        entity.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
 
         ChecklistEntity saved = checklistRepository.save(entity);
         return ChecklistDTO.entityToDto(saved);
@@ -101,9 +139,9 @@ public class ChecklistService {
                 .collect(Collectors.toList());
     }
 
-    // 본인 소유 체크리스트 수정 (위치 제외 — 제목/내용/타입/방문여부/방문일/이미지)
+    // 본인 소유 체크리스트 수정 (제목/내용/타입/방문여부/방문일 + 이미지 정렬/추가/삭제)
     @Transactional
-    public ChecklistDTO updateChecklist(Long id, ChecklistDTO dto, MultipartFile mediaFile, UserDetails userDetails) {
+    public ChecklistDTO updateChecklist(Long id, ChecklistDTO dto, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         ChecklistEntity c = getOwnedChecklist(id, userDetails);
 
         if (dto.getTitle() != null)   c.setTitle(dto.getTitle());
@@ -112,9 +150,25 @@ public class ChecklistService {
         c.setVisited(dto.isVisited());
         c.setVisitedDate(dto.isVisited() ? dto.getVisitedDate() : null);
 
-        // 새 이미지가 있으면 교체 (없으면 기존 이미지 유지)
-        String newUrl = uploadMedia(mediaFile);
-        if (newUrl != null) c.setMediaURL(newUrl);
+        // 이미지: mediaOrder 가 오면 그 순서대로 재구성, 없으면 새 파일만 뒤에 추가(없으면 변경 없음)
+        List<String> order = dto.getMediaOrder();
+        List<String> uploaded = uploadMediaList(mediaFiles);
+        if (order != null) {
+            List<String> finalUrls = buildOrderedUrls(order, uploaded);
+            if (finalUrls.size() > MAX_IMAGES) {
+                throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+            }
+            c.setMediaUrls(finalUrls);
+            c.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
+        } else if (!uploaded.isEmpty()) {
+            List<String> cur = (c.getMediaUrls() != null) ? new ArrayList<>(c.getMediaUrls()) : new ArrayList<>();
+            cur.addAll(uploaded);
+            if (cur.size() > MAX_IMAGES) {
+                throw new IllegalArgumentException("이미지는 최대 " + MAX_IMAGES + "장까지 첨부할 수 있습니다.");
+            }
+            c.setMediaUrls(cur);
+            c.setMediaURL(cur.isEmpty() ? null : cur.get(0));
+        }
 
         return ChecklistDTO.entityToDto(checklistRepository.save(c));
     }
