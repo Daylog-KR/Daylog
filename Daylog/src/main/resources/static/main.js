@@ -486,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentLocMarker = new naver.maps.Marker({
                 position: pos, map: map, zIndex: 50, clickable: false,
                 icon: {
-                    content: '<div class="my-loc-dot"><span class="my-loc-pulse"></span></div>',
+                    content: '<div class="my-loc-dot"><span class="my-loc-pulse"></span><span class="my-loc-beam"></span></div>', /* [smsong] 방향 빔 추가 */
                     anchor: new naver.maps.Point(11, 11)
                 }
             });
@@ -495,6 +495,51 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentLocMarker.getMap()) currentLocMarker.setMap(map);
         }
     }
+
+    // [B] edit by smsong - 네이버 지도 앱 스타일: 현재 위치 마커에 방향(나침반) 빔 표시
+    let _compassOn = false, _hdgPrev = null, _hdgAccum = 0, _hdgRaf = 0, _hdgPending = null;
+    function _setMyLocHeading(deg) {
+        const dot = document.querySelector('.my-loc-dot');
+        if (!dot) return;
+        // 0/360 경계에서 한 바퀴 도는 현상 방지: 최단경로 누적각 사용
+        if (_hdgPrev == null) { _hdgPrev = deg; _hdgAccum = deg; }
+        else {
+            let d = deg - _hdgPrev;
+            if (d > 180) d -= 360; else if (d < -180) d += 360;
+            _hdgAccum += d; _hdgPrev = deg;
+        }
+        dot.style.setProperty('--heading', _hdgAccum.toFixed(1) + 'deg');
+        dot.classList.add('has-heading');
+    }
+    function _onOrient(e) {
+        let h = null;
+        if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+            h = e.webkitCompassHeading;                 // iOS: 이미 나침반값(북=0, 시계방향)
+        } else if (e.absolute === true && typeof e.alpha === 'number') {
+            h = (360 - e.alpha) % 360;                  // Android(절대): alpha(반시계) → 나침반(시계)
+        }
+        if (h == null) return;
+        // 화면 회전(가로모드 등) 보정
+        const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+        h = (h + so + 360) % 360;
+        _hdgPending = h;
+        if (!_hdgRaf) _hdgRaf = requestAnimationFrame(() => { _hdgRaf = 0; if (_hdgPending != null) _setMyLocHeading(_hdgPending); });
+    }
+    function enableCompass() {
+        if (_compassOn) return;
+        const start = () => {
+            if (_compassOn) return;
+            _compassOn = true;
+            if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', _onOrient, true);
+            window.addEventListener('deviceorientation', _onOrient, true);
+        };
+        const D = window.DeviceOrientationEvent;
+        if (D && typeof D.requestPermission === 'function') {   // iOS 13+: 사용자 제스처에서 권한 요청
+            D.requestPermission().then(s => { if (s === 'granted') start(); }).catch(() => {});
+        } else { start(); }                                     // Android 등: 권한 불필요
+    }
+    window._enableCompass = enableCompass;
+    // [E] edit by smsong
 
     // 현재 GPS 위치를 가져와 마커 표시 (recenter=true 면 지도 화면도 이동, announce=true 면 실패 시 안내)
     function locateMe(recenter, announce) {
@@ -516,6 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         loadMemoriesFromServer();
         locateMe(true, false); // 지도 처음 진입 시 현재 위치로 이동 + 마커 (실패해도 조용히)
+        enableCompass(); // [B] edit by smsong - 방향(나침반) 빔 시작 (안드로이드는 권한 불필요) / [E] edit by smsong
 
         // 지도(빈 영역) 탭 → 헤더/하단바 숨김·표시 토글 (마커 클릭은 상세보기라 제외)
         naver.maps.Event.addListener(map, 'click', () => {
@@ -527,7 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 지도 우하단 '내 위치' 버튼 → 현재 위치로 이동
     const myLocBtn = document.getElementById('btn-my-location');
-    if (myLocBtn) myLocBtn.addEventListener('click', () => locateMe(true, true));
+    if (myLocBtn) myLocBtn.addEventListener('click', () => { enableCompass(); locateMe(true, true); }); // [smsong] iOS 나침반 권한은 탭(제스처)에서 요청
 
     // --- 위치 선택 모드 (지도 중앙 점 기준) ---
     let mapIdleListener = null;
@@ -1513,9 +1559,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 pickTarget = 'memory';
                 // 다녀온 곳으로 추가하면 동일 위치에 추억도 자동 생성
                 if (created && created.visited) {
-                    createMemoryFromChecklist(created)
-                        .then(() => showToast('다녀온 곳이라 추억에도 기록했어요'))
+                    // [B] edit by smsong - 동일 위치+제목 추억이 있으면 중복 생성 방지
+                    ensureMemoryForChecklist(created)
+                        .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했어요'); })
                         .catch(err => console.warn('추억 자동 생성 실패', err));
+                    // [E] edit by smsong
                 }
                 if (mapMode !== 'checklist') setMapMode('checklist');
                 else loadChecklistsFromServer();
@@ -2598,6 +2646,26 @@ function createMemoryFromChecklist(cl) {
         .then(Daylog.handleResponse);
 }
 
+// [B] edit by smsong - 가볼곳 '다녀옴' 추억 자동 생성 시 중복 방지
+//  가볼곳의 위치(lat/lng)는 수정할 수 없으므로, '동일 위치 + 동일 제목'의 추억을 같은 오브젝트로 간주한다.
+//  이미 존재하면 새로 만들지 않아, 안가봄<->갔다왔어요 토글을 반복해도 추억이 중복 생성되지 않는다.
+function ensureMemoryForChecklist(cl) {
+    if (!cl || cl.lat == null || cl.lng == null) return Promise.resolve(false);
+    const sameObject = (m) =>
+        m && m.lat != null && m.lng != null &&
+        Math.abs(Number(m.lat) - Number(cl.lat)) < 1e-6 &&
+        Math.abs(Number(m.lng) - Number(cl.lng)) < 1e-6 &&
+        String(m.title || '').trim() === String(cl.title || '').trim();
+    return fetch(`${Daylog.api}/api/memories/${Daylog.currentUid}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then((list) => {
+            if ((list || []).some(sameObject)) return false; // 동일 추억이 이미 있음 -> 생성 안 함
+            return createMemoryFromChecklist(cl).then(() => true);
+        })
+        .catch(() => createMemoryFromChecklist(cl).then(() => true)); // 목록 조회 실패 시 기존 동작 유지
+}
+// [E] edit by smsong
+
 function saveChecklistEdit() {
     const item = _detailChecklist;
     if (!item) return;
@@ -2637,11 +2705,13 @@ function saveChecklistEdit() {
             closeChecklistDetail();
             Daylog.reloadChecklists();
             // 이번 수정에서 처음으로 '다녀옴'이 된 경우에만 추억 자동 생성
+            // [B] edit by smsong - 재방문 토글(안가봄->갔다왔어요)로 동일 추억이 중복 생성되지 않도록 dedup 처리
             if (updated && updated.visited && !wasVisited) {
-                createMemoryFromChecklist(updated)
-                    .then(() => showToast('다녀온 곳이라 추억에도 기록했어요'))
+                ensureMemoryForChecklist(updated)
+                    .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했어요'); })
                     .catch(err => console.warn('추억 자동 생성 실패', err));
             }
+            // [E] edit by smsong
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주세요.'); })
         .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });

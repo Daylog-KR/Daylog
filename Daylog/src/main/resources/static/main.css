@@ -1598,6 +1598,23 @@ input[type="date"]::-webkit-date-and-time-value {
     100% { transform: scale(2.3); opacity: 0; }
 }
 
+/* [B] edit by smsong - 네이버 지도 앱 스타일: 현재 위치 방향(나침반) 빔 */
+.my-loc-beam {
+    position: absolute; left: 50%; bottom: 50%;
+    width: 40px; height: 30px;
+    transform: translateX(-50%) rotate(var(--heading, 0deg));
+    transform-origin: 50% 100%;            /* 점(마커 중심)을 축으로 회전 */
+    background: linear-gradient(to top, rgba(45,127,249,0.55), rgba(45,127,249,0));
+    clip-path: polygon(50% 100%, 0 0, 100% 0); /* 점에서 바깥으로 퍼지는 부채꼴 */
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.18s linear;
+    pointer-events: none; z-index: 0;
+}
+.my-loc-dot.has-heading .my-loc-beam { opacity: 1; }
+.my-loc-dot::after { position: relative; z-index: 2; }  /* 파란 점을 빔 위에 표시 */
+.my-loc-pulse { z-index: 1; }
+/* [E] edit by smsong */
+
 /* 지도 좌하단 '내 위치로 이동' 버튼 */
 .my-location-btn {
     position: absolute; left: 16px; bottom: 22px; z-index: 20;
