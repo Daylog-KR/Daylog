@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
     <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <meta name="theme-color" content="#9c6644">
-    <meta name="apple-mobile-web-app-title" content="Our Memory">
+    <meta name="apple-mobile-web-app-title" content="Daylog">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="main.css">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
@@ -18,19 +18,19 @@
     <div class="logo">Daylog</div>
     <div id="header-map-controls" class="header-map-controls">
         <div id="header-map-filter" class="header-map-filter">
-            <button type="button" id="btn-map-filter" class="hdr-icon-btn" title="필터" aria-label="필터">🔍</button>
+            <button type="button" id="btn-map-filter" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
             <div id="map-filter-pop" class="map-filter-pop hidden"></div>
         </div>
     </div>
     <div id="header-timeline-controls" class="header-timeline-controls">
-        <button type="button" id="tl-filter-toggle" class="hdr-icon-btn" title="검색" aria-label="검색">🔍</button>
+        <button type="button" id="tl-filter-toggle" class="hdr-icon-btn" title="검색" aria-label="검색"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
     </div>
     <div id="header-checklist-controls" class="header-checklist-controls">
-        <button type="button" id="cl-filter-toggle" class="hdr-icon-btn" title="검색" aria-label="검색">🔍</button>
+        <button type="button" id="cl-filter-toggle" class="hdr-icon-btn" title="검색" aria-label="검색"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
     </div>
     <div id="header-pick-search" class="header-pick-search">
         <div class="lm-search">
-            <span class="lm-search-icon">🔍</span>
+            <span class="lm-search-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
             <input type="text" id="lm-search-input" placeholder="가게·장소 검색 (예: 옹계집숯불닭갈비, CGV)" autocomplete="off">
             <button type="button" id="lm-search-btn">검색</button>
             <ul id="lm-suggestions" class="lm-suggestions hidden"></ul>
@@ -49,11 +49,11 @@
     <section id="tab-map" class="tab-content active">
         <div class="map-wrapper" id="map-wrapper">
             <div id="naver-map"></div>
-            <button type="button" id="btn-my-location" class="my-location-btn" title="현재 위치로 이동" aria-label="현재 위치로 이동">📍</button>
+            <button type="button" id="btn-my-location" class="my-location-btn" title="현재 위치로 이동" aria-label="현재 위치로 이동"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
             <!-- 우측 세로 원형 버튼: (위) 기록/가볼곳 추가 · (아래) 추억↔체크리스트 전환 -->
             <div class="map-fab-stack">
-                <button type="button" class="map-fab action-fab" id="btn-map-action" title="기록 남기기" aria-label="추가">📸</button>
-                <button type="button" class="map-fab toggle-fab" id="btn-map-toggle" title="체크리스트 보기" aria-label="보기 전환">📌</button>
+                <button type="button" class="map-fab action-fab" id="btn-map-action" title="기록 남기기" aria-label="추가"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+                <button type="button" class="map-fab toggle-fab" id="btn-map-toggle" title="체크리스트 보기" aria-label="보기 전환"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
             </div>
 
             <!-- 위치 선택 모드 오버레이 (검색창은 헤더로 이동) -->
@@ -62,12 +62,12 @@
                 <div class="lm-reticle"></div>
                 <div class="lm-top">
                     <div class="lm-banner" id="lm-center-label">
-                        <span class="lm-pin">📍</span> 지도를 움직여 중앙에 위치를 맞춰주세요
+                        <span class="lm-pin"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> 지도를 움직여 중앙에 위치를 맞춰주세요
                     </div>
                 </div>
                 <div class="lm-bottom">
                     <div class="lm-actions">
-                        <button type="button" id="lm-current" class="lm-current-btn">🎯 현재 위치</button>
+                        <button type="button" id="lm-current" class="lm-current-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/></svg> 현재 위치</button>
                         <button type="button" id="lm-confirm" class="lm-confirm-btn">이 위치로 설정</button>
                         <button type="button" id="lm-cancel" class="lm-cancel">취소</button>
                     </div>
@@ -80,7 +80,7 @@
     <section id="tab-timeline" class="tab-content" style="display: none;">
         <div class="content-wrapper">
             <section class="timeline-section">
-                <h3 class="section-title">타임라인 📖</h3>
+                <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg> 타임라인</h3>
                 <div id="tl-filter-bar" class="filter-bar hidden">
                     <div class="filter-field">
                         <span class="filter-label">검색어</span>
@@ -113,7 +113,7 @@
     <section id="tab-checklist" class="tab-content" style="display: none;">
         <div class="content-wrapper">
             <section class="timeline-section">
-                <h3 class="section-title">가볼곳 📌</h3>
+                <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> 가볼곳</h3>
                 <div id="cl-filter-wrap" class="cl-filter-wrap hidden">
                     <div class="filter-search-row cl-search-row">
                         <input type="text" id="cl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
@@ -122,14 +122,14 @@
                     </div>
                     <div id="cl-filter-bar" class="cl-filter-bar">
                         <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
-                        <button type="button" class="cl-filter-chip" data-filter="CAFE">☕ 카페</button>
-                        <button type="button" class="cl-filter-chip" data-filter="FOOD">🍴 식당</button>
-                        <button type="button" class="cl-filter-chip" data-filter="SPOT">📍 장소</button>
-                        <button type="button" class="cl-filter-chip" data-filter="ETC">✨ 기타</button>
+                        <button type="button" class="cl-filter-chip" data-filter="CAFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b06a4f;" aria-hidden="true"><path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/></svg> 카페</button>
+                        <button type="button" class="cl-filter-chip" data-filter="FOOD"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#3f7fb0;" aria-hidden="true"><path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/></svg> 식당</button>
+                        <button type="button" class="cl-filter-chip" data-filter="SPOT"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#5f9e6f;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 장소</button>
+                        <button type="button" class="cl-filter-chip" data-filter="ETC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#7a756e;" aria-hidden="true"><path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg> 기타</button>
                     </div>
                     <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
                         <button type="button" class="cl-vfilter-chip selected" data-vfilter="ALL">전체</button>
-                        <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED">✓ 다녀온 곳</button>
+                        <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> 다녀온 곳</button>
                         <button type="button" class="cl-vfilter-chip" data-vfilter="TODO">가볼 곳</button>
                     </div>
                 </div>
@@ -144,17 +144,17 @@
             <div class="couple-card">
                 <div class="profile-box">
                     <div class="avatar-wrap" id="wrap-me">
-                        <div class="avatar" id="avatar-me">👦</div>
-                        <span class="avatar-edit hidden" id="edit-me">📷</span>
+                        <div class="avatar" id="avatar-me"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                        <span class="avatar-edit hidden" id="edit-me"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
                     </div>
                     <p class="profile-name" id="name-me">나</p>
                     <p class="profile-sub" id="sub-me"></p>
                 </div>
-                <div class="center-heart">🤎</div>
+                <div class="center-heart"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b08968;" aria-hidden="true"><path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/></svg></div>
                 <div class="profile-box">
                     <div class="avatar-wrap" id="wrap-partner">
-                        <div class="avatar" id="avatar-partner">👧</div>
-                        <span class="avatar-edit hidden" id="edit-partner">📷</span>
+                        <div class="avatar" id="avatar-partner"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                        <span class="avatar-edit hidden" id="edit-partner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
                     </div>
                     <p class="profile-name" id="name-partner">상대방</p>
                     <p class="profile-sub" id="sub-partner"></p>
@@ -192,9 +192,9 @@
                 </div>
             </div>
 
-            <button type="button" id="btn-edit-profile" class="edit-profile-btn">✏️ 프로필 수정</button>
-            <button type="button" id="btn-trash" class="trash-menu-btn">🗑️ 휴지통</button>
-            <button type="button" id="btn-profile-logout" class="logout-menu-btn">🚪 로그아웃</button>
+            <button type="button" id="btn-edit-profile" class="edit-profile-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> 프로필 수정</button>
+            <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
+            <button type="button" id="btn-profile-logout" class="logout-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> 로그아웃</button>
 
             <p class="version-text">Daylog v2.0.0</p>
         </div>
@@ -205,19 +205,19 @@
 <!-- 바텀 네비 -->
 <nav class="bottom-nav">
     <a href="#" class="nav-item active" data-tab="tab-map">
-        <span class="nav-icon">🗺️</span>
+        <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>
         <span class="nav-text">지도</span>
     </a>
     <a href="#" class="nav-item" data-tab="tab-timeline">
-        <span class="nav-icon">📖</span>
+        <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg></span>
         <span class="nav-text">타임라인</span>
     </a>
     <a href="#" class="nav-item" data-tab="tab-checklist">
-        <span class="nav-icon">📌</span>
+        <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
         <span class="nav-text">가볼곳</span>
     </a>
     <a href="#" class="nav-item" data-tab="tab-profile">
-        <span class="nav-icon">👤</span>
+        <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
         <span class="nav-text">내 정보</span>
     </a>
 </nav>
@@ -226,7 +226,7 @@
 <div id="memory-modal" class="modal hidden">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>추억 새기기 ✨</h3>
+            <h3>추억 새기기</h3>
             <button type="button" class="close-modal" onclick="closeMemoryModal()">&times;</button>
         </div>
         <form id="memory-form">
@@ -235,9 +235,9 @@
                 <img id="image-preview" src="" alt="미리보기" class="hidden" style="display:none">
                 <input type="file" id="memory-media-input" accept="image/*" multiple style="display:none">
             </div>
-            <button type="button" id="btn-retake-photo" class="retake-photo-btn hidden">📷 다시 촬영하기</button>
+            <button type="button" id="btn-retake-photo" class="retake-photo-btn hidden"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg> 다시 촬영하기</button>
             <div id="location-status-badge" class="location-badge">위치 설정 중...</div>
-            <button type="button" id="btn-reset-location" class="reset-location-btn">📍 위치 다시 설정하기</button>
+            <button type="button" id="btn-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
 
             <div class="form-group">
                 <label>날짜</label>
@@ -251,7 +251,7 @@
                 <label>내용</label>
                 <textarea id="memory-content" placeholder="이야기를 작성하세요 (선택)" rows="4"></textarea>
             </div>
-            <button type="submit" class="submit-btn">기록하기 ✨</button>
+            <button type="submit" class="submit-btn">기록하기</button>
         </form>
     </div>
 </div>
@@ -270,10 +270,10 @@
         <!-- 수정 영역 (본인 추억만 · 사진/위치는 표시만, 수정 불가) -->
         <form id="detail-edit-form" class="hidden">
             <div class="detail-edit-readonly">
-                <label class="media-edit-label">사진 (최대 10장 · 꾹 눌러 정렬 / ✕ 삭제)</label>
+                <label class="media-edit-label">사진 (최대 10장 · 꾹 눌러 정렬 / <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 삭제)</label>
                 <div class="media-grid" id="edit-media-grid"></div>
                 <input type="file" id="edit-media-input" accept="image/*" multiple style="display:none">
-                <span class="meta-item edit-loc-line" id="edit-loc">📍 위치 확인 중…</span>
+                <span class="meta-item edit-loc-line" id="edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 확인 중…</span>
             </div>
             <div class="form-group">
                 <label>날짜</label>
@@ -290,7 +290,7 @@
             <p class="detail-edit-note">※ 위치는 수정할 수 없어요.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="detail-edit-cancel" class="cancel-edit-btn">취소</button>
-                <button type="submit" class="submit-btn">저장하기 ✨</button>
+                <button type="submit" class="submit-btn">저장하기</button>
             </div>
         </form>
     </div>
@@ -300,20 +300,20 @@
 <div id="checklist-modal" class="modal hidden">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>가볼곳 추가 📌</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> 가볼곳 추가</h3>
             <button type="button" class="close-modal" onclick="closeChecklistModal()">&times;</button>
         </div>
         <form id="checklist-form">
             <div id="cl-location-badge" class="location-badge">위치 설정 중...</div>
-            <button type="button" id="cl-reset-location" class="reset-location-btn">📍 위치 다시 설정하기</button>
+            <button type="button" id="cl-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
 
             <div class="form-group">
                 <label>타입</label>
                 <div class="cl-type-options" id="cl-type-options">
-                    <button type="button" class="cl-type-chip" data-type="CAFE">☕ 카페</button>
-                    <button type="button" class="cl-type-chip" data-type="FOOD">🍴 식당</button>
-                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 장소</button>
-                    <button type="button" class="cl-type-chip" data-type="ETC">✨ 기타</button>
+                    <button type="button" class="cl-type-chip" data-type="CAFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b06a4f;" aria-hidden="true"><path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/></svg> 카페</button>
+                    <button type="button" class="cl-type-chip" data-type="FOOD"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#3f7fb0;" aria-hidden="true"><path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/></svg> 식당</button>
+                    <button type="button" class="cl-type-chip" data-type="SPOT"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#5f9e6f;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 장소</button>
+                    <button type="button" class="cl-type-chip" data-type="ETC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#7a756e;" aria-hidden="true"><path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg> 기타</button>
                 </div>
             </div>
             <div class="form-group">
@@ -335,7 +335,7 @@
                 <div class="media-grid" id="cl-media-grid"></div>
                 <input type="file" id="cl-image" accept="image/*" multiple class="cl-file-input" style="display:none">
             </div>
-            <button type="submit" class="submit-btn">추가하기 📌</button>
+            <button type="submit" class="submit-btn">추가하기</button>
         </form>
     </div>
 </div>
@@ -353,21 +353,21 @@
         <!-- 수정 영역 (본인 가볼곳만 · 위치 제외 / 사진 변경 가능) -->
         <form id="cl-edit-form" class="hidden">
             <div class="cl-edit-loc-wrap">
-                <span class="meta-item edit-loc-line" id="cl-edit-loc">📍</span>
+                <span class="meta-item edit-loc-line" id="cl-edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
             </div>
             <div class="form-group">
                 <label>사진 (최대 10장)</label>
                 <div class="media-grid" id="cl-edit-media-grid"></div>
                 <input type="file" id="cl-edit-image-file" accept="image/*" multiple class="cl-file-input" style="display:none">
-                <p class="cl-img-hint">사진을 꾹 눌러 순서를 바꾸고, ✕로 삭제할 수 있어요.</p>
+                <p class="cl-img-hint">사진을 꾹 눌러 순서를 바꾸고, <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 로 삭제할 수 있어요.</p>
             </div>
             <div class="form-group">
                 <label>타입</label>
                 <div class="cl-type-options" id="cl-edit-type-options">
-                    <button type="button" class="cl-type-chip" data-type="CAFE">☕ 카페</button>
-                    <button type="button" class="cl-type-chip" data-type="FOOD">🍴 식당</button>
-                    <button type="button" class="cl-type-chip" data-type="SPOT">📍 장소</button>
-                    <button type="button" class="cl-type-chip" data-type="ETC">✨ 기타</button>
+                    <button type="button" class="cl-type-chip" data-type="CAFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b06a4f;" aria-hidden="true"><path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/></svg> 카페</button>
+                    <button type="button" class="cl-type-chip" data-type="FOOD"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#3f7fb0;" aria-hidden="true"><path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/></svg> 식당</button>
+                    <button type="button" class="cl-type-chip" data-type="SPOT"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#5f9e6f;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 장소</button>
+                    <button type="button" class="cl-type-chip" data-type="ETC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#7a756e;" aria-hidden="true"><path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg> 기타</button>
                 </div>
             </div>
             <div class="form-group">
@@ -387,7 +387,7 @@
             <p class="detail-edit-note">※ 위치는 수정할 수 없어요.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="cl-edit-cancel" class="cancel-edit-btn">취소</button>
-                <button type="submit" class="submit-btn">저장하기 ✨</button>
+                <button type="submit" class="submit-btn">저장하기</button>
             </div>
         </form>
     </div>
@@ -408,7 +408,7 @@
 <div id="trash-modal" class="modal hidden">
     <div class="modal-content list-content">
         <div class="modal-header">
-            <h3>🗑️ 휴지통</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</h3>
             <button type="button" class="close-modal" id="trash-modal-close">&times;</button>
         </div>
         <div id="trash-modal-body" class="trash-body"></div>
@@ -425,7 +425,7 @@
     <div class="camera-topbar">
         <button type="button" id="camera-close" class="camera-x" aria-label="닫기">&times;</button>
         <span class="camera-title">사진 촬영</span>
-        <button type="button" id="camera-switch" class="camera-switch" aria-label="카메라 전환">🔄</button>
+        <button type="button" id="camera-switch" class="camera-switch" aria-label="카메라 전환"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#fff;" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
     </div>
     <div class="camera-bottombar">
         <button type="button" id="camera-shutter" class="camera-shutter" aria-label="촬영"></button>
@@ -440,7 +440,7 @@
 <div id="photo-editor-modal" class="modal hidden">
     <div class="modal-content pe-content">
         <div class="modal-header">
-            <h3>사진 편집 ✂️</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg> 사진 편집</h3>
             <button type="button" class="close-modal" id="pe-cancel">&times;</button>
         </div>
         <div class="pe-stage" id="pe-stage">
@@ -453,11 +453,11 @@
             </div>
         </div>
         <div class="pe-controls">
-            <button type="button" id="pe-rotate" class="pe-btn">↻ 90° 회전</button>
-            <button type="button" id="pe-reset" class="pe-btn">⤢ 자르기 초기화</button>
+            <button type="button" id="pe-rotate" class="pe-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 90° 회전</button>
+            <button type="button" id="pe-reset" class="pe-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> 자르기 초기화</button>
         </div>
         <p class="pe-hint">모서리를 끌어 자르고, 회전 버튼으로 방향을 바꿔요</p>
-        <button type="button" class="submit-btn" id="pe-apply">이 사진으로 적용 ✨</button>
+        <button type="button" class="submit-btn" id="pe-apply">이 사진으로 적용</button>
     </div>
 </div>
 
@@ -465,7 +465,7 @@
 <div id="crop-modal" class="modal hidden">
     <div class="modal-content crop-content">
         <div class="modal-header">
-            <h3>사진 편집 ✂️</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg> 사진 편집</h3>
             <button type="button" class="close-modal" id="crop-cancel">&times;</button>
         </div>
         <div class="crop-stage" id="crop-stage">
@@ -473,18 +473,18 @@
             <div class="crop-ring"></div>
         </div>
         <div class="crop-controls">
-            <span class="crop-ico">🔍</span>
+            <span class="crop-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
             <input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1">
         </div>
         <p class="crop-hint">드래그로 위치 조정 · 슬라이더로 확대</p>
-        <button type="button" class="submit-btn" id="crop-apply">이 사진으로 설정 ✨</button>
+        <button type="button" class="submit-btn" id="crop-apply">이 사진으로 설정</button>
     </div>
 </div>
 
 <!-- 닉네임 최초 설정 모달 (닉네임 없을 때만 노출) -->
 <div id="nickname-modal" class="modal hidden">
     <div class="modal-content nickname-content">
-        <div class="nickname-emoji">👾</div>
+        <div class="nickname-emoji"><svg class="brand-glyph" width="56" height="56" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#fffdf9" stroke="#b08968" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#b08968" stroke-width="2.2"/><circle cx="19.5" cy="18" r="1.5" fill="#b08968"/><circle cx="19.5" cy="27" r="1.5" fill="#b08968"/><circle cx="19.5" cy="36" r="1.5" fill="#b08968"/><circle cx="19.5" cy="45" r="1.5" fill="#b08968"/><g stroke="#e6ccb2" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="19" x2="45" y2="19"/><line x1="29" y1="25" x2="45" y2="25"/></g><path d="M37.5 50c-5-3.8-10-7-10-12a5.6 5.6 0 0 1 10-3.6A5.6 5.6 0 0 1 47.5 38c0 5-5 8.2-10 12z" fill="#c1462f"/><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#9c6644"/></svg></div>
         <h3 class="nickname-title">닉네임을 설정해주세요</h3>
         <p class="nickname-desc">프로필에서 언제든 변경 가능</p>
         <form id="nickname-form">
@@ -505,8 +505,8 @@
     </header>
     <div class="edit-body">
         <div class="edit-avatar-wrap" id="edit-avatar-wrap">
-            <div class="avatar" id="edit-avatar">👤</div>
-            <span class="avatar-edit">📷</span>
+            <div class="avatar" id="edit-avatar"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <span class="avatar-edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
         </div>
         <p class="edit-avatar-hint">사진을 눌러 변경</p>
         <button type="button" id="edit-remove-photo" class="edit-remove-photo hidden">사진 제거</button>

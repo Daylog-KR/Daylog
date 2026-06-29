@@ -1,19 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c89b76"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e6ccb2"/>
+      <stop offset="0.55" stop-color="#c79b78"/>
       <stop offset="1" stop-color="#9c6644"/>
     </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf9"/>
+      <stop offset="1" stop-color="#fbf4ea"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="ds" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#5c3a22" flood-opacity="0.25"/>
+    </filter>
   </defs>
 
-  <rect width="100" height="100" rx="24" fill="url(#bg)"/>
+  <!-- 라운드 스퀘어 웜톤 배경 -->
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect x="0" y="0" width="512" height="290" rx="116" fill="url(#gloss)"/>
 
-  <text
-          x="50"
-          y="62"
-          font-size="48"
-          text-anchor="middle"
-          dominant-baseline="middle">
-    👾
-  </text>
+  <!-- 저널(노트) 본체 -->
+  <g filter="url(#ds)">
+    <rect x="150" y="120" width="212" height="272" rx="22" fill="url(#page)"/>
+  </g>
+  <!-- 좌측 제본 띠 -->
+  <rect x="150" y="120" width="34" height="272" rx="16" fill="#b08968"/>
+  <circle cx="167" cy="168" r="5.5" fill="#fbf4ea"/>
+  <circle cx="167" cy="208" r="5.5" fill="#fbf4ea"/>
+  <circle cx="167" cy="248" r="5.5" fill="#fbf4ea"/>
+  <circle cx="167" cy="288" r="5.5" fill="#fbf4ea"/>
+  <circle cx="167" cy="328" r="5.5" fill="#fbf4ea"/>
+
+  <!-- 본문 라인 (기록) -->
+  <g stroke="#e6ccb2" stroke-width="10" stroke-linecap="round">
+    <line x1="210" y1="178" x2="332" y2="178"/>
+    <line x1="210" y1="212" x2="332" y2="212"/>
+    <line x1="210" y1="246" x2="300" y2="246"/>
+  </g>
+
+  <!-- 마음(하트) — 기록의 중심 -->
+  <path d="M256 360
+           c-26 -20 -52 -38 -52 -66
+           a30 30 0 0 1 52 -20
+           a30 30 0 0 1 52 20
+           c0 28 -26 46 -52 66 z"
+        fill="#c1462f"/>
+  <path d="M256 360 c-26 -20 -52 -38 -52 -66" fill="none" stroke="#a83828" stroke-width="2" opacity="0.25"/>
+
+  <!-- 책갈피 리본 -->
+  <path d="M312 120 h34 v72 l-17 -14 -17 14 z" fill="#9c6644"/>
 </svg>

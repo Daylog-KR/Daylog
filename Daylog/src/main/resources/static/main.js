@@ -171,7 +171,7 @@ function blockUnauthorizedUser() {
     ov.id = 'auth-block-overlay';
     ov.innerHTML =
         '<div class="abx-card">' +
-        '<div class="abx-icon">🔒</div>' +
+        '<div class="abx-icon">' + icon('lock',40) + '</div>' +
         '<p class="abx-msg">인증된 유저가 아닙니다.<br>권한을 부여받으려면 관리자에게 문의하세요.</p>' +
         '<div class="abx-sub">잠시 후 로그인 화면으로 이동합니다…</div>' +
         '</div>';
@@ -194,12 +194,58 @@ const Daylog = {
     handleResponse: async function (r) { return r; }
 };
 
-// 가볼곳(체크리스트) 타입 메타 — 라벨/이모지/색상을 한 곳에서 관리
+// ==========================================
+// 라인 아이콘 시스템 — 기본 이모지 대체 (Daylog 웜톤 톤, currentColor 상속)
+// 하단 네비/헤더와 통일된 부드러운 라인 스타일.
+// ==========================================
+const ICON_PATHS = {
+    search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    pin:      '<path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    camera:   '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
+    bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    target:   '<circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/>',
+    book:     '<path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/>',
+    map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+    user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    edit:     '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    trash:    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    logout:   '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    refresh:  '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    rotate:   '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+    maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
+    scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+    check:    '<polyline points="20 6 9 17 4 12"/>',
+    close:    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    heart:    '<path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/>',
+    comment:  '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-4-.9L3 20l1.1-4.9A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    sparkle:  '<path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>',
+    image:    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>',
+    lock:     '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    coffee:   '<path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/>',
+    food:     '<path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/>'
+};
+// icon(name, size, extraStyle, filled) → 인라인 SVG 문자열
+function icon(name, size, extraStyle, filled) {
+    const sz = size || 16;
+    const sw = sz <= 18 ? 1.9 : 1.7;
+    const fill = filled ? 'currentColor' : 'none';
+    const stroke = filled ? 'none' : 'currentColor';
+    return '<svg class="ic ic-' + name + '" width="' + sz + '" height="' + sz + '" viewBox="0 0 24 24" '
+        + 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '" stroke-linecap="round" '
+        + 'stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0;' + (extraStyle || '') + '" '
+        + 'aria-hidden="true">' + (ICON_PATHS[name] || '') + '</svg>';
+}
+// 위치(핀) 텍스트 — 배지/메타용. 동적 텍스트는 escape.
+function pinText(t) { return icon('pin', 14) + ' ' + escapeHtml(t == null ? '' : t); }
+
+// 가볼곳(체크리스트) 타입 메타 — 라벨/아이콘/색상을 한 곳에서 관리 (emoji → 라인 아이콘)
 const CHECKLIST_TYPES = {
-    CAFE: { label: '카페',  emoji: '☕', color: '#b06a4f' },
-    FOOD: { label: '식당',  emoji: '🍴', color: '#3f7fb0' },
-    SPOT: { label: '장소',  emoji: '📍', color: '#5f9e6f' },
-    ETC:  { label: '기타',  emoji: '✨', color: '#7a756e' }
+    CAFE: { label: '카페', iconKey: 'coffee',  color: '#b06a4f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    FOOD: { label: '식당', iconKey: 'food',    color: '#3f7fb0', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    SPOT: { label: '장소', iconKey: 'pin',     color: '#5f9e6f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    ETC:  { label: '기타', iconKey: 'sparkle', color: '#7a756e', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } }
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
 function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
@@ -210,7 +256,7 @@ function thumbHtml(mediaURL, cls) {
     if (mediaURL) {
         return '<div class="' + c + '" style="background-image:url(\'' + mediaURL + '\')"></div>';
     }
-    return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">🖼️</span><span class="thumb-empty-text">이미지 없음</span></div>';
+    return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
 
 // 좌표 → 주소 역지오코딩 (캐시 사용)
@@ -428,7 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showMapFallback(msg) {
         const mapEl = document.getElementById('naver-map');
         if (!mapEl) return;
-        mapEl.innerHTML = '<div class="map-fallback"><span class="mf-icon">🗺️</span><p>' + escapeHtml(msg) + '</p></div>';
+        mapEl.innerHTML = '<div class="map-fallback"><span class="mf-icon">' + icon('map',38) + '</span><p>' + escapeHtml(msg) + '</p></div>';
     }
 
     let currentLocMarker = null; // 내 현재 위치(파란 점) 마커
@@ -517,9 +563,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const label = document.getElementById('lm-center-label');
         const c = map.getCenter();
         if (!c) return;
-        if (label) label.innerHTML = '<span class="lm-pin">📍</span> 위치 확인 중…';
+        if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> 위치 확인 중…';
         if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) {
-            if (label) label.innerHTML = '<span class="lm-pin">📍</span> 중앙 지점을 선택해주세요';
+            if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> 중앙 지점을 선택해주세요';
             return;
         }
         naver.maps.Service.reverseGeocode({
@@ -532,14 +578,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const r = response.v2;
                 addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress || addr) : addr;
             }
-            if (label) label.innerHTML = '<span class="lm-pin">📍</span> ' + escapeHtml(addr);
+            if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> ' + escapeHtml(addr);
         });
     }
 
     // 좌표를 최종 확정 → 작성 폼으로 (중앙 점 / 현재 위치 공통)
     function confirmLocation(lat, lng, prefix) {
         currentLatLng = { lat: lat, lng: lng };
-        reverseGeocodeAndLabel(lat, lng, prefix || '🎯');
+        reverseGeocodeAndLabel(lat, lng, prefix || icon('pin',14));
         exitPickMode();
         pickReturnsToForm = false;
         if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
@@ -548,11 +594,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 좌표 → 상세 주소 (역지오코딩)로 배지 문구 채우기
     function setBadgeManual(text) {
         const b = document.getElementById('location-status-badge');
-        b.innerText = text;
+        b.innerHTML = text;
         b.className = 'location-badge manual';
     }
     function reverseGeocodeAndLabel(lat, lng, prefix) {
-        const tag = prefix || '🎯';
+        const tag = prefix || icon('pin',14);
         currentLocationMeta = { placeName: '', address: '' };
         setBadgeManual(tag + ' 위치를 확인하는 중...');
         if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) {
@@ -570,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = response.v2;
             const addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress) : '';
             currentLocationMeta = splitKoreanAddress(addr);
-            setBadgeManual(tag + ' ' + (addr || '지정한 위치로 설정되었습니다'));
+            setBadgeManual(tag + ' ' + escapeHtml(addr || '지정한 위치로 설정되었습니다'));
         });
     }
 
@@ -603,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lmConfirmBtn) lmConfirmBtn.addEventListener('click', () => {
         if (!map) return;
         const c = map.getCenter();
-        confirmLocation(c.lat(), c.lng(), '🎯');
+        confirmLocation(c.lat(), c.lng(), icon('pin',14));
     });
 
     // '현재 위치로 설정' — 현재 GPS 위치로 지도 중앙을 이동
@@ -670,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const badge = document.getElementById('location-status-badge');
             if (badge) {
-                badge.innerText = "🔍 '" + (placeName || addr || '검색 위치') + "' 위치로 설정되었습니다";
+                badge.innerHTML = icon('search',14) + " '" + escapeHtml(placeName || addr || '검색 위치') + "' 위치로 설정되었습니다";
                 badge.className = "location-badge manual";
             }
             hideSuggestions();
@@ -835,28 +881,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentLatLng = { lat: gps.latitude, lng: gps.longitude };
                 currentLocationMeta = { placeName: '', address: '' };
                 const badge = document.getElementById('location-status-badge');
-                badge.innerText = "📍 사진 위치가 자동으로 설정되었습니다!";
+                badge.innerHTML = pinText("사진 위치가 자동으로 설정되었습니다!");
                 badge.className = "location-badge success";
                 reverseGeocode(gps.latitude, gps.longitude, (addr) => {
                     currentLocationMeta = splitKoreanAddress(addr);
-                    if (addr) badge.innerText = "📍 " + addr;
+                    if (addr) badge.innerHTML = pinText(addr);
                 });
                 openMemoryModal();
             } else if (fromCamera && navigator.geolocation) {
                 // 카메라 촬영 사진은 EXIF 위치가 없으므로 현재 GPS 사용
                 const badge = document.getElementById('location-status-badge');
-                if (badge) { badge.innerText = '📍 현재 위치를 가져오는 중…'; badge.className = 'location-badge'; }
+                if (badge) { badge.innerHTML = pinText('현재 위치를 가져오는 중…'); badge.className = 'location-badge'; }
                 navigator.geolocation.getCurrentPosition((pos) => {
                     currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                     currentLocationMeta = { placeName: '', address: '' };
-                    if (badge) { badge.innerText = '📍 현재 위치로 설정되었습니다!'; badge.className = 'location-badge success'; }
+                    if (badge) { badge.innerHTML = pinText('현재 위치로 설정되었습니다!'); badge.className = 'location-badge success'; }
                     reverseGeocode(currentLatLng.lat, currentLatLng.lng, (addr) => {
                         currentLocationMeta = splitKoreanAddress(addr);
-                        if (addr && badge) badge.innerText = '📍 ' + addr;
+                        if (addr && badge) badge.innerHTML = pinText(addr);
                     });
                     openMemoryModal();
                 }, () => {
-                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없어요 · 직접 설정'; badge.className = 'location-badge manual'; }
+                    if (badge) { badge.innerHTML = pinText('위치를 가져올 수 없어요 · 직접 설정'); badge.className = 'location-badge manual'; }
                     openMemoryModal();
                 }, { enableHighAccuracy: true, timeout: 8000 });
             } else {
@@ -907,8 +953,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mgr = window._memCreateMgr;
             const files = mgr ? mgr.getNewFiles() : (selectedFile ? [selectedFile] : []);
-            if (!files.length) { showToast('사진을 1장 이상 추가해주세요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기 ✨'; return; }
-            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기 ✨'; return; }
+            if (!files.length) { showToast('사진을 1장 이상 추가해주세요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
+            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있어요'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
             memoryDTO.mediaOrder = mgr ? mgr.getMediaOrder() : files.map(() => '$NEW$');
 
             const formData = new FormData();
@@ -933,7 +979,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                 .finally(() => {
                     submitBtn.disabled = false;
-                    submitBtn.innerText = '기록하기 ✨';
+                    submitBtn.innerText = '기록하기';
                 });
         });
     }
@@ -1035,23 +1081,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 위치: 현재 GPS 자동 설정
             const badge = document.getElementById('location-status-badge');
-            if (badge) { badge.innerText = '📍 현재 위치를 가져오는 중…'; badge.className = 'location-badge'; }
+            if (badge) { badge.innerHTML = pinText('현재 위치를 가져오는 중…'); badge.className = 'location-badge'; }
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((pos) => {
                     currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                     currentLocationMeta = { placeName: '', address: '' };
-                    if (badge) { badge.innerText = '📍 현재 위치로 설정되었습니다!'; badge.className = 'location-badge success'; }
+                    if (badge) { badge.innerHTML = pinText('현재 위치로 설정되었습니다!'); badge.className = 'location-badge success'; }
                     reverseGeocode(currentLatLng.lat, currentLatLng.lng, (addr) => {
                         currentLocationMeta = splitKoreanAddress(addr);
-                        if (addr && badge) badge.innerText = '📍 ' + addr;
+                        if (addr && badge) badge.innerHTML = pinText(addr);
                     });
                 }, (err) => {
                     console.warn('위치 가져오기 실패:', err);
-                    if (badge) { badge.innerText = '📍 위치를 가져올 수 없어요 · 아래에서 직접 설정'; badge.className = 'location-badge manual'; }
+                    if (badge) { badge.innerHTML = pinText('위치를 가져올 수 없어요 · 아래에서 직접 설정'); badge.className = 'location-badge manual'; }
                     showToast('위치 접근이 거부되었어요. 위치를 직접 설정해주세요.');
                 }, { enableHighAccuracy: true, timeout: 8000 });
             } else if (badge) {
-                badge.innerText = '📍 위치 기능을 사용할 수 없어요 · 직접 설정';
+                badge.innerHTML = pinText('위치 기능을 사용할 수 없어요 · 직접 설정');
                 badge.className = 'location-badge manual';
             }
 
@@ -1281,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!(item.lat && item.lng)) return;
             const meta = checklistType(item.type);
             const visitedCls = item.visited ? ' visited' : '';
-            const check = item.visited ? '<span class="cl-marker-check">✓</span>' : '';
+            const check = item.visited ? '<span class="cl-marker-check">' + icon('check',13) + '</span>' : '';
             const markerHtml =
                 '<div class="cl-marker' + visitedCls + (_suppressDrop ? ' nodrop' : '') + '" style="--cl-color:' + meta.color + '">' +
                 check +
@@ -1338,13 +1384,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = document.getElementById('btn-map-action');
         const isCl = (mapMode === 'checklist');
         if (toggle) {
-            toggle.innerText = isCl ? '📸' : '📌';
+            toggle.innerHTML = isCl ? icon('camera',20) : icon('bookmark',20);
             toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
             toggle.classList.toggle('to-memory', isCl);
             toggle.classList.toggle('to-checklist', !isCl);
         }
         if (action) {
-            action.innerText = isCl ? '➕' : '➕';
+            action.innerHTML = icon('plus',22);
             action.title = isCl ? '가볼곳 추가' : '기록 남기기';
             // 추가 버튼은 색이 바뀌지 않도록 모드별 색 클래스를 적용하지 않음
         }
@@ -1356,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!feed) return;
         feed.innerHTML = '';
         if (!sorted.length) {
-            feed.innerHTML = '<div class="empty-state"><span class="es-icon">📌</span><p>아직 등록된 가볼곳이 없어요</p></div>';
+            feed.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>아직 등록된 가볼곳이 없어요</p></div>';
             return;
         }
         let idx = 0;
@@ -1367,7 +1413,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.style.animationDelay = (idx * 0.05) + 's';
             idx++;
             const badge = item.visited
-                ? '<span class="cl-visited-badge">✓ 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
+                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
                 : '<span class="cl-todo-badge">가볼 예정</span>';
             const loc = [item.placeName, item.address].filter(Boolean).join(' ');
             card.innerHTML =
@@ -1378,7 +1424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '</div>' +
                 '<h4 class="cl-card-title">' + escapeHtml(item.title || '') + '</h4>' +
                 (item.content ? '<p class="cl-card-text">' + escapeHtml(item.content) + '</p>' : '') +
-                (loc ? '<div class="cl-card-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
+                (loc ? '<div class="cl-card-loc">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</div>' : '') +
                 '</div>' +
                 thumbHtml(item.mediaURL, 'cl-thumb');
             card.addEventListener('click', () => openChecklistDetail(item));
@@ -1394,10 +1440,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const text = [place, addr].filter(Boolean).join(' ');
         if (badge) {
             badge.className = 'location-badge success';
-            badge.innerText = text ? ('📍 ' + text) : '📍 선택한 위치';
+            badge.innerHTML = text ? pinText(text) : pinText('선택한 위치');
             if (!text && currentLatLng) {
                 reverseGeocode(currentLatLng.lat, currentLatLng.lng, (a) => {
-                    if (a) { currentLocationMeta = splitKoreanAddress(a); badge.innerText = '📍 ' + a; }
+                    if (a) { currentLocationMeta = splitKoreanAddress(a); badge.innerHTML = pinText(a); }
                 });
             }
         }
@@ -1457,19 +1503,19 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(handleResponse)
             .then((created) => {
                 closeChecklistModal();
-                showToast('가볼곳을 추가했어요 📌');
+                showToast('가볼곳을 추가했어요');
                 pickTarget = 'memory';
                 // 다녀온 곳으로 추가하면 동일 위치에 추억도 자동 생성
                 if (created && created.visited) {
                     createMemoryFromChecklist(created)
-                        .then(() => showToast('다녀온 곳이라 추억에도 기록했어요 ✨'))
+                        .then(() => showToast('다녀온 곳이라 추억에도 기록했어요'))
                         .catch(err => console.warn('추억 자동 생성 실패', err));
                 }
                 if (mapMode !== 'checklist') setMapMode('checklist');
                 else loadChecklistsFromServer();
             })
             .catch(err => { console.error(err); showToast('추가 실패. 다시 시도해주세요.'); })
-            .finally(() => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '추가하기 📌'; } });
+            .finally(() => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '추가하기'; } });
     };
 
     // 우측 하단 플로팅 버튼 동작
@@ -1732,7 +1778,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
                 markerHtml = `<div class="custom-marker${nd}"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
             } else {
-                markerHtml = `<div class="marker-heart${nd}">👾</div>`;
+                markerHtml = `<div class="marker-heart${nd}">${icon('heart',26,'',true)}</div>`;
             }
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(memory.lat, memory.lng),
@@ -1752,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!sorted.length) {
             timelineFeed.innerHTML =
-                '<div class="empty-state"><span class="es-icon">👾</span>' +
+                '<div class="empty-state"><span class="es-icon">' + icon('heart',40,'',true) + '</span>' +
                 '<p>기록이 존재하지 않음</p></div>';
             return;
         }
@@ -1785,7 +1831,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
                     '<div class="tl-loc">' +
                     '<div class="tl-loc-row">' +
-                    '<span class="tl-loc-icon">📍</span>' +
+                    '<span class="tl-loc-icon">' + icon('pin',13) + '</span>' +
                     '<span class="tl-place"></span>' +
                     '</div>' +
                     '<span class="tl-addr"></span>' +
@@ -1846,8 +1892,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const sig = _listSig(list);
                 if (sig !== _profSig) {
                     _profSig = sig;
-                    renderProfileBox('me', meUser, '👦', '나');
-                    renderProfileBox('partner', partnerUser, '👧', '상대방');
+                    renderProfileBox('me', meUser, icon('user',34), '나');
+                    renderProfileBox('partner', partnerUser, icon('user',34), '상대방');
                 }
                 profilesLoaded = true;
                 updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
@@ -1874,7 +1920,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isAuthorizedName(me.name) === false) { blockUnauthorizedUser(); return; }
                 Daylog.meUid = me.uid;
                 Daylog.usersByUid = {}; if (me.uid) Daylog.usersByUid[me.uid] = me;
-                renderProfileBox('me', me, '👦', '나');
+                renderProfileBox('me', me, icon('user',34), '나');
                 updateProfileStats();
                 maybePromptNickname();
             })
@@ -1993,7 +2039,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadProfiles(true);
                 })
                 .catch(err => { console.error(err); showToast('설정 실패: ' + (err.message || '서버 오류')); })
-                .finally(() => { btn.disabled = false; btn.innerText = '시작하기 ✨'; });
+                .finally(() => { btn.disabled = false; btn.innerText = '시작하기'; });
         });
     }
 
@@ -2412,7 +2458,7 @@ function openChecklistDetail(item) {
     const authorPhoto = (author && author.profileURL) ? author.profileURL : DEFAULT_AVATAR;
 
     const visitedHtml = item.visited
-        ? '<span class="meta-item cl-meta-visited">✓ 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
+        ? '<span class="meta-item cl-meta-visited">' + icon('check',13) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
         : '<span class="meta-item cl-meta-todo">아직 안 가봤어요</span>';
     const _clUrls = mediaUrlsOf(item);
     const imageHtml = carouselHtml(_clUrls);
@@ -2428,7 +2474,7 @@ function openChecklistDetail(item) {
         '</div>' +
         '<div class="detail-meta">' +
         visitedHtml +
-        (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">📍 ' + escapeHtml(loc) + '</span>' : '') +
+        (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</span>' : '') +
         '</div>' +
         '</div>' +
         imageHtml +
@@ -2438,8 +2484,8 @@ function openChecklistDetail(item) {
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">✏️</button>' +
-              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">🗑️</button>'
+            ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">' + icon('edit',16) + '</button>' +
+              '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">' + icon('trash',16) + '</button>'
             : '';
     }
 
@@ -2469,7 +2515,7 @@ function enterChecklistEdit(item) {
     // 위치(수정 불가) 표시
     const loc = [item.placeName, item.address].filter(Boolean).join(' ');
     const locEl = document.getElementById('cl-edit-loc');
-    if (locEl) locEl.textContent = loc ? ('📍 ' + loc) : '📍 위치';
+    if (locEl) locEl.innerHTML = loc ? pinText(loc) : pinText('위치');
 
     // 타입 칩 선택 반영
     window._clEditSelectedType = item.type || 'ETC';
@@ -2563,18 +2609,18 @@ function saveChecklistEdit() {
     })
         .then(Daylog.handleResponse)
         .then((updated) => {
-            showToast('수정 완료 ✨');
+            showToast('수정 완료');
             closeChecklistDetail();
             Daylog.reloadChecklists();
             // 이번 수정에서 처음으로 '다녀옴'이 된 경우에만 추억 자동 생성
             if (updated && updated.visited && !wasVisited) {
                 createMemoryFromChecklist(updated)
-                    .then(() => showToast('다녀온 곳이라 추억에도 기록했어요 ✨'))
+                    .then(() => showToast('다녀온 곳이라 추억에도 기록했어요'))
                     .catch(err => console.warn('추억 자동 생성 실패', err));
             }
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주세요.'); })
-        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기 ✨'; } });
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
 }
 
 function trashChecklist(id) {
@@ -2630,15 +2676,15 @@ function openDetailModal(memory) {
         '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
         authorHtml +
         '<div class="detail-meta">' +
-        '<span class="meta-item">📅 ' + escapeHtml(dateStr) + '</span>' +
-        '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">📍 위치 확인 중…</span>' +
+        '<span class="meta-item">' + icon('calendar',13) + ' ' + escapeHtml(dateStr) + '</span>' +
+        '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin',13) + ' 위치 확인 중…</span>' +
         '</div>' +
         '</div>' +
         imageHtml +
         '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
         // 댓글 영역
         '<div class="comments-section">' +
-        '<div class="comments-head">💬 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
+        '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
         '<div class="comments-list" id="comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
         '<div class="comment-compose">' +
         '<input type="text" class="comment-input" id="new-comment-input" placeholder="댓글을 남겨보세요" maxlength="1000">' +
@@ -2651,8 +2697,8 @@ function openDetailModal(memory) {
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
         headerActions.innerHTML = isOwner
-            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">✏️</button>' +
-              '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">🗑️</button>'
+            ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">' + icon('edit',16) + '</button>' +
+              '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">' + icon('trash',16) + '</button>'
             : '';
     }
 
@@ -2704,14 +2750,14 @@ function fillLocationInto(elId, memory) {
     const place = (memory.placeName || '').trim();
     const addr = (memory.address || '').trim();
     // 기존과 동일하게 한 줄 주소처럼 보이도록 공백으로 합침
-    const compose = (p, a) => '📍 ' + [p, a].filter(Boolean).join(' ');
-    if (place || addr) el.textContent = compose(place, addr);
+    const compose = (p, a) => pinText([p, a].filter(Boolean).join(' '));
+    if (place || addr) el.innerHTML = compose(place, addr);
     if (!place && !addr) {
         if (memory.lat != null && memory.lng != null) {
-            reverseGeocode(memory.lat, memory.lng, (a) => { el.textContent = a ? ('📍 ' + a) : '📍 위치 정보 없음'; });
-        } else { el.textContent = '📍 위치 정보 없음'; }
+            reverseGeocode(memory.lat, memory.lng, (a) => { el.innerHTML = a ? pinText(a) : pinText('위치 정보 없음'); });
+        } else { el.innerHTML = pinText('위치 정보 없음'); }
     } else if (place && !addr && memory.lat != null && memory.lng != null) {
-        reverseGeocode(memory.lat, memory.lng, (a) => { if (a) el.textContent = compose(place, a); });
+        reverseGeocode(memory.lat, memory.lng, (a) => { if (a) el.innerHTML = compose(place, a); });
     }
 }
 
@@ -2778,12 +2824,12 @@ function saveDetailEdit() {
     })
         .then(Daylog.handleResponse)
         .then(() => {
-            showToast('수정 완료 ✨');
+            showToast('수정 완료');
             closeDetailModal();
             Daylog.reload();
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주세요.'); })
-        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기 ✨'; } });
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
 }
 
 function closeDetailModal() {
@@ -2832,7 +2878,7 @@ function commentItemHtml(c, memoryId, isReply) {
         '<div class="c-actions">' +
         (isReply ? '' : '<button type="button" class="c-act-btn" onclick="toggleReplyForm(' + c.id + ')">답글</button>') +
         (isOwner ? '<button type="button" class="c-act-btn" onclick="enterCommentEdit(' + c.id + ',' + memoryId + ')">수정</button>' : '') +
-        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + c.id + ',' + memoryId + ')">🗑️</button>' : '') +
+        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + c.id + ',' + memoryId + ')">' + icon('trash',15) + '</button>' : '') +
         '</div>';
 
     let replyForm = isReply ? '' :
@@ -3002,7 +3048,7 @@ function renderTrash(memories, comments, checklists) {
     checklists = checklists || [];
 
     if (!memories.length && !comments.length && !checklists.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">🗑️</span><p>휴지통이 비어 있어요</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('trash',40) + '</span><p>휴지통이 비어 있어요</p></div>';
         return;
     }
 
@@ -3014,7 +3060,7 @@ function renderTrash(memories, comments, checklists) {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = m.mediaURL
                 ? '<div class="lm-thumb" style="background-image:url(\'' + m.mediaURL + '\')"></div>'
-                : '<div class="lm-thumb lm-thumb-empty">🤎</div>';
+                : '<div class="lm-thumb lm-thumb-empty">' + icon('heart',22,'color:#b08968;',true) + '</div>';
             html +=
                 '<div class="trash-row">' +
                 thumb +
@@ -3037,7 +3083,7 @@ function renderTrash(memories, comments, checklists) {
             const onTitle = c.memoryTitle ? ('"' + escapeHtml(c.memoryTitle) + '" 에 남긴 댓글') : '댓글';
             html +=
                 '<div class="trash-row">' +
-                '<div class="lm-thumb lm-thumb-empty">💬</div>' +
+                '<div class="lm-thumb lm-thumb-empty">' + icon('comment',22,'color:#b08968;') + '</div>' +
                 '<div class="lm-row-main">' +
                 '<div class="lm-row-date">' + onTitle + '</div>' +
                 '<div class="lm-row-text trash-comment-text">' + escapeHtml(c.content || '') + '</div>' +
@@ -3053,7 +3099,7 @@ function renderTrash(memories, comments, checklists) {
     if (checklists.length) {
         html += '<div class="trash-group-title">가볼곳 ' + checklists.length + '</div>';
         checklists.forEach(c => {
-            const meta = (typeof checklistType === 'function') ? checklistType(c.type) : { emoji: '📌', label: '' };
+            const meta = (typeof checklistType === 'function') ? checklistType(c.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [c.placeName, c.address].filter(Boolean).join(' ');
             html +=
                 '<div class="trash-row">' +
@@ -3130,13 +3176,13 @@ function openMemoryListModal(title, items) {
     body.innerHTML = '';
 
     if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">👾</span><p>표시할 추억이 없습니다</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('heart',40,'',true) + '</span><p>표시할 추억이 없습니다</p></div>';
     } else {
         items.forEach(memory => {
             const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = memory.mediaURL
                 ? `<div class="lm-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
-                : '<div class="lm-thumb lm-thumb-empty">🤎</div>';
+                : '<div class="lm-thumb lm-thumb-empty">' + icon('heart',22,'color:#b08968;',true) + '</div>';
             const row = document.createElement('div');
             row.className = 'lm-row';
             row.innerHTML =
@@ -3172,16 +3218,16 @@ function openChecklistListModal(title, items) {
     body.innerHTML = '';
 
     if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">📌</span><p>표시할 가볼곳이 없습니다</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>표시할 가볼곳이 없습니다</p></div>';
     } else {
         items.forEach(item => {
-            const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '📌', label: '' };
+            const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [item.placeName, item.address].filter(Boolean).join(' ');
             const thumb = item.mediaURL
                 ? `<div class="lm-thumb" style="background-image:url('${item.mediaURL}')"></div>`
                 : '<div class="lm-thumb lm-thumb-empty">' + meta.emoji + '</div>';
             const badge = item.visited
-                ? '<span class="cl-visited-badge">✓ 다녀옴</span>'
+                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴</span>'
                 : '<span class="cl-todo-badge">가볼 예정</span>';
             const row = document.createElement('div');
             row.className = 'lm-row';
@@ -3208,10 +3254,10 @@ function showDDayInfo() {
     const start = new Date(DDAY_START);
     const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
     const n = daysSince(DDAY_START);
-    titleEl.textContent = 'D-Day 💍';
+    titleEl.innerHTML = 'D-Day ' + icon('heart',15,'color:#b06a4f;',true);
     body.innerHTML =
         '<div class="dday-info">' +
-        '<div class="dday-info-emoji">📅</div>' +
+        '<div class="dday-info-emoji">' + icon('calendar',28) + '</div>' +
         '<div class="dday-info-label">사귀기 시작한 날</div>' +
         '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
         '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +

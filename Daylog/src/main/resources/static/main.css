@@ -1708,3 +1708,11 @@ body.map-immersive .container { height: 100vh; height: 100dvh; }
 .lightbox-nav.prev { left: 14px; } .lightbox-nav.next { right: 14px; }
 .lightbox-nav.hidden { display: none; }
 .lightbox-counter { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 0.9rem; z-index: 30; opacity: 0.85; }
+
+/* ===== 라인 아이콘(기본 이모지 대체) 정렬 보정 ===== */
+.nav-icon svg, .hdr-icon-btn svg, .my-location-btn svg, .map-fab svg,
+.lm-current-btn svg, .center-heart svg, .crop-ico svg, .lm-search-icon svg { display: inline-block; vertical-align: middle; }
+.es-icon svg, .abx-icon svg, .dday-info-emoji svg, .mf-icon svg, .thumb-empty-icon svg { display: block; margin: 0 auto; }
+.lm-thumb-empty svg { display: block; margin: auto; }
+.section-title svg { vertical-align: -3px; margin-right: 2px; }
+.submit-btn svg, .cancel-edit-btn svg, .filter-search-btn svg { vertical-align: -2px; }
