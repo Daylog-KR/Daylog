@@ -43,14 +43,27 @@ public class ChecklistService {
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
     }
 
+    // [B] edit by smsong - 커플(송성민/강미르)은 소유자가 아니어도 모든 가볼곳을 수정·휴지통 이동 가능
+    private static final java.util.Set<String> PRIVILEGED_NICKNAMES = java.util.Set.of("송성민", "강미르");
+    private boolean isPrivilegedEditor(UserDetails userDetails) {
+        if (userDetails == null) return false;
+        return userRepository.findByUid(userDetails.getUsername())
+                .map(u -> u.getNickname() != null && PRIVILEGED_NICKNAMES.contains(u.getNickname().trim()))
+                .orElse(false);
+    }
+    // [E] edit by smsong
+
     // 소유자 검증 후 체크리스트 반환
     private ChecklistEntity getOwnedChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = checklistRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("가볼곳을 찾을 수 없습니다"));
+        // [B] edit by smsong - 소유자 또는 커플(송성민/강미르)이면 수정/휴지통 이동/복원/삭제 가능
         String ownerUid = (c.getOwner() != null) ? c.getOwner().getUid() : null;
-        if (userDetails == null || ownerUid == null || !ownerUid.equals(userDetails.getUsername())) {
+        boolean isOwner = (userDetails != null && ownerUid != null && ownerUid.equals(userDetails.getUsername()));
+        if (!isOwner && !isPrivilegedEditor(userDetails)) {
             throw new RuntimeException("권한이 없습니다");
         }
+        // [E] edit by smsong
         return c;
     }
 
@@ -127,6 +140,9 @@ public class ChecklistService {
         entity.setMediaUrls(finalUrls);
         entity.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
 
+        // [B] edit by smsong - 최초 작성자 = 최초 수정자
+        entity.setLastEditorUid(owner.getUid());
+        // [E] edit by smsong
         ChecklistEntity saved = checklistRepository.save(entity);
         return ChecklistDTO.entityToDto(saved);
     }
@@ -170,6 +186,10 @@ public class ChecklistService {
             c.setMediaURL(cur.isEmpty() ? null : cur.get(0));
         }
 
+        // [B] edit by smsong - 마지막 수정 시각/수정자 기록
+        c.setUpdatedAt(java.time.LocalDateTime.now());
+        c.setLastEditorUid(userDetails.getUsername());
+        // [E] edit by smsong
         return ChecklistDTO.entityToDto(checklistRepository.save(c));
     }
 

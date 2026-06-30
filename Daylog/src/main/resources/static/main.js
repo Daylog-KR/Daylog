@@ -249,6 +249,45 @@ const CHECKLIST_TYPES = {
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
 function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
+// [B] edit by smsong - 커플(송성민/강미르)은 소유자가 아니어도 모든 추억/가볼곳을 수정/휴지통 이동 가능
+var PRIVILEGED_NICKNAMES = ['송성민', '강미르'];
+function isPrivilegedUser() {
+    var me = (window.Daylog && Daylog.usersByUid && Daylog.currentUid) ? Daylog.usersByUid[Daylog.currentUid] : null;
+    var nick = (me && me.nickname) ? String(me.nickname).trim() : '';
+    return PRIVILEGED_NICKNAMES.indexOf(nick) !== -1;
+}
+function canManageObject(item) {
+    if (!item) return false;
+    if (item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid) return true;
+    return isPrivilegedUser();
+}
+// 마지막 수정 일시 포맷 (YYYY.MM.DD HH:mm)
+function fmtDateTime(s) {
+    if (!s) return '';
+    var t = String(s);
+    var d = t.substring(0, 10).replace(/-/g, '.');
+    var hm = (t.length >= 16) ? t.substring(11, 16) : '';
+    return hm ? (d + ' ' + hm) : d;
+}
+// 상세보기 '마지막 수정' 줄 (수정 일시 + 수정자 프로필/닉네임). 2인 전용 usersByUid 에서 조회
+function editedByHtml(item) {
+    if (!item) return '';
+    var uid = item.lastEditorUid || item.ownerUid;
+    var when = item.updatedAt || item.createdAt;
+    var u = (Daylog.usersByUid && uid) ? Daylog.usersByUid[uid] : null;
+    var name = '';
+    if (u) {
+        name = (u.nickname && String(u.nickname).trim()) ? u.nickname
+             : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
+    }
+    var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
+    if (!when && !name) return '';
+    return '<div class="detail-edited">' +
+        '<span class="de-text">' + icon('edit',12) + ' 마지막 수정 ' + escapeHtml(fmtDateTime(when)) + '</span>' +
+        '<span class="de-by"><span class="de-avatar" style="background-image:url(\'' + photo + '\')"></span>' + escapeHtml(name || '알 수 없음') + '</span>' +
+        '</div>';
+}
+// [E] edit by smsong
 
 // 카드 썸네일 HTML — 이미지가 있으면 배경이미지, 없으면 같은 크기의 '이미지 없음' 자리표시
 function thumbHtml(mediaURL, cls) {
@@ -2516,6 +2555,7 @@ function openChecklistDetail(item) {
 
     const meta = checklistType(item.type);
     const isOwner = !!(item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid);
+    const canManage = canManageObject(item); // [smsong] 소유자 또는 커플(송성민/강미르)
     const loc = [item.placeName, item.address].filter(Boolean).join(' ');
     const contentHtml = escapeHtml(item.content || '').replace(/\n/g, '<br>');
 
@@ -2549,13 +2589,14 @@ function openChecklistDetail(item) {
         (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</span>' : '') +
         '</div>' +
         '</div>' +
+        editedByHtml(item) + // [smsong] 마지막 수정 일시/수정자
         imageHtml +
         (item.content ? '<div class="detail-body"><p>' + contentHtml + '</p></div>' : '') +
         '</div>';
 
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
-        headerActions.innerHTML = isOwner
+        headerActions.innerHTML = canManage // [smsong] 소유자 또는 커플이면 노출
             ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">' + icon('edit',16) + '</button>' +
               '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">' + icon('trash',16) + '</button>'
             : '';
@@ -2747,6 +2788,7 @@ function openDetailModal(memory) {
     const _memUrls = mediaUrlsOf(memory);
     const imageHtml = carouselHtml(_memUrls);
     const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
+    const canManage = canManageObject(memory); // [smsong] 소유자 또는 커플(송성민/강미르)
     const contentHtml = escapeHtml(memory.content || '').replace(/\n/g, '<br>');
 
     // 작성자 정보 (2인 전용 — usersByUid 에서 조회)
@@ -2774,6 +2816,7 @@ function openDetailModal(memory) {
         '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin',13) + ' 위치 확인 중…</span>' +
         '</div>' +
         '</div>' +
+        editedByHtml(memory) + // [smsong] 마지막 수정 일시/수정자
         imageHtml +
         '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
         // 댓글 영역
@@ -2790,7 +2833,7 @@ function openDetailModal(memory) {
     // 헤더 영역: (소유자만) 수정/휴지통 버튼을 '추억 상세' 위치에 작게 배치
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
-        headerActions.innerHTML = isOwner
+        headerActions.innerHTML = canManage // [smsong] 소유자 또는 커플이면 노출
             ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">' + icon('edit',16) + '</button>' +
               '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">' + icon('trash',16) + '</button>'
             : '';

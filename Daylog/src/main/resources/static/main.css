@@ -694,6 +694,9 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 .cl-marker:hover { transform: translateY(-3px) scale(1.05); z-index: 12; }
 .cl-marker-emoji { font-size: 0.68rem; line-height: 1; flex-shrink: 0; }
+/* [B] edit by smsong - 마커 배경(타입색) 위 아이콘이 같은 색이라 안 보이던 문제: 아이콘 흰색 고정 */
+.cl-marker .cl-marker-emoji svg { color: #fff !important; }
+/* [E] edit by smsong */
 .cl-marker-title { overflow: hidden; text-overflow: ellipsis; max-width: 72px; }
 /* 말풍선 꼬리 (아래 방향) */
 .cl-marker-tail {
@@ -1264,6 +1267,22 @@ input[type="date"]::-webkit-date-and-time-value {
 .da-avatar:hover { transform: scale(1.08); }
 .da-name { font-size: 0.82rem; font-weight: 600; color: var(--gray-500); }
 
+/* [B] edit by smsong - 상세보기 '마지막 수정' 줄 (일시 + 수정자 프로필/닉네임) */
+.detail-edited {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    margin: 0 0 12px; padding: 8px 12px;
+    background: var(--gray-50); border: 1px solid var(--gray-100); border-radius: 12px;
+    font-size: 0.78rem; color: var(--gray-500);
+}
+.detail-edited .de-text { display: inline-flex; align-items: center; gap: 5px; }
+.detail-edited .de-by { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--gray-600); }
+.detail-edited .de-avatar {
+    width: 20px; height: 20px; border-radius: 50%;
+    background-size: cover; background-position: center;
+    background-color: var(--gray-100); border: 1px solid var(--gray-200); flex-shrink: 0;
+}
+/* [E] edit by smsong */
+
 /* 댓글 프로필도 확대 가능 표시 */
 .c-avatar { cursor: zoom-in; }
 
@@ -1394,6 +1413,9 @@ input[type="date"]::-webkit-date-and-time-value {
     background: var(--cl-color); color: #fff; border-color: var(--cl-color);
     box-shadow: 0 3px 10px color-mix(in srgb, var(--cl-color) 40%, transparent);
 }
+/* [B] edit by smsong - 타입 선택(색 입힘) 시 아이콘이 배경색에 묻혀 안 보이던 문제: 선택된 칩 아이콘 흰색 고정 */
+.cl-type-chip.selected svg { color: #fff !important; }
+/* [E] edit by smsong */
 
 /* ---- 방문 체크 + 날짜 ---- */
 .cl-visited-group { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }

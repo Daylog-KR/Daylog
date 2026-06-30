@@ -71,10 +71,20 @@ public class ChecklistEntity {
 
     private LocalDateTime createdAt;
 
+    // [B] edit by smsong - 마지막 수정 시각 / 마지막 수정자(uid) 추적
+    private LocalDateTime updatedAt;
+    private String lastEditorUid;
+    // [E] edit by smsong
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {
             this.createdAt = LocalDateTime.now();
         }
+        // [B] edit by smsong - 최초 저장 시 updatedAt 을 createdAt 과 동일하게 초기화
+        if (this.updatedAt == null) {
+            this.updatedAt = this.createdAt;
+        }
+        // [E] edit by smsong
     }
 }

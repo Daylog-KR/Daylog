@@ -43,6 +43,16 @@ public class MemoryService {
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
     }
 
+    // [B] edit by smsong - 커플(송성민/강미르)은 소유자가 아니어도 모든 추억을 수정·휴지통 이동 가능
+    private static final java.util.Set<String> PRIVILEGED_NICKNAMES = java.util.Set.of("송성민", "강미르");
+    private boolean isPrivilegedEditor(UserDetails userDetails) {
+        if (userDetails == null) return false;
+        return userRepository.findByUid(userDetails.getUsername())
+                .map(u -> u.getNickname() != null && PRIVILEGED_NICKNAMES.contains(u.getNickname().trim()))
+                .orElse(false);
+    }
+    // [E] edit by smsong
+
     // GCS 업로드 로직 (BuildingService와 동일)
     private String uploadMedia(MultipartFile mediaFile) {
         if (mediaFile == null || mediaFile.isEmpty()) return null;
@@ -116,6 +126,9 @@ public class MemoryService {
         memoryEntity.setMediaUrls(finalUrls);
         memoryEntity.setMediaURL(finalUrls.isEmpty() ? null : finalUrls.get(0));
 
+        // [B] edit by smsong - 최초 작성자 = 최초 수정자
+        memoryEntity.setLastEditorUid(owner.getUid());
+        // [E] edit by smsong
         MemoryEntity saved = memoryRepository.save(memoryEntity);
         return MemoryDTO.entityToDto(saved);
     }
@@ -133,11 +146,13 @@ public class MemoryService {
         MemoryEntity memory = memoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
 
-        // 소유자 검증 — 로그인한 본인이 작성한 추억만 수정 가능
+        // [B] edit by smsong - 소유자 또는 커플(송성민/강미르)이면 수정 가능
         String ownerUid = (memory.getOwner() != null) ? memory.getOwner().getUid() : null;
-        if (userDetails == null || ownerUid == null || !ownerUid.equals(userDetails.getUsername())) {
+        boolean isOwner = (userDetails != null && ownerUid != null && ownerUid.equals(userDetails.getUsername()));
+        if (!isOwner && !isPrivilegedEditor(userDetails)) {
             throw new RuntimeException("권한이 없습니다");
         }
+        // [E] edit by smsong
 
         if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
         if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
@@ -163,6 +178,10 @@ public class MemoryService {
             memory.setMediaURL(cur.isEmpty() ? null : cur.get(0));
         }
 
+        // [B] edit by smsong - 마지막 수정 시각/수정자 기록
+        memory.setUpdatedAt(java.time.LocalDateTime.now());
+        memory.setLastEditorUid(userDetails.getUsername());
+        // [E] edit by smsong
         return MemoryDTO.entityToDto(memoryRepository.save(memory));
     }
 
@@ -170,10 +189,13 @@ public class MemoryService {
     private MemoryEntity getOwnedMemory(Long id, UserDetails userDetails) {
         MemoryEntity memory = memoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
+        // [B] edit by smsong - 소유자 또는 커플(송성민/강미르)이면 휴지통 이동/복원/삭제 가능
         String ownerUid = (memory.getOwner() != null) ? memory.getOwner().getUid() : null;
-        if (userDetails == null || ownerUid == null || !ownerUid.equals(userDetails.getUsername())) {
+        boolean isOwner = (userDetails != null && ownerUid != null && ownerUid.equals(userDetails.getUsername()));
+        if (!isOwner && !isPrivilegedEditor(userDetails)) {
             throw new RuntimeException("권한이 없습니다");
         }
+        // [E] edit by smsong
         return memory;
     }
 

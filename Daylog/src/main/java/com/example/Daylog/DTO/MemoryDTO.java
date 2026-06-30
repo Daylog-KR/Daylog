@@ -27,6 +27,10 @@ public class MemoryDTO {
     private String ownerUid;
     private boolean deleted;
     private LocalDateTime createdAt;
+    // [B] edit by smsong - 마지막 수정 시각/수정자 (조회 전용)
+    private LocalDateTime updatedAt;
+    private String lastEditorUid;
+    // [E] edit by smsong
 
     // Entity -> DTO 변환
     public static MemoryDTO entityToDto(MemoryEntity e) {
@@ -50,6 +54,10 @@ public class MemoryDTO {
                 .ownerUid(ownerUid)
                 .deleted(e.isDeleted())
                 .createdAt(e.getCreatedAt())
+                // [B] edit by smsong - 마지막 수정 정보 (없으면 생성 시점/작성자로 폴백 → 기존 레코드 호환)
+                .updatedAt(e.getUpdatedAt() != null ? e.getUpdatedAt() : e.getCreatedAt())
+                .lastEditorUid(e.getLastEditorUid() != null ? e.getLastEditorUid() : ownerUid)
+                // [E] edit by smsong
                 .build();
     }
 
