@@ -126,7 +126,7 @@ async function handleResponse(res) {
 // ==========================================
 // 1-b. 사용자 이름 기반 접근 권한 (송성민 / 강미르 전용)
 // ==========================================
-const AUTH_NAMES = ['송성민', 's s', '강미르']; // 허용된 사용자 이름
+const AUTH_NAMES = ['송성민', '강미르']; // [smsong] 's s' 제거 — 접근 차단 (관리자 승인 필요)
 const ME_ALIAS = ['송성민', 's s'];             // '나'(송성민)로 취급할 이름
 
 // 여러 소스(localStorage / JWT)에서 로그인 사용자 name 을 최대한 확보
@@ -272,8 +272,10 @@ function canTrashObject(item) { // 휴지통 이동 가능 여부 (소유자 또
 // [B] edit by smsong - 권한 로딩 / 관리자 권한 메뉴 / 접근 요청
 function applyMyPermUI() {
     var p = (window.Daylog && Daylog.myPerm) ? Daylog.myPerm : null;
+    var nm = (typeof readLocalName === 'function') ? String(readLocalName() || '').trim() : '';
+    var admin = (p && p.admin) || nm === '송성민'; // 서버 권한 또는 로컬 이름(관리자)으로 표시
     var btn = document.getElementById('btn-perm-admin');
-    if (btn) btn.style.display = (p && p.admin) ? '' : 'none';
+    if (btn) btn.style.display = admin ? '' : 'none';
 }
 // 앱 진입 시: 내 권한을 서버에 등록(upsert)하고 받아와 게이트/관리자 메뉴 결정
 function loadMyPermission() {
@@ -287,7 +289,8 @@ function loadMyPermission() {
             return p;
         })
         .catch(function () {
-            // 서버 조회 실패 시 기존 이름 기반으로 폴백 판정
+            // 서버 조회 실패 시: 관리자 메뉴는 로컬 이름 기준으로 노출, 접근은 이름 기반 폴백 판정
+            applyMyPermUI();
             var nm = (typeof readLocalName === 'function') ? readLocalName() : '';
             if (typeof isAuthorizedName === 'function' && isAuthorizedName(nm) === false) blockUnauthorizedUser();
             return null;
@@ -324,7 +327,7 @@ function openPermissionAdmin() {
         fetch(Daylog.api + '/api/permissions/users', { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse),
         '불러오는 중...'
     ).then(function (list) { renderPermissionList(list || []); })
-     .catch(function () { body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.</div>'; });
+        .catch(function () { body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.</div>'; });
 }
 function closePermissionAdmin() {
     var modal = document.getElementById('perm-modal');
@@ -360,20 +363,20 @@ function renderPermissionList(list) {
         var lockToggles = (!p.accessAllowed || p.admin);
         html += '<div class="perm-row" data-uid="' + p.uid + '">' +
             '<div class="perm-user">' + avatar +
-              '<div class="perm-user-meta"><div class="perm-name">' + escapeHtml(name) + '</div>' + permStatusLabel(p) + '</div>' +
+            '<div class="perm-user-meta"><div class="perm-name">' + escapeHtml(name) + '</div>' + permStatusLabel(p) + '</div>' +
             '</div>' +
             '<div class="perm-access">' +
-              (p.admin ? '' :
+            (p.admin ? '' :
                 (p.accessAllowed
-                  ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
-                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
+                    ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
+                    : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
             '</div>' +
             '<div class="perm-flags">' +
-              permToggle(p, 'canEdit', '수정', lockToggles) +
-              permToggle(p, 'canTrash', '휴지통', lockToggles) +
-              permToggle(p, 'canDelete', '삭제', lockToggles) +
+            permToggle(p, 'canEdit', '수정', lockToggles) +
+            permToggle(p, 'canTrash', '휴지통', lockToggles) +
+            permToggle(p, 'canDelete', '삭제', lockToggles) +
             '</div>' +
-        '</div>';
+            '</div>';
     });
     body.innerHTML = html;
 }
@@ -453,7 +456,7 @@ function editedByHtml(item) {
     var name = '';
     if (u) {
         name = (u.nickname && String(u.nickname).trim()) ? u.nickname
-             : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
+            : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
     }
     var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
     if (!when && !name) return '';
@@ -484,30 +487,30 @@ function postCurrentLocation(source) {
     if (!(window.Daylog && Daylog.api && Daylog.currentUid)) return;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(function (pos) {
-        var c = pos.coords;
-        reverseGeocode(c.latitude, c.longitude, function (addr) {
-            var split = (typeof splitKoreanAddress === 'function') ? splitKoreanAddress(addr) : { placeName: '' };
-            var body = {
-                lat: c.latitude,
-                lng: c.longitude,
-                address: addr || '',           // 도로명 주소까지 상세
-                roadAddress: addr || '',
-                placeName: split.placeName || '',
-                accuracy: (c.accuracy != null ? c.accuracy : null),
-                altitude: (c.altitude != null ? c.altitude : null),
-                speed: (c.speed != null ? c.speed : null),
-                heading: (c.heading != null ? c.heading : null),
-                source: source || 'foreground'
-                // capturedAt 은 서버에서 현재 시각으로 기록
-            };
-            fetch(Daylog.api + '/api/locations', {
-                method: 'POST',
-                headers: Daylog.authHeaders(true),
-                body: JSON.stringify(body)
-            }).catch(function () { /* 적재 실패는 조용히 무시 */ });
-        });
-    }, function () { /* 위치 권한 거부/실패 시 조용히 무시 */ },
-    { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+            var c = pos.coords;
+            reverseGeocode(c.latitude, c.longitude, function (addr) {
+                var split = (typeof splitKoreanAddress === 'function') ? splitKoreanAddress(addr) : { placeName: '' };
+                var body = {
+                    lat: c.latitude,
+                    lng: c.longitude,
+                    address: addr || '',           // 도로명 주소까지 상세
+                    roadAddress: addr || '',
+                    placeName: split.placeName || '',
+                    accuracy: (c.accuracy != null ? c.accuracy : null),
+                    altitude: (c.altitude != null ? c.altitude : null),
+                    speed: (c.speed != null ? c.speed : null),
+                    heading: (c.heading != null ? c.heading : null),
+                    source: source || 'foreground'
+                    // capturedAt 은 서버에서 현재 시각으로 기록
+                };
+                fetch(Daylog.api + '/api/locations', {
+                    method: 'POST',
+                    headers: Daylog.authHeaders(true),
+                    body: JSON.stringify(body)
+                }).catch(function () { /* 적재 실패는 조용히 무시 */ });
+            });
+        }, function () { /* 위치 권한 거부/실패 시 조용히 무시 */ },
+        { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
 }
 function startLocationTracking() {
     if (_locTrackTimer) return;
@@ -607,7 +610,8 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.reloadChecklists = () => loadChecklistsFromServer();
     // [B] edit by smsong - 로그인 상태면 실시간 위치 10분 단위 적재 시작
     if (currentUid) { try { startLocationTracking(); } catch (e) { console.warn('위치 추적 시작 실패', e); } }
-    // 서버 권한 로딩 → 접근 게이트 + 관리자 메뉴 노출
+    // 서버 권한 로딩 → 접근 게이트 + 관리자 메뉴 노출 (먼저 로컬 이름으로 메뉴 즉시 판정)
+    try { applyMyPermUI(); } catch (e) {}
     if (currentUid) { try { loadMyPermission(); } catch (e) { console.warn('권한 로딩 실패', e); } }
     // [E] edit by smsong
     Daylog.openChecklistDetailById = (id) => {

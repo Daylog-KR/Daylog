@@ -27,7 +27,7 @@ public class PermissionService {
     private final UserRepository userRepository;
 
     public static final String ADMIN_NAME = "송성민";
-    private static final Set<String> BOOTSTRAP_ACCESS = Set.of("송성민", "s s", "강미르");
+    private static final Set<String> BOOTSTRAP_ACCESS = Set.of("송성민", "강미르"); // [smsong] s s 제거 — 자동 접근 차단
 
     // ===== 이름/관리자 판별 =====
     private String nameOf(UserDetails ud) {
