@@ -262,7 +262,7 @@ function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
 function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
 // [B] edit by smsong - 권한은 서버(권한 메뉴/DB) 기준. Daylog.myPerm 에 내 '실효' 권한 플래그 보관.
 //  소유자 우회 없이 순수 권한 기준 → 권한이 회수되면 해당 버튼(생성/수정/휴지통/삭제)이 모두 사라짐.
-function _myPerm() { return (window.Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
+function _myPerm() { return (Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
 function isAdminUser() { var p = _myPerm(); return !!(p && p.admin); }
 function canCreateObject() { var p = _myPerm(); return !!(p && (p.admin || p.canCreate)); } // 생성 권한
 function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // 수정 권한
@@ -277,11 +277,11 @@ function applyPermButtons() {
         if (b) b.style.display = show ? '' : 'none';
     });
 }
-if (window.Daylog) Daylog.applyPermButtons = applyPermButtons;
+if (Daylog) Daylog.applyPermButtons = applyPermButtons;
 // [E] edit by smsong
 // [B] edit by smsong - 권한 로딩 / 관리자 권한 메뉴 / 접근 요청
 function applyMyPermUI() {
-    var p = (window.Daylog && Daylog.myPerm) ? Daylog.myPerm : null;
+    var p = (Daylog && Daylog.myPerm) ? Daylog.myPerm : null;
     var nm = (typeof readLocalName === 'function') ? String(readLocalName() || '').trim() : '';
     var admin = (p && p.admin) || nm === '송성민'; // 서버 권한 또는 로컬 이름(관리자)으로 표시
     var btn = document.getElementById('btn-perm-admin');
@@ -290,7 +290,7 @@ function applyMyPermUI() {
 }
 // 앱 진입 시: 내 권한을 서버에 등록(upsert)하고 받아와 게이트/관리자 메뉴 결정
 function loadMyPermission() {
-    if (!(window.Daylog && Daylog.api)) return Promise.resolve(null);
+    if (!(Daylog && Daylog.api)) return Promise.resolve(null);
     return fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
         .then(function (res) {
             if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status + ' (SecurityConfig에서 /api/permissions/** 확인 필요)'); throw new Error('HTTP ' + res.status); }
@@ -316,7 +316,7 @@ function loadMyPermission() {
             return null;
         });
 }
-if (window.Daylog) Daylog.loadMyPermission = loadMyPermission;
+if (Daylog) Daylog.loadMyPermission = loadMyPermission;
 
 // 권한 API 전용 fetch: handleResponse(자동 로그아웃/차단 튕김)를 쓰지 않고 상태코드를 그대로 표면화
 function _permFetch(path, opts) {
@@ -478,7 +478,7 @@ function withLoading(promise, msg) {
     showLoading(msg);
     return Promise.resolve(promise).finally(hideLoading);
 }
-if (window.Daylog) { Daylog.showLoading = showLoading; Daylog.hideLoading = hideLoading; Daylog.withLoading = withLoading; }
+if (Daylog) { Daylog.showLoading = showLoading; Daylog.hideLoading = hideLoading; Daylog.withLoading = withLoading; }
 // [E] edit by smsong
 // [B] edit by smsong - 휴지통 항목별 '며칠 뒤 자동 삭제' 텍스트 (백엔드 daysUntilAutoDelete 사용)
 function autoDeleteText(o) {
@@ -526,7 +526,7 @@ const _geoCache = {};
 //    위치 플러그인) 래핑이 필요함. 아래는 포그라운드 자동 적재 구현.
 var _locTrackTimer = null;
 function postCurrentLocation(source) {
-    if (!(window.Daylog && Daylog.api && Daylog.currentUid)) return;
+    if (!(Daylog && Daylog.api && Daylog.currentUid)) return;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(function (pos) {
         var c = pos.coords;
@@ -562,7 +562,7 @@ function startLocationTracking() {
         if (document.visibilityState === 'visible') postCurrentLocation('resume');
     });
 }
-if (window.Daylog) Daylog.startLocationTracking = startLocationTracking;
+if (Daylog) Daylog.startLocationTracking = startLocationTracking;
 // [E] edit by smsong
 
 function reverseGeocode(lat, lng, cb) {
