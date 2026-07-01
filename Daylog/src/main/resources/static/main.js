@@ -292,7 +292,10 @@ function applyMyPermUI() {
 function loadMyPermission() {
     if (!(window.Daylog && Daylog.api)) return Promise.resolve(null);
     return fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
-        .then(function (res) { if (!res.ok) throw new Error('perm'); return res.json(); })
+        .then(function (res) {
+            if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status + ' (SecurityConfig에서 /api/permissions/** 확인 필요)'); throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
         .then(function (p) {
             Daylog.myPerm = p || null;
             applyMyPermUI();
@@ -315,21 +318,40 @@ function loadMyPermission() {
 }
 if (window.Daylog) Daylog.loadMyPermission = loadMyPermission;
 
-// 차단 화면에서 '권한 요청하기'
+// 권한 API 전용 fetch: handleResponse(자동 로그아웃/차단 튕김)를 쓰지 않고 상태코드를 그대로 표면화
+function _permFetch(path, opts) {
+    return fetch(Daylog.api + path, opts || { headers: Daylog.authHeaders(true) })
+        .then(function (res) {
+            if (!res.ok) {
+                return res.text().then(function (t) {
+                    var e = new Error('HTTP ' + res.status + (t ? (' · ' + String(t).substring(0, 140)) : ''));
+                    e.status = res.status;
+                    throw e;
+                });
+            }
+            return res.text().then(function (t) { return t ? JSON.parse(t) : null; });
+        });
+}
+
+// 차단 화면에서 '권한 요청하기' (실패해도 반드시 화면에 사유 표시)
 function requestAccessFromBlock() {
-    if (!(window.Daylog && Daylog.api)) return;
     var btn = document.getElementById('abx-request-btn');
+    var sub = document.querySelector('#auth-block-overlay .abx-sub');
+    if (!(window.Daylog && Daylog.api)) {
+        if (sub) sub.textContent = '요청을 보낼 수 없습니다(설정 미완료). 새로고침 후 다시 시도해 주십시오.';
+        return;
+    }
     if (btn) { btn.disabled = true; btn.textContent = '요청 중...'; }
-    fetch(Daylog.api + '/api/permissions/request', { method: 'POST', headers: Daylog.authHeaders(true) })
-        .then(function (res) { return res.ok ? res.json() : Promise.reject(); })
+    _permFetch('/api/permissions/request', { method: 'POST', headers: Daylog.authHeaders(true) })
         .then(function () {
-            var sub = document.querySelector('#auth-block-overlay .abx-sub');
             if (sub) sub.textContent = '권한 요청이 전송되었습니다. 관리자 승인 후 이용할 수 있습니다.';
-            if (btn) btn.textContent = '요청 완료';
+            if (btn) { btn.textContent = '요청 완료'; btn.disabled = true; }
         })
-        .catch(function () {
+        .catch(function (err) {
             if (btn) { btn.disabled = false; btn.textContent = '권한 요청하기'; }
-            alert('요청 전송에 실패했습니다. 잠시 후 다시 시도해 주십시오.');
+            var msg = (err && err.message) ? err.message : '알 수 없는 오류';
+            if (sub) sub.textContent = '요청 전송 실패: ' + msg + ' — 관리자에게 문의해 주십시오.';
+            console.error('[Daylog] 권한 요청 실패:', err);
         });
 }
 
@@ -340,11 +362,15 @@ function openPermissionAdmin() {
     if (!modal || !body) return;
     body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
     modal.classList.remove('hidden');
-    withLoading(
-        fetch(Daylog.api + '/api/permissions/users', { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse),
-        '불러오는 중...'
-    ).then(function (list) { renderPermissionList(list || []); })
-     .catch(function () { body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.</div>'; });
+    withLoading(_permFetch('/api/permissions/users', { headers: Daylog.authHeaders(true) }), '불러오는 중...')
+        .then(function (list) { renderPermissionList(list || []); })
+        .catch(function (err) {
+            var msg = (err && err.message) ? err.message : '';
+            body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.' +
+                '<br><span style="font-size:0.78rem;color:#c0392b;">' + escapeHtml(msg) + '</span>' +
+                '<br><span style="font-size:0.76rem;color:#8a8178;line-height:1.5;">권한 API가 정상 응답하지 않습니다. 서버의 SecurityConfig에서 <b>/api/permissions/**</b> 가 인증 통과되는지, Permission 모듈이 배포됐는지 확인해 주십시오.</span></div>';
+            console.error('[Daylog] 권한 목록 실패:', err);
+        });
 }
 function closePermissionAdmin() {
     var modal = document.getElementById('perm-modal');
@@ -407,18 +433,16 @@ function togglePerm(uid, key) {
     putPermission(uid, patch);
 }
 function decideAccess(uid, approve) {
-    withLoading(
-        fetch(Daylog.api + '/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=' + approve,
-            { method: 'POST', headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse),
-        approve ? '허용하는 중...' : '거절하는 중...'
-    ).then(function () { openPermissionAdmin(); }).catch(function () { showToast('변경 실패'); });
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=' + approve,
+        { method: 'POST', headers: Daylog.authHeaders(true) }), approve ? '허용하는 중...' : '거절하는 중...')
+        .then(function () { openPermissionAdmin(); })
+        .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
 function putPermission(uid, patch) {
-    withLoading(
-        fetch(Daylog.api + '/api/permissions/' + encodeURIComponent(uid),
-            { method: 'PUT', headers: Daylog.authHeaders(true), body: JSON.stringify(patch) }).then(Daylog.handleResponse),
-        '저장하는 중...'
-    ).then(function () { openPermissionAdmin(); }).catch(function () { showToast('변경 실패'); });
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid),
+        { method: 'PUT', headers: Daylog.authHeaders(true), body: JSON.stringify(patch) }), '저장하는 중...')
+        .then(function () { openPermissionAdmin(); })
+        .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
 // [E] edit by smsong
 // 마지막 수정 일시 포맷 (YYYY.MM.DD HH:mm)
