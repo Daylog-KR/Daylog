@@ -194,11 +194,6 @@ body[data-active-tab="tab-map"] .map-wrapper {
     0%, 100% { box-shadow: inset 0 0 0 3px var(--primary), inset 0 0 70px rgba(46,43,40,0.22); }
     50%      { box-shadow: inset 0 0 0 4px var(--primary-dark), inset 0 0 95px rgba(46,43,40,0.34); }
 }
-.lm-top {
-    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-    width: min(92%, 400px); display: flex; flex-direction: column; align-items: stretch;
-    gap: 10px; pointer-events: none; z-index: 2;
-}
 .lm-banner {
     align-self: center; max-width: 100%; text-align: center;
     background: rgba(28, 26, 24, 0.9); color: var(--white);
@@ -1745,6 +1740,10 @@ body.map-immersive .bottom-nav {
     transform: translateY(110%); opacity: 0; pointer-events: none;
 }
 body.map-immersive .container { height: 100vh; height: 100dvh; }
+/* [smsong] 위치 선택(picking) 중에는 하단바를 내려서 숨김 → 취소 시 자동으로 다시 올라옴(슬라이드) */
+body.picking .bottom-nav {
+    transform: translateY(110%); opacity: 0; pointer-events: none;
+}
 /* [E] edit by smsong */
 
 /* ================= 다중 이미지: 미리보기 그리드 ================= */

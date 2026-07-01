@@ -61,12 +61,11 @@
             <div id="location-mode" class="location-mode hidden">
                 <div class="lm-vignette"></div>
                 <div class="lm-reticle"></div>
-                <div class="lm-top">
+                <!-- [smsong] 현재 위치 표시를 하단(액션 버튼 바로 위)로 이동 → 상단 검색창과 겹침 해소 -->
+                <div class="lm-bottom">
                     <div class="lm-banner" id="lm-center-label">
                         <span class="lm-pin"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> 지도를 움직여 중앙에 위치를 맞춰주십시오
                     </div>
-                </div>
-                <div class="lm-bottom">
                     <div class="lm-actions">
                         <button type="button" id="lm-current" class="lm-current-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/></svg> 현재 위치</button>
                         <button type="button" id="lm-confirm" class="lm-confirm-btn">이 위치로 설정</button>
