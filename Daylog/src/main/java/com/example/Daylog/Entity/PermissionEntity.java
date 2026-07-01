@@ -22,6 +22,11 @@ public class PermissionEntity {
     @Column(nullable = false, unique = true)
     private String uid;
 
+    // [smsong] 제공된 UserEntity 와 외래키(user_id)로 연결 (users.id 참조, 단방향 1:1)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", referencedColumnName = "id", unique = true)
+    private UserEntity user;
+
     // 표시용 스냅샷 (관리자 목록에서 보여주기 위함)
     private String name;
     private String nickname;
@@ -31,10 +36,13 @@ public class PermissionEntity {
     private String profileURL;
 
     // 권한 플래그
-    @Builder.Default private boolean accessAllowed = false; // 서비스 접근 허용
+    @Builder.Default private boolean accessAllowed = false; // 서비스 접근 허용(표시/미러)
+    @Builder.Default private boolean canCreate = false;     // 추억/가볼곳 생성
     @Builder.Default private boolean canEdit = false;       // 추억/가볼곳 수정
     @Builder.Default private boolean canTrash = false;      // 휴지통으로 이동/복원
     @Builder.Default private boolean canDelete = false;     // 영구 삭제
+    // [smsong] 관리자가 명시적으로 승인했는지 (부트스트랩 자동허용과 구분 · 기본 false → 신규/기존행 모두 미승인)
+    @Builder.Default private boolean adminApproved = false;
 
     // 접근 요청 상태: NONE / PENDING / APPROVED / REJECTED
     @Builder.Default private String requestStatus = "NONE";

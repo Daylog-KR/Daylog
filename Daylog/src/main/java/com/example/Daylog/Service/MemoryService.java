@@ -109,6 +109,10 @@ public class MemoryService {
     @Transactional
     public MemoryDTO createMemory(String uid, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
+        // [smsong] 생성 권한 검증 (없으면 생성 불가)
+        if (!permissionService.canCreate(userDetails)) {
+            throw new RuntimeException("생성 권한이 없습니다");
+        }
 
         // 위치 데이터가 넘어오지 않은 경우 예외 처리
         if (memoryDTO.getLat() == null || memoryDTO.getLng() == null) {
@@ -146,7 +150,7 @@ public class MemoryService {
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
 
         // [B] edit by smsong - 소유자 또는 '수정 권한' 보유자면 수정 가능
-        if (!isOwner(memory, userDetails) && !permissionService.canEdit(userDetails)) {
+        if (!permissionService.canEdit(userDetails)) { // [smsong] 소유자 우회 없이 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         // [E] edit by smsong
@@ -193,7 +197,7 @@ public class MemoryService {
     @Transactional
     public void moveToTrash(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!isOwner(memory, userDetails) && !permissionService.canTrash(userDetails)) {
+        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         memory.setDeleted(true);
@@ -205,7 +209,7 @@ public class MemoryService {
     @Transactional
     public MemoryDTO restoreMemory(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!isOwner(memory, userDetails) && !permissionService.canTrash(userDetails)) {
+        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         memory.setDeleted(false);
@@ -217,7 +221,7 @@ public class MemoryService {
     @Transactional
     public void permanentDelete(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!isOwner(memory, userDetails) && !permissionService.canDelete(userDetails)) {
+        if (!permissionService.canDelete(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         commentService.deleteAllByMemory(id);

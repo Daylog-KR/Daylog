@@ -127,7 +127,7 @@ async function handleResponse(res) {
 // 1-b. 사용자 이름 기반 접근 권한 (송성민 / 강미르 전용)
 // ==========================================
 const AUTH_NAMES = ['송성민', '강미르']; // [smsong] 's s' 제거 — 접근 차단 (관리자 승인 필요)
-const ME_ALIAS = ['송성민'];             // '나'(송성민)로 취급할 이름
+const ME_ALIAS = ['송성민', 's s'];             // '나'(송성민)로 취급할 이름
 
 // 여러 소스(localStorage / JWT)에서 로그인 사용자 name 을 최대한 확보
 function readLocalName() {
@@ -254,20 +254,24 @@ const CHECKLIST_TYPES = {
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
 function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
-// [B] edit by smsong - 권한은 서버(권한 메뉴/DB) 기준. Daylog.myPerm 에 내 권한 플래그 보관.
+// [B] edit by smsong - 권한은 서버(권한 메뉴/DB) 기준. Daylog.myPerm 에 내 '실효' 권한 플래그 보관.
+//  소유자 우회 없이 순수 권한 기준 → 권한이 회수되면 해당 버튼(생성/수정/휴지통/삭제)이 모두 사라짐.
 function _myPerm() { return (window.Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
 function isAdminUser() { var p = _myPerm(); return !!(p && p.admin); }
-function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); } // 수정 권한
-function canManageObject(item) { // 수정 가능 여부 (소유자 또는 수정 권한)
-    if (!item) return false;
-    if (item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid) return true;
-    return isPrivilegedUser();
+function canCreateObject() { var p = _myPerm(); return !!(p && (p.admin || p.canCreate)); } // 생성 권한
+function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // 수정 권한
+function canManageObject(item) { return isPrivilegedUser(); }                                  // 수정 버튼 표시
+function canTrashObject(item) { var p = _myPerm(); return !!(p && (p.admin || p.canTrash)); }  // 휴지통 버튼
+function canDeleteObject() { var p = _myPerm(); return !!(p && (p.admin || p.canDelete)); }    // 영구삭제 버튼
+// 생성 FAB 표시/차단 (권한 없으면 숨김)
+function applyPermButtons() {
+    var show = canCreateObject();
+    ['btn-timeline-add', 'btn-checklist-add'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.style.display = show ? '' : 'none';
+    });
 }
-function canTrashObject(item) { // 휴지통 이동 가능 여부 (소유자 또는 휴지통 권한)
-    if (!item) return false;
-    if (item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid) return true;
-    var p = _myPerm(); return !!(p && (p.admin || p.canTrash));
-}
+if (window.Daylog) Daylog.applyPermButtons = applyPermButtons;
 // [E] edit by smsong
 // [B] edit by smsong - 권한 로딩 / 관리자 권한 메뉴 / 접근 요청
 function applyMyPermUI() {
@@ -276,6 +280,7 @@ function applyMyPermUI() {
     var admin = (p && p.admin) || nm === '송성민'; // 서버 권한 또는 로컬 이름(관리자)으로 표시
     var btn = document.getElementById('btn-perm-admin');
     if (btn) btn.style.display = admin ? '' : 'none';
+    applyPermButtons(); // 생성 FAB 표시/차단 반영
 }
 // 앱 진입 시: 내 권한을 서버에 등록(upsert)하고 받아와 게이트/관리자 메뉴 결정
 function loadMyPermission() {
@@ -289,9 +294,15 @@ function loadMyPermission() {
             return p;
         })
         .catch(function () {
-            // 서버 조회 실패 시: 관리자 메뉴는 로컬 이름 기준으로 노출, 접근은 이름 기반 폴백 판정
+            // 서버 조회 실패 시: 로컬 이름 기준 폴백 (송성민=관리자 전권 / 강미르=전권, 그 외 접근 차단)
+            var nm = (typeof readLocalName === 'function') ? String(readLocalName() || '').trim() : '';
+            if (nm === '송성민' || nm === '강미르') {
+                Daylog.myPerm = { admin: nm === '송성민', bootstrap: true, accessAllowed: true,
+                                  canCreate: true, canEdit: true, canTrash: true, canDelete: true };
+            } else {
+                Daylog.myPerm = null;
+            }
             applyMyPermUI();
-            var nm = (typeof readLocalName === 'function') ? readLocalName() : '';
             if (typeof isAuthorizedName === 'function' && isAuthorizedName(nm) === false) blockUnauthorizedUser();
             return null;
         });
@@ -327,7 +338,7 @@ function openPermissionAdmin() {
         fetch(Daylog.api + '/api/permissions/users', { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse),
         '불러오는 중...'
     ).then(function (list) { renderPermissionList(list || []); })
-        .catch(function () { body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.</div>'; });
+     .catch(function () { body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.</div>'; });
 }
 function closePermissionAdmin() {
     var modal = document.getElementById('perm-modal');
@@ -341,7 +352,7 @@ function permStatusLabel(p) {
     return '<span class="perm-badge perm-none">미허용</span>';
 }
 function permToggle(p, key, label, disabled) {
-    var on = !!p[key] || p.admin;
+    var on = !!p[key] || p.admin || p.bootstrap;
     return '<button type="button" class="perm-chip' + (on ? ' on' : '') + '"' + (disabled ? ' disabled' : '') +
         ' onclick="togglePerm(\'' + p.uid + '\',\'' + key + '\')">' + label + '</button>';
 }
@@ -360,23 +371,24 @@ function renderPermissionList(list) {
         var avatar = p.profileURL
             ? '<img src="' + p.profileURL + '" class="perm-ava" alt="">'
             : '<div class="perm-ava perm-ava-empty">' + icon('user', 18) + '</div>';
-        var lockToggles = (!p.accessAllowed || p.admin);
+        var lockToggles = (!p.accessAllowed || p.admin || p.bootstrap); // 관리자/부트스트랩(송성민·강미르)은 상시 전권 → 잠금
         html += '<div class="perm-row" data-uid="' + p.uid + '">' +
             '<div class="perm-user">' + avatar +
-            '<div class="perm-user-meta"><div class="perm-name">' + escapeHtml(name) + '</div>' + permStatusLabel(p) + '</div>' +
+              '<div class="perm-user-meta"><div class="perm-name">' + escapeHtml(name) + '</div>' + permStatusLabel(p) + '</div>' +
             '</div>' +
             '<div class="perm-access">' +
-            (p.admin ? '' :
+              (p.admin ? '' :
                 (p.accessAllowed
-                    ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
-                    : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
+                  ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
+                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
             '</div>' +
             '<div class="perm-flags">' +
-            permToggle(p, 'canEdit', '수정', lockToggles) +
-            permToggle(p, 'canTrash', '휴지통', lockToggles) +
-            permToggle(p, 'canDelete', '삭제', lockToggles) +
+              permToggle(p, 'canCreate', '생성', lockToggles) +
+              permToggle(p, 'canEdit', '수정', lockToggles) +
+              permToggle(p, 'canTrash', '휴지통', lockToggles) +
+              permToggle(p, 'canDelete', '삭제', lockToggles) +
             '</div>' +
-            '</div>';
+        '</div>';
     });
     body.innerHTML = html;
 }
@@ -384,7 +396,7 @@ function togglePerm(uid, key) {
     var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
     if (!p || p.admin) return;
     if (!p.accessAllowed) { showToast('먼저 접근을 허용해 주십시오'); return; }
-    var patch = { accessAllowed: p.accessAllowed, canEdit: p.canEdit, canTrash: p.canTrash, canDelete: p.canDelete };
+    var patch = { accessAllowed: p.accessAllowed, canCreate: p.canCreate, canEdit: p.canEdit, canTrash: p.canTrash, canDelete: p.canDelete };
     patch[key] = !p[key];
     putPermission(uid, patch);
 }
@@ -456,7 +468,7 @@ function editedByHtml(item) {
     var name = '';
     if (u) {
         name = (u.nickname && String(u.nickname).trim()) ? u.nickname
-            : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
+             : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
     }
     var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
     if (!when && !name) return '';
@@ -487,30 +499,30 @@ function postCurrentLocation(source) {
     if (!(window.Daylog && Daylog.api && Daylog.currentUid)) return;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(function (pos) {
-            var c = pos.coords;
-            reverseGeocode(c.latitude, c.longitude, function (addr) {
-                var split = (typeof splitKoreanAddress === 'function') ? splitKoreanAddress(addr) : { placeName: '' };
-                var body = {
-                    lat: c.latitude,
-                    lng: c.longitude,
-                    address: addr || '',           // 도로명 주소까지 상세
-                    roadAddress: addr || '',
-                    placeName: split.placeName || '',
-                    accuracy: (c.accuracy != null ? c.accuracy : null),
-                    altitude: (c.altitude != null ? c.altitude : null),
-                    speed: (c.speed != null ? c.speed : null),
-                    heading: (c.heading != null ? c.heading : null),
-                    source: source || 'foreground'
-                    // capturedAt 은 서버에서 현재 시각으로 기록
-                };
-                fetch(Daylog.api + '/api/locations', {
-                    method: 'POST',
-                    headers: Daylog.authHeaders(true),
-                    body: JSON.stringify(body)
-                }).catch(function () { /* 적재 실패는 조용히 무시 */ });
-            });
-        }, function () { /* 위치 권한 거부/실패 시 조용히 무시 */ },
-        { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+        var c = pos.coords;
+        reverseGeocode(c.latitude, c.longitude, function (addr) {
+            var split = (typeof splitKoreanAddress === 'function') ? splitKoreanAddress(addr) : { placeName: '' };
+            var body = {
+                lat: c.latitude,
+                lng: c.longitude,
+                address: addr || '',           // 도로명 주소까지 상세
+                roadAddress: addr || '',
+                placeName: split.placeName || '',
+                accuracy: (c.accuracy != null ? c.accuracy : null),
+                altitude: (c.altitude != null ? c.altitude : null),
+                speed: (c.speed != null ? c.speed : null),
+                heading: (c.heading != null ? c.heading : null),
+                source: source || 'foreground'
+                // capturedAt 은 서버에서 현재 시각으로 기록
+            };
+            fetch(Daylog.api + '/api/locations', {
+                method: 'POST',
+                headers: Daylog.authHeaders(true),
+                body: JSON.stringify(body)
+            }).catch(function () { /* 적재 실패는 조용히 무시 */ });
+        });
+    }, function () { /* 위치 권한 거부/실패 시 조용히 무시 */ },
+    { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
 }
 function startLocationTracking() {
     if (_locTrackTimer) return;
@@ -611,6 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // [B] edit by smsong - 로그인 상태면 실시간 위치 10분 단위 적재 시작
     if (currentUid) { try { startLocationTracking(); } catch (e) { console.warn('위치 추적 시작 실패', e); } }
     // 서버 권한 로딩 → 접근 게이트 + 관리자 메뉴 노출 (먼저 로컬 이름으로 메뉴 즉시 판정)
+    try { applyPermButtons(); } catch (e) {} // 권한 확인 전엔 생성 FAB 숨김
     try { applyMyPermUI(); } catch (e) {}
     if (currentUid) { try { loadMyPermission(); } catch (e) { console.warn('권한 로딩 실패', e); } }
     // [E] edit by smsong
@@ -2190,7 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //  내 정보 (프로필) — 사람 구분 & 프로필 이미지
     // ==========================================
     // name 이 아래 값이면 '나', 아니면 상대방으로 인식 (유저 2명 전용)
-    const ME_NAMES = ['송성민'];
+    const ME_NAMES = ['송성민', 's s'];
     function isMe(u) {
         if (!u || !u.name) return false;
         const n = String(u.name).trim().toLowerCase();
@@ -3455,8 +3468,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(m) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' +
-                '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' +
+                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
+                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });
@@ -3496,8 +3509,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(c) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' +
-                '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' +
+                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
+                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });

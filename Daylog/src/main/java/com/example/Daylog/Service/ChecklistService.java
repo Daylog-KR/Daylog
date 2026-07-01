@@ -57,7 +57,7 @@ public class ChecklistService {
     // 수정용: 소유자 또는 '수정 권한'
     private ChecklistEntity getEditableChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!isOwner(c, userDetails) && !permissionService.canEdit(userDetails)) {
+        if (!permissionService.canEdit(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         return c;
@@ -118,6 +118,10 @@ public class ChecklistService {
     @Transactional
     public ChecklistDTO createChecklist(String uid, ChecklistDTO dto, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
+        // [smsong] 생성 권한 검증 (없으면 생성 불가)
+        if (!permissionService.canCreate(userDetails)) {
+            throw new RuntimeException("생성 권한이 없습니다");
+        }
 
         if (dto.getLat() == null || dto.getLng() == null) {
             throw new IllegalArgumentException("위치 정보가 필수입니다.");
@@ -194,7 +198,7 @@ public class ChecklistService {
     @Transactional
     public void moveToTrash(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!isOwner(c, userDetails) && !permissionService.canTrash(userDetails)) {
+        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         c.setDeleted(true);
@@ -206,7 +210,7 @@ public class ChecklistService {
     @Transactional
     public ChecklistDTO restoreChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!isOwner(c, userDetails) && !permissionService.canTrash(userDetails)) {
+        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         c.setDeleted(false);
@@ -218,7 +222,7 @@ public class ChecklistService {
     @Transactional
     public void permanentDelete(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!isOwner(c, userDetails) && !permissionService.canDelete(userDetails)) {
+        if (!permissionService.canDelete(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
         checklistRepository.delete(c);
