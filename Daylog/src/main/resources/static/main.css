@@ -154,7 +154,7 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 }
 
 /* 탭 전환 페이드/슬라이드 */
-.tab-content { animation: tabFade 0.18s ease; }
+.tab-content { } /* [smsong] iOS 밝기 깜빡임·전환지연 제거: 탭 진입 페이드 삭제 */
 @keyframes tabFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tabIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -369,7 +369,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100);
     cursor: pointer;
     transition: transform 0.22s var(--ease-soft), box-shadow 0.22s var(--ease-soft);
-    animation: cardIn 0.5s var(--ease-soft) both;
+    /* [smsong] iOS 깜빡임 제거 */
 }
 @keyframes cardIn {
     from { opacity: 0; transform: translateY(16px); }
@@ -435,7 +435,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     background: var(--white); border: 1px solid var(--gray-100); border-radius: 16px;
     padding: 18px 12px; text-align: center; box-shadow: var(--shadow-sm);
     display: flex; flex-direction: column; gap: 5px;
-    animation: cardIn 0.5s var(--ease-soft) both;
+    /* [smsong] iOS 깜빡임 제거 */
 }
 .stat-num { font-family: var(--font-logo); font-size: 1.7rem; color: var(--primary-dark); font-weight: 600; }
 .stat-label { font-size: 0.78rem; color: var(--gray-500); }
@@ -923,6 +923,7 @@ input[type="date"]::-webkit-date-and-time-value {
 
 /* ---- 타임라인 카드 ---- */
 .tl-card {
+    -webkit-backface-visibility: hidden; backface-visibility: hidden;
     display: flex; align-items: stretch; gap: 14px;
     background: var(--white); border: 1px solid var(--gray-200);
     border-radius: 16px; padding: 14px 16px; margin-bottom: 10px;
@@ -1371,13 +1372,14 @@ input[type="date"]::-webkit-date-and-time-value {
 /* ---- 가볼곳 목록 카드 ---- */
 #checklist-feed { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
 .cl-card {
+    -webkit-backface-visibility: hidden; backface-visibility: hidden;
     position: relative;
     display: flex; align-items: stretch; gap: 14px;
     background: var(--white); border: 1px solid var(--gray-200);
     border-radius: 16px; padding: 14px 16px;
     box-shadow: var(--shadow-sm); cursor: pointer; text-align: left;
     transition: transform 0.15s ease, box-shadow 0.2s ease;
-    animation: cardIn 0.4s var(--ease-soft) both;
+    /* [smsong] iOS 잔물결 깜빡임 제거: 카드 개별 페이드인 삭제 */
 }
 .cl-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .cl-card.visited { background: #f7faf7; }

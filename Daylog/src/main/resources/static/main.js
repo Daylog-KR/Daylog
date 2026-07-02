@@ -517,6 +517,17 @@ function thumbHtml(mediaURL, cls) {
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
 
+// [smsong] 이미지 프리로드: 목록 로드 시 썸네일/마커/상세 첫 이미지를 미리 브라우저 캐시에 적재 → 즉시 표시
+const _preloadedImgs = new Set();
+function preloadImages(urls) {
+    if (!urls) return;
+    urls.forEach(u => {
+        if (!u || _preloadedImgs.has(u)) return;
+        _preloadedImgs.add(u);
+        try { const im = new Image(); im.decoding = 'async'; im.src = u; } catch (e) {}
+    });
+}
+
 // 좌표 → 주소 역지오코딩 (캐시 사용)
 const _geoCache = {};
 // [B] edit by smsong - 사용자 실시간 위치를 10분 단위로 서버(/api/locations)에 저장
@@ -1650,6 +1661,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _memSig = sig;
                 memoryList = list;
                 Daylog.memories = memoryList;
+                preloadImages(list.map(m => m.mediaURL)); // [smsong] 썸네일/마커/상세 즉시 표시
                 updateProfileStats();
 
                 const sorted = [...memoryList].sort(sortByDateDesc);
@@ -1674,6 +1686,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
                 _clSig = sig;
                 checklistList = arr;
+                preloadImages(arr.map(c => c.mediaURL)); // [smsong] 썸네일/마커/상세 즉시 표시
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
                 if (mapMode === 'checklist') renderActiveMapMarkers();
@@ -1768,13 +1781,10 @@ document.addEventListener('DOMContentLoaded', () => {
             feed.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>';
             return;
         }
-        let idx = 0;
         sorted.forEach(item => {
             const meta = checklistType(item.type);
             const card = document.createElement('div');
             card.className = 'cl-card' + (item.visited ? ' visited' : '');
-            card.style.animationDelay = (idx * 0.05) + 's';
-            idx++;
             const badge = item.visited
                 ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
                 : '<span class="cl-todo-badge">가볼 예정</span>';
@@ -2203,8 +2213,6 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[dateKey].forEach(memory => {
                 const card = document.createElement('div');
                 card.className = 'tl-card';
-                card.style.animationDelay = (idx * 0.05) + 's';
-                idx++;
 
                 const thumb = thumbHtml(memory.mediaURL, 'tl-thumb');
 
@@ -2874,6 +2882,7 @@ function openChecklistDetail(item) {
         ? '<span class="meta-item cl-meta-visited">' + icon('check',13) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
         : '<span class="meta-item cl-meta-todo">아직 안 가봤습니다</span>';
     const _clUrls = mediaUrlsOf(item);
+    preloadImages(_clUrls); // [smsong] 상세 이미지 즉시 표시/스와이프
     const imageHtml = carouselHtml(_clUrls);
 
     view.innerHTML =
@@ -3105,6 +3114,7 @@ function openDetailModal(memory) {
 
     const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
     const _memUrls = mediaUrlsOf(memory);
+    preloadImages(_memUrls); // [smsong] 상세 이미지 즉시 표시/스와이프
     const imageHtml = carouselHtml(_memUrls);
     const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
     const canManage = canManageObject(memory); // [smsong] 소유자 또는 커플(송성민/강미르)
