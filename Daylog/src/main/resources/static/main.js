@@ -1629,8 +1629,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return Promise.resolve(loadMemoriesFromServer());
         }, 26); // 타임라인/가볼곳/내정보 아이콘을 좀 더 아래로
 
-    // 추억 상세 모달 당겨서 새로고침 — 폼은 고정(움직이지 않음), 링만 위쪽에 표시
-    const detailScroll = document.querySelector('#detail-modal .modal-content');
+    // 추억 상세 모달 당겨서 새로고침 — 스크롤 영역이 .sheet-body 로 변경됨
+    const detailScroll = document.querySelector('#detail-modal .sheet-body');
     attachPullToRefresh(detailScroll,
         () => !document.getElementById('detail-modal').classList.contains('hidden') && _detailMemory != null,
         () => { if (_detailMemory) loadComments('memory', _detailMemory.id); return Promise.resolve(loadMemoriesFromServer()); },
@@ -2943,12 +2943,13 @@ function openChecklistDetail(item) {
     loadComments('checklist', item.id);
 
     const cdm = document.getElementById('checklist-detail-modal');
-    cdm.classList.remove('hidden');
-    const cdmScroll = cdm.querySelector('.modal-content');
+    const cdmScroll = cdm.querySelector('.sheet-body');
     if (cdmScroll) cdmScroll.scrollTop = 0;
+    _getChecklistSheet().open('full');       // [smsong] 바텀시트로 열기(완전히 위)
 }
 
 function enterChecklistEdit(item) {
+    if (_clSheet) _clSheet.snap('full', true); // [smsong] 편집 시 시트를 완전히 위로
     const view = document.getElementById('cl-detail-view');
     const editForm = document.getElementById('cl-edit-form');
     if (!editForm) return;
@@ -3095,15 +3096,130 @@ function trashChecklist(id) {
 }
 
 function closeChecklistDetail() {
-    const modal = document.getElementById('checklist-detail-modal');
-    if (modal) modal.classList.add('hidden');
-    const ha = document.getElementById('cl-detail-header-actions');
-    if (ha) ha.innerHTML = '';
-    exitChecklistEdit();
-    _detailChecklist = null;
+    _getChecklistSheet().close();  // [smsong] 정리는 onClosed 콜백에서
 }
 
 let _detailMemory = null;
+
+// =====================================================
+// [smsong] 상세보기 바텀시트 (REMS 방식 이식)
+//  스냅: full(완전히 위) → two(2/3) → one(1/3) → closed(완전히 아래=닫힘)
+//  드래그 영역: 핸들 + 헤더 / 본문(.sheet-body)은 자유 스크롤
+// =====================================================
+function createDetailSheet(modalId, onClosed) {
+    const modal = document.getElementById(modalId);
+    const content = modal.querySelector('.detail-content');
+    const handle = modal.querySelector('.sheet-handle');
+    const header = modal.querySelector('.detail-modal-header');
+    let current = 'closed';
+    let dragging = false, startY = 0, startPx = 0, lastY = 0, lastT = 0, vel = 0;
+    let closeTimer = null;
+
+    function A() { return window.innerHeight || document.documentElement.clientHeight; }
+    function H() { return content.offsetHeight || A() * 0.88; }
+    function metrics() {
+        const a = A(), h = H();
+        return {
+            full: 0,                                    // 완전히 위
+            two:  Math.max(0, Math.round(h - a * 0.66)),// 2/3 노출
+            one:  Math.max(0, Math.round(h - a * 0.34)),// 1/3 노출
+            closed: Math.round(h + 40)                  // 완전히 아래(숨김)
+        };
+    }
+    function curPx() {
+        const m = /translateY\(([-0-9.]+)px\)/.exec(content.style.transform || '');
+        return m ? parseFloat(m[1]) : metrics()[current];
+    }
+    function apply(px, animate) {
+        content.style.transition = animate ? 'transform 0.42s cubic-bezier(0.32,0.72,0,1)' : 'none';
+        content.style.transform = 'translateY(' + px + 'px)';
+    }
+    function snap(name, animate) {
+        current = name;
+        apply(metrics()[name], animate !== false);
+        if (name === 'closed') {
+            clearTimeout(closeTimer);
+            closeTimer = setTimeout(() => {
+                if (current !== 'closed') return;
+                modal.classList.add('hidden');
+                if (typeof onClosed === 'function') onClosed();
+            }, animate !== false ? 380 : 0);
+        }
+    }
+    function open(target) {
+        clearTimeout(closeTimer);
+        target = target || 'full';
+        modal.classList.remove('hidden');
+        apply(metrics().closed, false);   // 아래에서 시작
+        void content.offsetHeight;        // reflow → 진입 애니메이션 보장
+        requestAnimationFrame(() => snap(target, true));
+    }
+    function close() { snap('closed', true); }
+
+    function down(e) {
+        dragging = true;
+        startY = lastY = (e.touches ? e.touches[0].clientY : e.clientY);
+        lastT = Date.now(); vel = 0; startPx = curPx();
+        content.style.transition = 'none';
+        document.body.style.userSelect = 'none';
+    }
+    function move(e) {
+        if (!dragging) return;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY);
+        const m = metrics();
+        const px = Math.max(0, Math.min(startPx + (y - startY), m.closed));
+        content.style.transform = 'translateY(' + px + 'px)';
+        const now = Date.now(), dt = now - lastT;
+        if (dt > 0) vel = (y - lastY) / dt;
+        lastY = y; lastT = now;
+        if (e.cancelable) e.preventDefault();
+    }
+    function up() {
+        if (!dragging) return;
+        dragging = false; document.body.style.userSelect = '';
+        const m = metrics(), pos = curPx(), TH = 0.55;
+        let target;
+        if (vel > TH) {          // 아래로 플릭 → 한 단계 내림 (1/3에서 더 내리면 닫힘)
+            target = current === 'full' ? 'two' : (current === 'two' ? 'one' : 'closed');
+        } else if (vel < -TH) {  // 위로 플릭 → 한 단계 올림
+            target = current === 'one' ? 'two' : 'full';
+        } else {                 // 천천히 놓으면 가장 가까운 스냅
+            const cand = ['full', 'two', 'one', 'closed'];
+            target = cand.reduce((a, b) => Math.abs(m[b] - pos) < Math.abs(m[a] - pos) ? b : a, cand[0]);
+        }
+        snap(target, true);
+    }
+
+    [handle, header].forEach(t => {
+        if (!t) return;
+        t.addEventListener('touchstart', down, { passive: true });
+        t.addEventListener('mousedown', down);
+    });
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('mousemove', move);
+    window.addEventListener('touchend', up);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('resize', () => { if (current !== 'closed') snap(current, false); });
+
+    return { open, close, snap, isOpen: () => current !== 'closed' };
+}
+let _memorySheet = null, _clSheet = null;
+function _getMemorySheet() {
+    if (!_memorySheet) _memorySheet = createDetailSheet('detail-modal', () => {
+        const ha = document.getElementById('detail-header-actions'); if (ha) ha.innerHTML = '';
+        exitDetailEdit();
+        _detailMemory = null;
+    });
+    return _memorySheet;
+}
+function _getChecklistSheet() {
+    if (!_clSheet) _clSheet = createDetailSheet('checklist-detail-modal', () => {
+        const ha = document.getElementById('cl-detail-header-actions'); if (ha) ha.innerHTML = '';
+        exitChecklistEdit();
+        _detailChecklist = null;
+    });
+    return _clSheet;
+}
 
 function openDetailModal(memory) {
     _detailMemory = memory;
@@ -3202,10 +3318,9 @@ function openDetailModal(memory) {
     loadComments('memory', memory.id);
 
     const dm = document.getElementById('detail-modal');
-    dm.classList.remove('hidden');
-    // 다른 추억으로 이동 시 항상 맨 위에서 시작 (이전 스크롤 위치 잔존 방지)
-    const dmScroll = dm.querySelector('.modal-content');
-    if (dmScroll) dmScroll.scrollTop = 0;
+    const dmScroll = dm.querySelector('.sheet-body');
+    if (dmScroll) dmScroll.scrollTop = 0;   // 항상 맨 위에서 시작
+    _getMemorySheet().open('full');         // [smsong] 바텀시트로 열기(완전히 위)
 }
 
 // 상세/수정 모달의 위치 표기 (장소명 + 상세주소) — 없으면 좌표로 역지오코딩
@@ -3230,6 +3345,7 @@ function fillLocationInto(elId, memory) {
 function applyDetailLocation(memory) { fillLocationInto('detail-loc', memory); }
 
 function enterDetailEdit(memory) {
+    if (_memorySheet) _memorySheet.snap('full', true); // [smsong] 편집 시 시트를 완전히 위로
     const view = document.getElementById('detail-view');
     const editForm = document.getElementById('detail-edit-form');
     if (!editForm) return;
@@ -3299,11 +3415,7 @@ function saveDetailEdit() {
 }
 
 function closeDetailModal() {
-    document.getElementById('detail-modal').classList.add('hidden');
-    const ha = document.getElementById('detail-header-actions');
-    if (ha) ha.innerHTML = '';
-    exitDetailEdit();
-    _detailMemory = null;
+    _getMemorySheet().close();  // [smsong] 아래로 슬라이드 후 숨김/정리는 onClosed 콜백에서
 }
 
 // ==========================================

@@ -284,12 +284,14 @@
 </div>
 
 <!-- 상세 조회 모달 -->
-<div id="detail-modal" class="modal hidden">
+<div id="detail-modal" class="modal detail-sheet hidden">
     <div class="modal-content detail-content">
-        <div class="modal-header detail-modal-header">
+        <div class="sheet-handle" id="detail-sheet-handle"></div>
+        <div class="modal-header detail-modal-header" id="detail-sheet-header">
             <div id="detail-header-actions" class="detail-header-actions"></div>
             <button type="button" class="close-modal" onclick="closeDetailModal()">&times;</button>
         </div>
+        <div class="sheet-body" id="detail-sheet-body">
 
         <!-- 조회 영역 (JS가 채움) -->
         <div id="detail-view"></div>
@@ -320,6 +322,7 @@
                 <button type="submit" class="submit-btn">저장하기</button>
             </div>
         </form>
+        </div><!-- /.sheet-body -->
     </div>
 </div>
 
@@ -368,12 +371,14 @@
 </div>
 
 <!-- 가볼곳 상세 조회 모달 -->
-<div id="checklist-detail-modal" class="modal hidden">
+<div id="checklist-detail-modal" class="modal detail-sheet hidden">
     <div class="modal-content detail-content">
-        <div class="modal-header detail-modal-header">
+        <div class="sheet-handle" id="cl-detail-sheet-handle"></div>
+        <div class="modal-header detail-modal-header" id="cl-detail-sheet-header">
             <div id="cl-detail-header-actions" class="detail-header-actions"></div>
             <button type="button" class="close-modal" onclick="closeChecklistDetail()">&times;</button>
         </div>
+        <div class="sheet-body" id="cl-detail-sheet-body">
 
         <div id="cl-detail-view"></div>
 
@@ -417,6 +422,7 @@
                 <button type="submit" class="submit-btn">저장하기</button>
             </div>
         </form>
+        </div><!-- /.sheet-body -->
     </div>
 </div>
 

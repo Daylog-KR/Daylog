@@ -1838,8 +1838,7 @@ body.picking .bottom-nav {
 }
 @keyframes loSpin { to { transform: rotate(360deg); } }
 .lo-text { font-size: 0.86rem; color: var(--gray-600, #6b6157); font-weight: 600; }
-/* [E] edit by smsong */
-
+/* [E] edit by smsong */
 
 /* [B] edit by smsong - 권한 설정 버튼 + 관리자 권한 메뉴 + 차단화면 요청 버튼 */
 .perm-menu-btn {
@@ -1909,3 +1908,44 @@ body.picking .bottom-nav {
 .obj-comment-badge svg { width: 12px; height: 12px; }
 .cl-card .obj-comment-badge { margin-top: 6px; }
 /* [E] edit by smsong */
+
+/* =========================================================
+   [smsong] 상세보기 = 네이버 지도식 바텀시트 (REMS 방식 이식)
+   드래그 스냅: 완전히 위(full) → 2/3(two) → 1/3(one) → 완전히 아래(closed)
+   ========================================================= */
+.modal.detail-sheet {
+    align-items: flex-end; justify-content: center; padding: 0;
+    animation: backdropIn 0.28s ease;
+}
+.detail-sheet .detail-content {
+    width: 100%; max-width: 480px; margin: 0 auto;
+    height: 88dvh; max-height: 88dvh; min-height: 88dvh;   /* 스냅 계산용 고정 높이 */
+    border-radius: 22px 22px 0 0;
+    padding: 0; overflow: hidden;                          /* 스크롤은 .sheet-body 담당 */
+    display: flex; flex-direction: column;
+    transform: translateY(100%);                           /* 시작: 화면 아래 숨김 */
+    transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+    animation: none;                                       /* modalPop 비활성 */
+    will-change: transform;
+    -webkit-backface-visibility: hidden; backface-visibility: hidden;
+    text-align: left;
+}
+/* 드래그 핸들 (상단 바) */
+.detail-sheet .sheet-handle {
+    flex-shrink: 0; display: flex; justify-content: center; padding: 12px;
+    cursor: grab; touch-action: none;
+}
+.detail-sheet .sheet-handle::after {
+    content: ''; width: 40px; height: 4px; border-radius: 2px; background: var(--gray-300);
+}
+.detail-sheet .sheet-handle:active { cursor: grabbing; }
+/* 헤더도 드래그 영역 (고정) */
+.detail-sheet .detail-modal-header {
+    flex-shrink: 0; margin-bottom: 0; padding: 0 20px 12px;
+    touch-action: none; position: relative;
+}
+/* 본문 스크롤 영역 */
+.detail-sheet .sheet-body {
+    flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain; padding: 16px 20px 40px;
+}
