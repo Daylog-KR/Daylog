@@ -892,6 +892,11 @@ document.addEventListener('DOMContentLoaded', () => {
         naver.maps.Event.addListener(map, 'click', () => {
             if (isWaitingForMapClick) return; // 위치 선택 중에는 토글 안 함
             document.body.classList.toggle('map-immersive');
+            // [smsong] 몰입모드(헤더/하단바 숨김) 진입 시 상세보기도 함께 닫기
+            if (document.body.classList.contains('map-immersive')) {
+                if (_memorySheet && _memorySheet.isOpen()) closeDetailModal();
+                if (_clSheet && _clSheet.isOpen()) closeChecklistDetail();
+            }
             // [smsong] 지도는 뷰포트에 고정(fixed)되어 크기가 변하지 않으므로 resize() 불필요 → 버벅임/이동 제거
         });
     }
@@ -3152,10 +3157,18 @@ function createDetailSheet(modalId, onClosed) {
     function open(target) {
         clearTimeout(closeTimer);
         target = target || 'full';
+        dragging = false;                 // [smsong] 이전 드래그 상태 강제 해제
         modal.classList.remove('hidden');
-        apply(metrics().closed, false);   // 아래에서 시작
-        void content.offsetHeight;        // reflow → 진입 애니메이션 보장
-        requestAnimationFrame(() => snap(target, true));
+        const sb = content.querySelector('.sheet-body');
+        if (sb) sb.scrollTop = 0;         // [smsong] 본문 스크롤도 항상 맨 위로
+        // [smsong] 오브젝트 간 이동/화면 이동 시 항상 완전히 아래에서 시작 → 완전히 위(첫 페이지)로 초기화
+        current = 'closed';
+        content.style.transition = 'none';
+        content.style.transform = 'translateY(' + metrics().closed + 'px)';
+        void content.offsetHeight;        // reflow → 닫힘 위치 확정
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => snap(target, true));  // 이중 rAF로 확실히 애니메이션 재생
+        });
         // [smsong] 드래그 가능 힌트: 핸들을 잠깐 튕김(유한)
         if (handle) {
             handle.classList.remove('hinting');
