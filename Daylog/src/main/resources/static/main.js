@@ -2858,8 +2858,9 @@ function closeChecklistModal() {
 
 let _detailChecklist = null;
 
-function openChecklistDetail(item) {
+function openChecklistDetail(item, overModal) {
     _detailChecklist = item;
+    document.getElementById('checklist-detail-modal').classList.toggle('over-modal', !!overModal); // [smsong] 목록 모달 위로 올릴지
     const view = document.getElementById('cl-detail-view');
     const editForm = document.getElementById('cl-edit-form');
     if (editForm) editForm.classList.add('hidden');
@@ -3230,8 +3231,9 @@ function _getChecklistSheet() {
     return _clSheet;
 }
 
-function openDetailModal(memory) {
+function openDetailModal(memory, overModal) {
     _detailMemory = memory;
+    document.getElementById('detail-modal').classList.toggle('over-modal', !!overModal); // [smsong] 목록 모달 위로 올릴지
     const view = document.getElementById('detail-view');
     const editForm = document.getElementById('detail-edit-form');
     if (editForm) editForm.classList.add('hidden');
@@ -3801,6 +3803,7 @@ function openMemoryListModal(title, items) {
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
     modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
     titleEl.textContent = title;
     body.innerHTML = '';
 
@@ -3821,7 +3824,7 @@ function openMemoryListModal(title, items) {
                 '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
                 '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
                 '</div>';
-            row.addEventListener('click', () => { closeListModal(); openDetailModal(memory); });
+            row.addEventListener('click', () => openDetailModal(memory, true)); // [smsong] 목록 유지 + 상세를 그 위로
             body.appendChild(row);
         });
     }
@@ -3831,7 +3834,7 @@ function openMemoryListModal(title, items) {
 
 function closeListModal() {
     const modal = document.getElementById('list-modal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('dday-mode'); }
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('dday-mode'); modal.classList.remove('list-fullscreen'); }
     Daylog._openListKind = null;
 }
 
@@ -3842,6 +3845,7 @@ function openChecklistListModal(title, items) {
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
     modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
     Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
     titleEl.textContent = title;
     body.innerHTML = '';
@@ -3867,7 +3871,7 @@ function openChecklistListModal(title, items) {
                 '<div class="lm-row-title">' + escapeHtml(item.title || '') + '</div>' +
                 '<div class="lm-row-text">' + escapeHtml(loc || (item.content || '')) + '</div>' +
                 '</div>';
-            row.addEventListener('click', () => { closeListModal(); openChecklistDetail(item); });
+            row.addEventListener('click', () => openChecklistDetail(item, true)); // [smsong] 목록 유지 + 상세를 그 위로
             body.appendChild(row);
         });
     }
@@ -3892,6 +3896,7 @@ function showDDayInfo() {
         '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
         '</div>';
     Daylog._openListKind = null;
+    modal.classList.remove('list-fullscreen'); // [smsong] 디데이는 기존 카드 스타일 유지
     modal.classList.add('dday-mode'); // 디데이 폼 내부는 드래그(당겨서 새로고침) 비활성
     if (body) body.scrollTop = 0;
     modal.classList.remove('hidden');
