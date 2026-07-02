@@ -1622,7 +1622,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailScroll = document.querySelector('#detail-modal .modal-content');
     attachPullToRefresh(detailScroll,
         () => !document.getElementById('detail-modal').classList.contains('hidden') && _detailMemory != null,
-        () => { if (_detailMemory) loadComments(_detailMemory.id); return Promise.resolve(loadMemoriesFromServer()); },
+        () => { if (_detailMemory) loadComments('memory', _detailMemory.id); return Promise.resolve(loadMemoriesFromServer()); },
         -10, true);
 
     // '우리의 추억' / '~의 추억' 리스트 모달 당겨서 새로고침 (가로 드래그는 CSS로 잠금)
@@ -1788,11 +1788,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<h4 class="cl-card-title">' + escapeHtml(item.title || '') + '</h4>' +
                 (item.content ? '<p class="cl-card-text">' + escapeHtml(item.content) + '</p>' : '') +
                 (loc ? '<div class="cl-card-loc">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</div>' : '') +
+                commentBadgeHtml('checklist', item.id) +
                 '</div>' +
                 thumbHtml(item.mediaURL, 'cl-thumb');
             card.addEventListener('click', () => openChecklistDetail(item));
             feed.appendChild(card);
         });
+        applyCommentBadges('checklist');
+        fetchCommentCounts('checklist');
     }
 
     // 가볼곳 작성 폼 열기 (위치는 currentLatLng/currentLocationMeta 에서 가져옴)
@@ -2216,6 +2219,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     '</div>' +
                     '<span class="tl-addr"></span>' +
                     '</div>' +
+                    commentBadgeHtml('memory', memory.id) +
                     '</div>' +
                     thumb;
 
@@ -2224,6 +2228,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 timelineFeed.appendChild(card);
             });
         });
+        applyCommentBadges('memory');   // 캐시 즉시 반영
+        fetchCommentCounts('memory');   // 최신 수 갱신
     }
 
     // ==========================================
@@ -2887,6 +2893,15 @@ function openChecklistDetail(item) {
         editedByHtml(item) + // [smsong] 마지막 수정 일시/수정자
         imageHtml +
         (item.content ? '<div class="detail-body"><p>' + contentHtml + '</p></div>' : '') +
+        // [smsong] 가볼곳 댓글 영역 (추억과 동일, id는 cl- 접두어로 분리)
+        '<div class="comments-section">' +
+        '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="cl-comments-count">0</span></div>' +
+        '<div class="comments-list" id="cl-comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
+        '<div class="comment-compose">' +
+        '<input type="text" class="comment-input" id="cl-new-comment-input" placeholder="댓글을 남겨보십시오" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" id="cl-new-comment-send">등록</button>' +
+        '</div>' +
+        '</div>' +
         '</div>';
 
     const headerActions = document.getElementById('cl-detail-header-actions');
@@ -2908,6 +2923,15 @@ function openChecklistDetail(item) {
     if (eo) eo.addEventListener('click', () => enterChecklistEdit(item));
     const dl = document.getElementById('cl-detail-del-open');
     if (dl) dl.addEventListener('click', () => trashChecklist(item.id));
+
+    // [smsong] 가볼곳 댓글 작성 바인딩 + 로드
+    const clSend = document.getElementById('cl-new-comment-send');
+    const clInput = document.getElementById('cl-new-comment-input');
+    if (clSend) clSend.addEventListener('click', () => submitComment('checklist', item.id, null, 'cl-new-comment-input'));
+    if (clInput) clInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitComment('checklist', item.id, null, 'cl-new-comment-input'); }
+    });
+    loadComments('checklist', item.id);
 
     const cdm = document.getElementById('checklist-detail-modal');
     cdm.classList.remove('hidden');
@@ -3160,12 +3184,12 @@ function openDetailModal(memory) {
     // 댓글 작성 바인딩
     const sendBtn = document.getElementById('new-comment-send');
     const newInput = document.getElementById('new-comment-input');
-    if (sendBtn) sendBtn.addEventListener('click', () => submitComment(memory.id, null, 'new-comment-input'));
+    if (sendBtn) sendBtn.addEventListener('click', () => submitComment('memory', memory.id, null, 'new-comment-input'));
     if (newInput) newInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); submitComment(memory.id, null, 'new-comment-input'); }
+        if (e.key === 'Enter') { e.preventDefault(); submitComment('memory', memory.id, null, 'new-comment-input'); }
     });
 
-    loadComments(memory.id);
+    loadComments('memory', memory.id);
 
     const dm = document.getElementById('detail-modal');
     dm.classList.remove('hidden');
@@ -3277,6 +3301,34 @@ function closeDetailModal() {
 // ==========================================
 const _commentCache = {};
 
+// [smsong] 오브젝트별 댓글 수 (썸네일 배지) — { memory:{id:n}, checklist:{id:n} }
+function _ensureCommentCounts() {
+    if (!Daylog.commentCounts) Daylog.commentCounts = { memory: {}, checklist: {} };
+    return Daylog.commentCounts;
+}
+function applyCommentBadges(kind) {
+    const map = _ensureCommentCounts()[kind] || {};
+    const prefix = (kind === 'checklist') ? 'clcbadge-' : 'mcbadge-';
+    document.querySelectorAll('[id^="' + prefix + '"]').forEach(el => {
+        const key = el.id.substring(prefix.length);
+        const n = map[key] || 0;
+        if (n > 0) { el.innerHTML = icon('comment', 12) + ' ' + n; el.style.display = ''; }
+        else { el.style.display = 'none'; }
+    });
+}
+function fetchCommentCounts(kind) {
+    const path = (kind === 'checklist') ? '/comment/counts/checklist' : '/comment/counts/memory';
+    return fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(map => { _ensureCommentCounts()[kind] = map || {}; applyCommentBadges(kind); })
+        .catch(err => console.warn('[Daylog] 댓글 수 조회 실패:', err));
+}
+// 썸네일에 붙는 댓글 수 배지 요소 (초기 숨김 → 카운트 로드 후 표시)
+function commentBadgeHtml(kind, id) {
+    const prefix = (kind === 'checklist') ? 'clcbadge-' : 'mcbadge-';
+    return '<span class="obj-comment-badge" id="' + prefix + id + '" style="display:none"></span>';
+}
+
 function commentAuthorName(c) {
     if (c.ownerNickname && c.ownerNickname.trim()) return c.ownerNickname.trim();
     if (typeof normalizeDisplayName === 'function' && c.ownerName) return normalizeDisplayName(c.ownerName);
@@ -3301,28 +3353,29 @@ function commentAvatarHtml(c) {
     return '<div class="c-avatar" style="background-image:url(\'' + src + '\')" data-photo="' + src + '" onclick="openLightbox(this.dataset.photo, this)"></div>';
 }
 
-function commentItemHtml(c, memoryId, isReply) {
+function commentItemHtml(c, kind, targetId, isReply) {
     _commentCache[c.id] = c;
     const isOwner = !!(c.ownerUid && Daylog.currentUid && c.ownerUid === Daylog.currentUid);
     const contentHtml = escapeHtml(c.content || '').replace(/\n/g, '<br>');
+    const K = "'" + kind + "'";
 
     let actions =
         '<div class="c-actions">' +
         (isReply ? '' : '<button type="button" class="c-act-btn" onclick="toggleReplyForm(' + c.id + ')">답글</button>') +
-        (isOwner ? '<button type="button" class="c-act-btn" onclick="enterCommentEdit(' + c.id + ',' + memoryId + ')">수정</button>' : '') +
-        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + c.id + ',' + memoryId + ')">' + icon('trash',15) + '</button>' : '') +
+        (isOwner ? '<button type="button" class="c-act-btn" onclick="enterCommentEdit(' + c.id + ',' + K + ',' + targetId + ')">수정</button>' : '') +
+        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + K + ',' + c.id + ',' + targetId + ')">' + icon('trash',15) + '</button>' : '') +
         '</div>';
 
     let replyForm = isReply ? '' :
         '<div class="c-reply-form hidden" id="reply-form-' + c.id + '">' +
         '<input type="text" class="comment-input" id="reply-input-' + c.id + '" placeholder="답글을 입력하십시오" maxlength="1000">' +
-        '<button type="button" class="comment-send-btn" onclick="submitComment(' + memoryId + ',' + c.id + ',\'reply-input-' + c.id + '\')">등록</button>' +
+        '<button type="button" class="comment-send-btn" onclick="submitComment(' + K + ',' + targetId + ',' + c.id + ',\'reply-input-' + c.id + '\')">등록</button>' +
         '</div>';
 
     let repliesHtml = '';
     if (!isReply && c.replies && c.replies.length) {
         repliesHtml = '<div class="c-replies">' +
-            c.replies.map(r => commentItemHtml(r, memoryId, true)).join('') +
+            c.replies.map(r => commentItemHtml(r, kind, targetId, true)).join('') +
             '</div>';
     }
 
@@ -3342,14 +3395,17 @@ function commentItemHtml(c, memoryId, isReply) {
         '</div>';
 }
 
-function loadComments(memoryId) {
-    const list = document.getElementById('comments-list');
+function loadComments(kind, targetId) {
+    const listId = (kind === 'checklist') ? 'cl-comments-list' : 'comments-list';
+    const countId = (kind === 'checklist') ? 'cl-comments-count' : 'comments-count';
+    const list = document.getElementById(listId);
     if (!list) return;
-    fetch(`${Daylog.api}/comment/memory/${memoryId}`, { headers: Daylog.authHeaders(true) })
+    const path = (kind === 'checklist') ? `/comment/checklist/${targetId}` : `/comment/memory/${targetId}`;
+    fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
         .then(comments => {
             comments = comments || [];
-            const countEl = document.getElementById('comments-count');
+            const countEl = document.getElementById(countId);
             let total = comments.length;
             comments.forEach(c => { total += (c.replies ? c.replies.length : 0); });
             if (countEl) countEl.textContent = total;
@@ -3358,7 +3414,7 @@ function loadComments(memoryId) {
                 list.innerHTML = '<div class="comments-empty">댓글이 존재하지 않습니다.</div>';
                 return;
             }
-            list.innerHTML = comments.map(c => commentItemHtml(c, memoryId, false)).join('');
+            list.innerHTML = comments.map(c => commentItemHtml(c, kind, targetId, false)).join('');
         })
         .catch(err => {
             console.error(err);
@@ -3366,21 +3422,25 @@ function loadComments(memoryId) {
         });
 }
 
-function submitComment(memoryId, parentId, inputId) {
+function submitComment(kind, targetId, parentId, inputId) {
     const input = document.getElementById(inputId);
     if (!input) return;
     const content = input.value.trim();
     if (!content) { showToast('댓글을 입력해주십시오'); return; }
 
+    const body = (kind === 'checklist')
+        ? { checklistId: targetId, parentId: parentId, content: content }
+        : { memoryId: targetId, parentId: parentId, content: content };
+
     withLoading(fetch(`${Daylog.api}/comment`, {
         method: 'POST',
         headers: Daylog.authHeaders(true),
-        body: JSON.stringify({ memoryId: memoryId, parentId: parentId, content: content })
+        body: JSON.stringify(body)
     }), '등록 중...')
         .then(Daylog.handleResponse)
         .then(() => {
             input.value = '';
-            loadComments(memoryId);
+            loadComments(kind, targetId);
         })
         .catch(err => { console.error(err); showToast('댓글 등록 실패'); });
 }
@@ -3395,21 +3455,22 @@ function toggleReplyForm(commentId) {
     }
 }
 
-function enterCommentEdit(commentId, memoryId) {
+function enterCommentEdit(commentId, kind, targetId) {
     const c = _commentCache[commentId];
     const box = document.getElementById('c-content-' + commentId);
     if (!c || !box) return;
+    const K = "'" + kind + "'";
     box.innerHTML =
         '<textarea class="c-edit-area" id="c-edit-' + commentId + '" maxlength="1000">' + escapeHtml(c.content || '') + '</textarea>' +
         '<div class="c-edit-actions">' +
-        '<button type="button" class="c-edit-cancel" onclick="loadComments(' + memoryId + ')">취소</button>' +
-        '<button type="button" class="c-edit-save" onclick="saveCommentEdit(' + commentId + ',' + memoryId + ')">저장</button>' +
+        '<button type="button" class="c-edit-cancel" onclick="loadComments(' + K + ',' + targetId + ')">취소</button>' +
+        '<button type="button" class="c-edit-save" onclick="saveCommentEdit(' + commentId + ',' + K + ',' + targetId + ')">저장</button>' +
         '</div>';
     const ta = document.getElementById('c-edit-' + commentId);
     if (ta) { ta.focus(); ta.value = c.content || ''; }
 }
 
-function saveCommentEdit(commentId, memoryId) {
+function saveCommentEdit(commentId, kind, targetId) {
     const ta = document.getElementById('c-edit-' + commentId);
     if (!ta) return;
     const content = ta.value.trim();
@@ -3420,18 +3481,18 @@ function saveCommentEdit(commentId, memoryId) {
         body: JSON.stringify({ content: content })
     }), '수정 중...')
         .then(Daylog.handleResponse)
-        .then(() => { showToast('댓글 수정 완료'); loadComments(memoryId); })
+        .then(() => { showToast('댓글 수정 완료'); loadComments(kind, targetId); })
         .catch(err => { console.error(err); showToast('수정 실패'); });
 }
 
-function trashComment(commentId, memoryId) {
+function trashComment(kind, commentId, targetId) {
     if (!confirm('이 댓글을 휴지통으로 옮기시겠습니까?')) return;
     withLoading(fetch(`${Daylog.api}/comment/${commentId}/trash`, {
         method: 'PUT',
         headers: Daylog.authHeaders(true)
     }), '휴지통으로 이동 중...')
         .then(Daylog.handleResponse)
-        .then(() => { showToast('휴지통으로 이동했습니다'); loadComments(memoryId); })
+        .then(() => { showToast('휴지통으로 이동했습니다'); loadComments(kind, targetId); })
         .catch(err => { console.error(err); showToast('이동 실패'); });
 }
 

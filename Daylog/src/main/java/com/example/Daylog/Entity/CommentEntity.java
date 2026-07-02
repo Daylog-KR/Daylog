@@ -20,11 +20,17 @@ public class CommentEntity {
     @Column(length = 1000, nullable = false)
     private String content;
 
-    // 어떤 추억(Memory)에 달린 댓글인지
+    // 어떤 추억(Memory)에 달린 댓글인지 (가볼곳 댓글이면 null)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "memory_id")
     @JsonIgnore
     private MemoryEntity memory;
+
+    // 어떤 가볼곳(Checklist)에 달린 댓글인지 (추억 댓글이면 null)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "checklist_id")
+    @JsonIgnore
+    private ChecklistEntity checklist;
 
     // 작성자
     @ManyToOne(fetch = FetchType.LAZY)

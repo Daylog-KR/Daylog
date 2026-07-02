@@ -1891,3 +1891,15 @@ body.picking .bottom-nav {
 }
 .abx-card .abx-sub { margin-top: 12px; }
 /* [E] edit by smsong */
+
+/* [B] edit by smsong - 타임라인/가볼곳 썸네일 오브젝트의 댓글 수 배지 */
+.obj-comment-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 3px 9px; border-radius: 20px;
+    background: var(--gray-100); color: var(--gray-600);
+    font-size: 0.74rem; font-weight: 700; line-height: 1;
+    width: fit-content;
+}
+.obj-comment-badge svg { width: 12px; height: 12px; }
+.cl-card .obj-comment-badge { margin-top: 6px; }
+/* [E] edit by smsong */

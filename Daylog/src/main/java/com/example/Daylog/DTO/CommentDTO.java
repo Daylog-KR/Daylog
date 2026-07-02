@@ -18,6 +18,7 @@ public class CommentDTO {
 
     private Long memoryId;
     private String memoryTitle;
+    private Long checklistId;
     private Long parentId;
 
     // 작성자 표시용 정보
@@ -43,6 +44,7 @@ public class CommentDTO {
                 .content(entity.getContent())
                 .memoryId(entity.getMemory() != null ? entity.getMemory().getId() : null)
                 .memoryTitle(entity.getMemory() != null ? entity.getMemory().getTitle() : null)
+                .checklistId(entity.getChecklist() != null ? entity.getChecklist().getId() : null)
                 .parentId(entity.getParent() != null ? entity.getParent().getId() : null)
                 .ownerUid(owner != null ? owner.getUid() : null)
                 .ownerName(owner != null ? owner.getName() : null)

@@ -2,8 +2,10 @@ package com.example.Daylog.Service;
 
 import com.example.Daylog.DTO.CommentDTO;
 import com.example.Daylog.Entity.CommentEntity;
+import com.example.Daylog.Entity.ChecklistEntity;
 import com.example.Daylog.Entity.MemoryEntity;
 import com.example.Daylog.Entity.UserEntity;
+import com.example.Daylog.Repository.ChecklistRepository;
 import com.example.Daylog.Repository.CommentRepository;
 import com.example.Daylog.Repository.MemoryRepository;
 import com.example.Daylog.Repository.UserRepository;
@@ -13,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +25,7 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final MemoryRepository memoryRepository;
+    private final ChecklistRepository checklistRepository;
     private final UserRepository userRepository;
 
     private UserEntity getLoginUser(UserDetails userDetails) {
@@ -42,26 +47,32 @@ public class CommentService {
         return comment;
     }
 
-    // 댓글 / 대댓글 작성
+    // 댓글 / 대댓글 작성 (memoryId 또는 checklistId 중 하나 대상)
     @Transactional
-    public CommentDTO createComment(Long memoryId, Long parentId, String content, UserDetails userDetails) {
+    public CommentDTO createComment(Long memoryId, Long checklistId, Long parentId, String content, UserDetails userDetails) {
         UserEntity owner = getLoginUser(userDetails);
 
-        if (memoryId == null) {
-            throw new IllegalArgumentException("추억 정보가 필요합니다");
+        if (memoryId == null && checklistId == null) {
+            throw new IllegalArgumentException("대상 정보(추억/가볼곳)가 필요합니다");
         }
         if (content == null || content.trim().isEmpty()) {
             throw new IllegalArgumentException("댓글 내용을 입력해주세요");
         }
 
-        MemoryEntity memory = memoryRepository.findById(memoryId)
-                .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
-
         CommentEntity.CommentEntityBuilder builder = CommentEntity.builder()
                 .content(content.trim())
-                .memory(memory)
                 .owner(owner)
                 .deleted(false);
+
+        if (memoryId != null) {
+            MemoryEntity memory = memoryRepository.findById(memoryId)
+                    .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
+            builder.memory(memory);
+        } else {
+            ChecklistEntity checklist = checklistRepository.findById(checklistId)
+                    .orElseThrow(() -> new IllegalArgumentException("가볼곳을 찾을 수 없습니다"));
+            builder.checklist(checklist);
+        }
 
         // 대댓글이면 부모 연결 (대댓글의 대댓글은 부모를 최상위로 평탄화)
         if (parentId != null) {
@@ -146,5 +157,48 @@ public class CommentService {
         if (!all.isEmpty()) {
             commentRepository.deleteAll(all);
         }
+    }
+
+    // ===== [smsong] 가볼곳(Checklist) 댓글 =====
+    // 특정 가볼곳의 댓글 목록 (최상위 + 대댓글 트리)
+    @Transactional(readOnly = true)
+    public List<CommentDTO> getCommentsByChecklist(Long checklistId) {
+        List<CommentEntity> roots =
+                commentRepository.findByChecklist_IdAndParentIsNullAndDeletedFalseOrderByCreatedAtAsc(checklistId);
+        List<CommentDTO> result = new ArrayList<>();
+        for (CommentEntity root : roots) {
+            List<CommentEntity> replies =
+                    commentRepository.findByParent_IdAndDeletedFalseOrderByCreatedAtAsc(root.getId());
+            result.add(CommentDTO.entityToDtoWithReplies(root, replies));
+        }
+        return result;
+    }
+
+    // 가볼곳 영구삭제 시 연관 댓글 일괄 제거 (ChecklistService에서 호출)
+    @Transactional
+    public void deleteAllByChecklist(Long checklistId) {
+        List<CommentEntity> all = commentRepository.findByChecklist_Id(checklistId);
+        if (!all.isEmpty()) {
+            commentRepository.deleteAll(all);
+        }
+    }
+
+    // ===== [smsong] 댓글 수 배치 집계 (썸네일 표시용) =====
+    @Transactional(readOnly = true)
+    public Map<Long, Long> countsByMemory() {
+        Map<Long, Long> m = new HashMap<>();
+        for (Object[] row : commentRepository.countGroupByMemory()) {
+            if (row[0] != null) m.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return m;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, Long> countsByChecklist() {
+        Map<Long, Long> m = new HashMap<>();
+        for (Object[] row : commentRepository.countGroupByChecklist()) {
+            if (row[0] != null) m.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return m;
     }
 }

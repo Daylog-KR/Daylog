@@ -31,6 +31,7 @@ public class ChecklistService {
     private final UserRepository userRepository;
     private final Storage storage;
     private final PermissionService permissionService; // [smsong] 권한 관리 연동
+    private final CommentService commentService; // [smsong] 가볼곳 영구삭제 시 댓글 정리
 
     @Value("${google.cloud.credentials.header}")
     private String googleCloudHeader;
@@ -234,6 +235,7 @@ public class ChecklistService {
         if (!permissionService.canDelete(userDetails)) { // [smsong] 권한 기준
             throw new RuntimeException("권한이 없습니다");
         }
+        commentService.deleteAllByChecklist(id); // [smsong] 연관 댓글 정리
         checklistRepository.delete(c);
     }
 
@@ -254,6 +256,7 @@ public class ChecklistService {
             }
             java.time.LocalDateTime autoDeleteAt = c.getTrashedAt().plusDays(TRASH_RETENTION_DAYS);
             if (!autoDeleteAt.isAfter(now)) {
+                commentService.deleteAllByChecklist(c.getId()); // [smsong] 연관 댓글 정리
                 checklistRepository.delete(c); // 30일 경과 → 영구 삭제
                 continue;
             }
@@ -271,6 +274,7 @@ public class ChecklistService {
     public int purgeExpiredTrash() {
         java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusDays(TRASH_RETENTION_DAYS);
         List<ChecklistEntity> expired = checklistRepository.findByDeletedTrueAndTrashedAtBefore(cutoff);
+        for (ChecklistEntity ex : expired) commentService.deleteAllByChecklist(ex.getId()); // [smsong] 연관 댓글 정리
         checklistRepository.deleteAll(expired);
         return expired.size();
     }

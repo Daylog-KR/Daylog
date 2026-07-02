@@ -30,20 +30,37 @@ public class CommentController {
         return v == null ? null : String.valueOf(v);
     }
 
-    // 댓글/대댓글 작성  (body: { memoryId, parentId?, content })
+    // 댓글/대댓글 작성  (body: { memoryId?, checklistId?, parentId?, content })
     @PostMapping
     public ResponseEntity<CommentDTO> create(@RequestBody Map<String, Object> body,
                                              @AuthenticationPrincipal UserDetails userDetails) {
         Long memoryId = toLong(body.get("memoryId"));
+        Long checklistId = toLong(body.get("checklistId"));
         Long parentId = toLong(body.get("parentId"));
         String content = toStr(body.get("content"));
-        return ResponseEntity.ok(commentService.createComment(memoryId, parentId, content, userDetails));
+        return ResponseEntity.ok(commentService.createComment(memoryId, checklistId, parentId, content, userDetails));
     }
 
     // 특정 추억의 댓글 목록 (대댓글 포함)
     @GetMapping("/memory/{memoryId}")
     public ResponseEntity<List<CommentDTO>> getByMemory(@PathVariable("memoryId") Long memoryId) {
         return ResponseEntity.ok(commentService.getCommentsByMemory(memoryId));
+    }
+
+    // [smsong] 특정 가볼곳(체크리스트)의 댓글 목록 (대댓글 포함)
+    @GetMapping("/checklist/{checklistId}")
+    public ResponseEntity<List<CommentDTO>> getByChecklist(@PathVariable("checklistId") Long checklistId) {
+        return ResponseEntity.ok(commentService.getCommentsByChecklist(checklistId));
+    }
+
+    // [smsong] 댓글 수 배치 집계 (썸네일 표시용)
+    @GetMapping("/counts/memory")
+    public ResponseEntity<Map<Long, Long>> countsByMemory() {
+        return ResponseEntity.ok(commentService.countsByMemory());
+    }
+    @GetMapping("/counts/checklist")
+    public ResponseEntity<Map<Long, Long>> countsByChecklist() {
+        return ResponseEntity.ok(commentService.countsByChecklist());
     }
 
     // 본인 댓글 수정 (내용)
