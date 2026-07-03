@@ -27,17 +27,41 @@
 html, body {
     height: 100%; font-family: var(--font-main);
     background-color: var(--bg-color); color: var(--gray-800);
+    overflow: hidden; /* 바디 스크롤 차단 → 가운데 목록만 스크롤 */
+    overscroll-behavior: none;
 }
 
 .rooms-page {
-    min-height: 100vh; min-height: 100dvh;
+    height: 100vh; height: 100dvh;
     max-width: 560px; margin: 0 auto;
     display: flex; flex-direction: column;
-    padding: max(20px, env(safe-area-inset-top)) 18px calc(env(safe-area-inset-bottom) + 18px);
+    padding: 0; /* 패딩은 각 영역(헤더/목록/하단)으로 이동 */
 }
 
-/* 헤더 */
-.rooms-header { padding: 12px 4px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* 헤더 (상단 고정) */
+.rooms-header {
+    flex: 0 0 auto;
+    padding: max(18px, env(safe-area-inset-top)) 18px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--bg-color);
+}
+
+/* 상단 탭 (내 방 보기 / 전체 방 보기) — 헤더 아래 고정 */
+.rooms-tabs {
+    flex: 0 0 auto;
+    display: flex; gap: 6px;
+    padding: 0 18px 12px;
+    background: var(--bg-color);
+}
+.rooms-tab {
+    flex: 1 1 0; padding: 11px 10px; border-radius: 12px; cursor: pointer;
+    font-size: 0.9rem; font-weight: 600; font-family: var(--font-main);
+    background: var(--white); color: var(--gray-500);
+    border: 1px solid var(--gray-200); box-shadow: var(--shadow-sm);
+    transition: all 0.15s ease;
+}
+.rooms-tab.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
+.rooms-tab:active { transform: scale(0.98); }
 .rooms-logout-btn {
     flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; cursor: pointer;
     background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
@@ -65,8 +89,14 @@ html, body {
 .brand-name { font-family: var(--font-logo); font-size: 24px; font-weight: 500; color: var(--primary-dark); letter-spacing: -0.3px; }
 .brand-sub { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
 
-/* 목록 */
-.rooms-main { flex: 1 1 auto; }
+/* 목록 (가운데 — 여기만 스크롤) */
+.rooms-main {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 2px 18px 14px;
+}
 .rooms-list { display: flex; flex-direction: column; gap: 12px; }
 
 .room-card {
@@ -111,8 +141,14 @@ html, body {
     padding: 60px 20px; border: 1px dashed var(--gray-300); border-radius: 18px; margin-top: 8px;
 }
 
-/* 하단 액션 */
-.rooms-actions { display: flex; gap: 10px; padding-top: 16px; }
+/* 하단 액션 (화면 하단 고정 — 목록 스크롤/드래그해도 항상 보임) */
+.rooms-actions {
+    flex: 0 0 auto;
+    display: flex; gap: 10px;
+    padding: 12px 18px calc(env(safe-area-inset-bottom) + 16px);
+    background: var(--bg-color);
+    border-top: 1px solid var(--gray-200);
+}
 .room-action {
     flex: 1 1 0; padding: 15px 12px; border-radius: 14px; cursor: pointer;
     font-size: 0.95rem; font-weight: 600; font-family: var(--font-main);
