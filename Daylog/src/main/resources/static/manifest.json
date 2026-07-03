@@ -1,7 +1,7 @@
 {
   "name": "Daylog",
   "short_name": "Daylog",
-  "description": "추억과 가볼 곳을 기록",
+  "description": "순간을 기록하는 공간",
   "start_url": "index.html",
   "scope": "./",
   "display": "standalone",
