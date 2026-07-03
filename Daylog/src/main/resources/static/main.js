@@ -2534,7 +2534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(updated => {
                     currentUser = updated || payload;
                     document.getElementById('nickname-modal').classList.add('hidden');
-                    showToast('닉네임이 설정 완료');
+                    showToast('닉네임 설정 완료');
                     loadProfiles(true);
                 })
                 .catch(err => { console.error(err); showToast('설정 실패: ' + (err.message || '서버 오류')); })
