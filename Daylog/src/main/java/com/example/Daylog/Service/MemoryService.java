@@ -53,13 +53,6 @@ public class MemoryService {
         String ownerUid = (m.getOwner() != null) ? m.getOwner().getUid() : null;
         return ud != null && ownerUid != null && ownerUid.equals(ud.getUsername());
     }
-    // [smsong] 서비스 접근 권한 검사 (관리자/부트스트랩/관리자승인 외 전부 403 차단)
-    private void requireAccess(UserDetails ud) {
-        if (!permissionService.hasAccess(ud)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "서비스 접근 권한이 없습니다");
-        }
-    }
-    // [E] edit by smsong
 
     // GCS 업로드 로직 (BuildingService와 동일)
     private String uploadMedia(MultipartFile mediaFile) {

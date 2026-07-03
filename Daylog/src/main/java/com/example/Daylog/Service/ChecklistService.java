@@ -54,12 +54,7 @@ public class ChecklistService {
         String ownerUid = (c.getOwner() != null) ? c.getOwner().getUid() : null;
         return ud != null && ownerUid != null && ownerUid.equals(ud.getUsername());
     }
-    // [smsong] 서비스 접근 권한 검사 (관리자/부트스트랩/관리자승인 외 전부 403 차단)
-    private void requireAccess(UserDetails ud) {
-        if (!permissionService.hasAccess(ud)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "서비스 접근 권한이 없습니다");
-        }
-    }
+
     private ChecklistEntity findChecklist(Long id) {
         return checklistRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("가볼곳을 찾을 수 없습니다"));
