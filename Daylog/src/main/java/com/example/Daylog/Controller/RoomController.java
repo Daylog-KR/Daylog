@@ -28,6 +28,15 @@ public class RoomController {
         }
     }
 
+    // 전체 방 목록 (모든 방) — '전체 방 보기' 탭용.
+    //  ⚠ 리터럴 경로 "/all" 이 "/{uid}" 보다 우선 매칭되므로 충돌 없음.
+    //     (인증된 사용자면 조회 가능. 관리자 전용으로 좁히려면 아래에서 권한 검사 추가)
+    @GetMapping("/all")
+    public ResponseEntity<List<RoomDTO>> listAllRooms(@AuthenticationPrincipal UserDetails ud) {
+        if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
+        return ResponseEntity.ok(roomService.listAllRooms(ud.getUsername()));
+    }
+
     // 내가 속한 방 목록
     @GetMapping("/{uid}")
     public ResponseEntity<List<RoomDTO>> listRooms(@PathVariable("uid") String uid,

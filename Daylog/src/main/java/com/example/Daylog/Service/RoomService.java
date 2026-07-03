@@ -193,6 +193,24 @@ public class RoomService {
         return result;
     }
 
+    // ===== 전체 방 목록 ('전체 방 보기' 탭용) =====
+    //  모든 방을 반환. requesterUid 로 각 방의 owner 플래그가 계산되므로,
+    //  프론트에서 내가 방장인 방은 '삭제', 그 외에는 위험 버튼을 숨기는 처리와 그대로 맞물린다.
+    @Transactional(readOnly = true)
+    public List<RoomDTO> listAllRooms(String requesterUid) {
+        List<RoomEntity> rooms = roomRepository.findAll();
+        List<RoomDTO> result = new ArrayList<>();
+        for (RoomEntity room : rooms) {
+            result.add(RoomDTO.from(room, requesterUid, roomMemberRepository.countByRoomId(room.getId())));
+        }
+        // 최근 생성 방이 위로
+        result.sort((a, b) -> {
+            if (a.getCreatedAt() == null || b.getCreatedAt() == null) return 0;
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
+        return result;
+    }
+
     // ===== 방 멤버 상세 =====
     @Transactional(readOnly = true)
     public RoomDTO getRoomWithMembers(Long roomId, String requesterUid) {
