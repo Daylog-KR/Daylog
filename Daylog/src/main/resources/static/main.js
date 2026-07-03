@@ -335,8 +335,7 @@ function renderRoomMembers(room) {
     var members = (room && room.members) || [];
     var myUid = getUid();
     var amOwner = !!(room && room.ownerUid === myUid);
-    var cap = room && room.maxMembers ? (' · 정원 ' + members.length + '/' + room.maxMembers) : '';
-    var html = '<div class="rm-head">구성원 ' + members.length + '명' + cap + '</div><div class="rm-list">';
+    var html = '<div class="rm-head">구성원 ' + members.length + '명</div><div class="rm-list">';
     members.forEach(function (m) {
         var name = m.nickname || m.name || m.uid;
         var avatar = m.profileURL

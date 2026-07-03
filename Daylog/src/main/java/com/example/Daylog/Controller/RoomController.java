@@ -36,7 +36,7 @@ public class RoomController {
         return ResponseEntity.ok(roomService.listForUser(uid));
     }
 
-    // 방 생성 (body: { uid, name, type, maxMembers })
+    // 방 생성 (body: { uid, name, type })
     @PostMapping
     public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, Object> body,
                                               @AuthenticationPrincipal UserDetails ud) {
@@ -44,14 +44,7 @@ public class RoomController {
         verify(uid, ud);
         String name = body.get("name") == null ? null : String.valueOf(body.get("name"));
         String type = body.get("type") == null ? null : String.valueOf(body.get("type"));
-        Integer maxMembers = null;
-        Object mm = body.get("maxMembers");
-        if (mm instanceof Number) {
-            maxMembers = ((Number) mm).intValue();
-        } else if (mm != null) {
-            try { maxMembers = Integer.parseInt(String.valueOf(mm).trim()); } catch (NumberFormatException ignored) {}
-        }
-        return ResponseEntity.ok(roomService.createRoom(uid, name, type, maxMembers));
+        return ResponseEntity.ok(roomService.createRoom(uid, name, type));
     }
 
     // 코드로 입장 (body: { uid, code })

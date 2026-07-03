@@ -29,11 +29,9 @@ public class RoomEntity {
     private String inviteCode;
 
     // [smsong] 방 타입: COUPLE(커플) / FRIEND(친구) / FAMILY(가족)
-    @Column(nullable = false, length = 16)
+    // 기존 레코드(타입 없이 생성된 방) 호환을 위해 nullable — 부트스트랩에서 null 은 COUPLE 로 백필
+    @Column(length = 16)
     private String type;
-
-    // [smsong] 최대 수용 인원 (커플=2 고정, 친구/가족=2~50)
-    private Integer maxMembers;
 
     private LocalDateTime createdAt;
 

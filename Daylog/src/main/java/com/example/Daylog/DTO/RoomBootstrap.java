@@ -34,6 +34,9 @@ public class RoomBootstrap implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
+        // [smsong] 기존(타입 없이 생성됐던) 방들의 null 타입을 COUPLE 로 백필 → NOT NULL/조회 오류 방지
+        roomRepository.backfillNullType();
+
         // 기본 방이 이미 있으면 재사용(멱등)
         RoomEntity room = roomRepository.findByInviteCode(DEFAULT_CODE).orElseGet(() ->
                 roomRepository.save(RoomEntity.builder()
@@ -41,9 +44,13 @@ public class RoomBootstrap implements CommandLineRunner {
                         .ownerUid(OWNER_UID)
                         .inviteCode(DEFAULT_CODE)
                         .type("COUPLE")   // [smsong] 송성민·강미르 기본 방은 커플 타입
-                        .maxMembers(2)
                         .build())
         );
+        // 기존 기본 방의 타입이 비어있으면 COUPLE 로 보정
+        if (room.getType() == null) {
+            room.setType("COUPLE");
+            room = roomRepository.save(room);
+        }
 
         // 멤버 보장(중복 방지)
         ensureMember(room.getId(), OWNER_UID);
