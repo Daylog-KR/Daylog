@@ -84,6 +84,16 @@ public class RoomController {
         return ResponseEntity.ok().build();
     }
 
+    // 커플 슬롯 지정 (방장만) — body: { uid, leftUid, rightUid }
+    @PutMapping("/{roomId}/couple")
+    public ResponseEntity<RoomDTO> setCouple(@PathVariable("roomId") Long roomId,
+                                             @RequestBody Map<String, String> body,
+                                             @AuthenticationPrincipal UserDetails ud) {
+        String uid = body.get("uid");
+        verify(uid, ud);
+        return ResponseEntity.ok(roomService.setCouple(roomId, uid, body.get("leftUid"), body.get("rightUid")));
+    }
+
     // 멤버 강퇴 (방장만) — ?uid=방장uid, path=대상 uid
     @DeleteMapping("/{roomId}/members/{targetUid}")
     public ResponseEntity<Void> kickMember(@PathVariable("roomId") Long roomId,

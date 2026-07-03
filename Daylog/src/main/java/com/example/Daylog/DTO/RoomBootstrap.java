@@ -51,6 +51,11 @@ public class RoomBootstrap implements CommandLineRunner {
             room.setType("COUPLE");
             room = roomRepository.save(room);
         }
+        // [smsong] 기본 커플 슬롯: '나'=송성민, '상대방'=강미르 (미설정 시에만)
+        boolean touched = false;
+        if (room.getCoupleLeftUid() == null)  { room.setCoupleLeftUid(OWNER_UID);   touched = true; }
+        if (room.getCoupleRightUid() == null) { room.setCoupleRightUid(PARTNER_UID); touched = true; }
+        if (touched) room = roomRepository.save(room);
 
         // 멤버 보장(중복 방지)
         ensureMember(room.getId(), OWNER_UID);

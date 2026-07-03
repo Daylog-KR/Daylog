@@ -1222,6 +1222,24 @@ input[type="date"]::-webkit-date-and-time-value {
 .rm-kick:hover { background: #f1ddd6; }
 .rm-kick:active { transform: scale(0.97); }
 
+/* [smsong] 커플 '나/상대방' 변경 버튼 + 선택 모달 */
+.couple-edit-btn {
+    margin-top: 7px; display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.72rem; font-weight: 600; font-family: var(--font-main);
+    color: var(--primary-dark); background: var(--primary-light);
+    border: none; border-radius: 999px; padding: 4px 10px; cursor: pointer;
+    transition: all 0.15s ease;
+}
+.couple-edit-btn:hover { filter: brightness(0.97); }
+.couple-edit-btn:active { transform: scale(0.96); }
+.couple-edit-btn.hidden { display: none; }
+
+.cp-item { width: 100%; cursor: pointer; font-family: var(--font-main); text-align: left; }
+.cp-item.cp-sel { border-color: var(--primary); background: var(--primary-light); }
+.cp-current { font-size: 0.78rem; font-weight: 700; color: var(--primary-dark); flex-shrink: 0; }
+.cp-other { font-size: 0.76rem; color: var(--gray-400); flex-shrink: 0; }
+.cp-pick { font-size: 0.82rem; color: var(--primary); font-weight: 600; flex-shrink: 0; }
+
 /* ---- 휴지통 모달 ---- */
 .trash-body {
     margin-top: 6px; overflow-y: auto; max-height: 70vh;

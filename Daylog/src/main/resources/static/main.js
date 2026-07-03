@@ -365,7 +365,7 @@ function kickRoomMember(targetUid, name) {
     withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) + '?uid=' + encodeURIComponent(getUid()),
         { method: 'DELETE', headers: Daylog.authHeaders(true) }), '내보내는 중...')
         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
-        .then(function () { showToast('멤버를 내보냈습니다'); openRoomMembers(); if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile(); })
+        .then(function () { showToast('멤버를 내보냈습니다'); openRoomMembers(); if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile(); if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true); })
         .catch(function (err) { showToast('내보내기 실패'); console.error(err); });
 }
 function closeRoomMembers() {
@@ -2337,11 +2337,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 //  A(3635939452) 로그인 → 나=A, 상대방=B / B(4958158544) 로그인 → 나=B, 상대방=A
                 //  그 외 유저 → 나=A, 상대방=B 로 고정 (본인 프로필 노출 안 함)
                 const _findU = (uid) => list.find(u => u.uid === uid) || null;
-                const _isCouple = (currentUid === COUPLE_A_UID || currentUid === COUPLE_B_UID);
-                if (currentUid === COUPLE_B_UID) {
+                const _isCouple = isCoupleRoom(); // [smsong] 커플 방이면 '나/상대방' 카드 표시
+                // [smsong] 방장이 지정한 커플 슬롯(coupleLeftUid=나, coupleRightUid=상대방)을 우선 사용
+                var _info = Daylog.roomInfo;
+                var _lu = _info && _info.coupleLeftUid;
+                var _ru = _info && _info.coupleRightUid;
+                if (_lu || _ru) {
+                    meUser = _findU(_lu) || null;
+                    partnerUser = _findU(_ru) || null;
+                } else if (currentUid === COUPLE_B_UID) {
                     meUser = _findU(COUPLE_B_UID); partnerUser = _findU(COUPLE_A_UID);
-                } else if (currentUid === COUPLE_A_UID) {
-                    meUser = _findU(COUPLE_A_UID); partnerUser = _findU(COUPLE_B_UID);
                 } else {
                     meUser = _findU(COUPLE_A_UID); partnerUser = _findU(COUPLE_B_UID);
                 }
@@ -2370,6 +2375,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 profilesLoaded = true;
                 updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
                 applyRoomProfileMode(); // [smsong] 방 타입별(커플/친구·가족) 화면 전환
+                applyCoupleEditButtons(); // [smsong] 방장이면 '나/상대방' 변경 버튼 노출
                 // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
                 if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();
                 maybePromptNickname();
@@ -2716,6 +2722,121 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.refreshMemberProfile = function () { _memberCache = null; applyRoomProfileMode(); };
     Daylog._applyRoomProfileMode = applyRoomProfileMode;
 
+    // [smsong] ===== 커플 슬롯('나'/'상대방') 방장 지정 =====
+    // 방 정보(RoomDTO: coupleLeftUid/coupleRightUid/members) 로드 → Daylog.roomInfo 캐시
+    function loadRoomInfo(force) {
+        var roomId = getRoomId();
+        if (!roomId) return;
+        if (!force && Daylog.roomInfo) { afterRoomInfo(); return; }
+        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => { Daylog.roomInfo = room; _memberCache = (room && room.members) || null; afterRoomInfo(); })
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err));
+    }
+    function afterRoomInfo() {
+        if (isCoupleRoom()) { loadProfiles(true); applyCoupleEditButtons(); }
+        else applyRoomProfileMode();
+    }
+    Daylog.loadRoomInfo = loadRoomInfo;
+
+    // 방장 & 커플 방일 때만 '나/상대방' 변경 버튼 노출
+    function applyCoupleEditButtons() {
+        var show = isCoupleRoom() && isRoomOwner();
+        var em = document.getElementById('couple-edit-me');
+        var ep = document.getElementById('couple-edit-partner');
+        if (em) em.classList.toggle('hidden', !show);
+        if (ep) ep.classList.toggle('hidden', !show);
+    }
+
+    // 슬롯 선택 모달
+    var _pickSlot = null; // 'me' | 'partner'
+    function openCouplePicker(slot) {
+        _pickSlot = slot;
+        var modal = document.getElementById('couple-pick-modal');
+        var title = document.getElementById('couple-pick-title');
+        var body = document.getElementById('couple-pick-body');
+        if (!modal || !body) return;
+        if (title) title.textContent = (slot === 'me') ? "'나' 선택" : "'상대방' 선택";
+        modal.classList.remove('hidden');
+        body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+        // 최신 멤버 확보 후 렌더
+        var roomId = getRoomId();
+        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => { Daylog.roomInfo = room; renderCouplePicker((room && room.members) || []); })
+            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); });
+    }
+    function renderCouplePicker(members) {
+        var body = document.getElementById('couple-pick-body');
+        if (!body) return;
+        var info = Daylog.roomInfo || {};
+        var curUid = (_pickSlot === 'me') ? info.coupleLeftUid : info.coupleRightUid;
+        var otherUid = (_pickSlot === 'me') ? info.coupleRightUid : info.coupleLeftUid;
+        var html = '<div class="rm-list">';
+        members.forEach(function (m) {
+            var name = m.nickname || m.name || m.uid;
+            var avatar = m.profileURL
+                ? '<img src="' + _escHtml(m.profileURL) + '" alt="" class="rm-avatar-img">'
+                : '<span class="rm-avatar-fallback">' + icon('user', 20) + '</span>';
+            var isCur = (curUid && curUid === m.uid);
+            var isOther = (otherUid && otherUid === m.uid); // 반대 슬롯에 이미 지정된 사람
+            var right = isCur
+                ? '<span class="cp-current">현재 지정</span>'
+                : (isOther ? '<span class="cp-other">반대편 지정됨</span>' : '<span class="cp-pick">선택 ›</span>');
+            html += '<button type="button" class="rm-item cp-item' + (isCur ? ' cp-sel' : '') + '" data-uid="' + _escHtml(m.uid) + '">' +
+                        '<span class="rm-avatar">' + avatar + '</span>' +
+                        '<span class="rm-name">' + _escHtml(name) + '</span>' +
+                        right +
+                    '</button>';
+        });
+        html += '</div>';
+        body.innerHTML = html;
+        body.querySelectorAll('.cp-item').forEach(function (btn) {
+            btn.addEventListener('click', function () { setCoupleSlot(_pickSlot, btn.getAttribute('data-uid')); });
+        });
+    }
+    function closeCouplePicker() {
+        var modal = document.getElementById('couple-pick-modal');
+        if (modal) modal.classList.add('hidden');
+        _pickSlot = null;
+    }
+    function setCoupleSlot(slot, uid) {
+        var info = Daylog.roomInfo || {};
+        var left = info.coupleLeftUid || null;
+        var right = info.coupleRightUid || null;
+        if (slot === 'me') {
+            left = uid;
+            if (right === uid) right = null; // 같은 사람이 양쪽에 지정되지 않도록
+        } else {
+            right = uid;
+            if (left === uid) left = null;
+        }
+        var roomId = getRoomId();
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/couple`, {
+            method: 'PUT', headers: authHeaders(true),
+            body: JSON.stringify({ uid: getUid(), leftUid: left || '', rightUid: right || '' })
+        }), '저장 중...')
+            .then(handleResponse)
+            .then(room => {
+                Daylog.roomInfo = room;
+                closeCouplePicker();
+                showToast('저장되었어요');
+                loadProfiles(true); // 카드 즉시 반영
+            })
+            .catch(err => { showToast('저장 실패: ' + (err.message || '오류')); console.error(err); });
+    }
+    // 편집 버튼 / 모달 이벤트 바인딩
+    (function wireCoupleEdit() {
+        var em = document.getElementById('couple-edit-me');
+        var ep = document.getElementById('couple-edit-partner');
+        if (em) em.addEventListener('click', function (e) { e.stopPropagation(); openCouplePicker('me'); });
+        if (ep) ep.addEventListener('click', function (e) { e.stopPropagation(); openCouplePicker('partner'); });
+        var cc = document.getElementById('couple-pick-close');
+        if (cc) cc.addEventListener('click', closeCouplePicker);
+        var cm = document.getElementById('couple-pick-modal');
+        if (cm) cm.addEventListener('click', function (e) { if (e.target.id === 'couple-pick-modal') closeCouplePicker(); });
+    })();
+
     // --- 내 정보 통계 클릭 → 해당 추억 목록 / D-Day 날짜 표시 ---
     function buildStatList(kind) {
         if (kind === 'total') return { title: '우리의 추억', items: [...memoryList].sort(sortByDateDesc) };
@@ -2780,6 +2901,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 첫 진입 시 프로필 로드
     loadProfiles();
+    loadRoomInfo(false); // [smsong] 방 커플 슬롯/멤버 정보 로드 → 카드 반영
 
     // 모달 바깥 클릭 시 닫기
     document.getElementById('memory-modal').addEventListener('click', (e) => {

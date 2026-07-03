@@ -136,6 +136,28 @@ public class RoomService {
         roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
     }
 
+    // ===== 커플 슬롯 지정 (방장만) — '나'/'상대방'에 방 멤버 배정 =====
+    @Transactional
+    public RoomDTO setCouple(Long roomId, String ownerUid, String leftUid, String rightUid) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 설정할 수 있습니다");
+        }
+        String left = (leftUid == null || leftUid.isEmpty()) ? null : leftUid;
+        String right = (rightUid == null || rightUid.isEmpty()) ? null : rightUid;
+        if (left != null && !roomMemberRepository.existsByRoomIdAndUid(roomId, left)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'나'로 지정한 사용자가 방 멤버가 아닙니다");
+        }
+        if (right != null && !roomMemberRepository.existsByRoomIdAndUid(roomId, right)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'상대방'으로 지정한 사용자가 방 멤버가 아닙니다");
+        }
+        room.setCoupleLeftUid(left);
+        room.setCoupleRightUid(right);
+        roomRepository.save(room);
+        return getRoomWithMembers(roomId, ownerUid);
+    }
+
     // ===== 내가 속한 방 목록 =====
     @Transactional(readOnly = true)
     public List<RoomDTO> listForUser(String uid) {

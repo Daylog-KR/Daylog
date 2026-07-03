@@ -33,6 +33,10 @@ public class RoomEntity {
     @Column(length = 16)
     private String type;
 
+    // [smsong] 커플 방 전용: '나'(왼쪽)/'상대방'(오른쪽) 슬롯에 지정된 멤버 uid (방장이 설정)
+    private String coupleLeftUid;
+    private String coupleRightUid;
+
     private LocalDateTime createdAt;
 
     @PrePersist

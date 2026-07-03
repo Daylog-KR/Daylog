@@ -17,6 +17,8 @@ public class RoomDTO {
     private String ownerUid;
     private String inviteCode;   // 방장에게만 노출(방장이 아니면 서비스단에서 비움 가능)
     private String type;         // COUPLE / FRIEND / FAMILY
+    private String coupleLeftUid;  // 커플 '나' 슬롯
+    private String coupleRightUid; // 커플 '상대방' 슬롯
     private long memberCount;
     private boolean owner;        // 요청자가 방장인지
     private LocalDateTime createdAt;
@@ -43,6 +45,8 @@ public class RoomDTO {
                 .ownerUid(r.getOwnerUid())
                 .inviteCode(r.getInviteCode()) // 코드 공유용으로 멤버 모두에게 노출(초대 목적)
                 .type(r.getType())
+                .coupleLeftUid(r.getCoupleLeftUid())
+                .coupleRightUid(r.getCoupleRightUid())
                 .memberCount(memberCount)
                 .owner(isOwner)
                 .createdAt(r.getCreatedAt())
