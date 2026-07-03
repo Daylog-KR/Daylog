@@ -19,6 +19,7 @@ public class RoomDTO {
     private String type;         // COUPLE / FRIEND / FAMILY
     private String coupleLeftUid;  // 커플 '나' 슬롯
     private String coupleRightUid; // 커플 '상대방' 슬롯
+    private String coupleSince;    // 커플 디데이 기준일
     private long memberCount;
     private boolean owner;        // 요청자가 방장인지
     private LocalDateTime createdAt;
@@ -47,6 +48,7 @@ public class RoomDTO {
                 .type(r.getType())
                 .coupleLeftUid(r.getCoupleLeftUid())
                 .coupleRightUid(r.getCoupleRightUid())
+                .coupleSince(r.getCoupleSince())
                 .memberCount(memberCount)
                 .owner(isOwner)
                 .createdAt(r.getCreatedAt())

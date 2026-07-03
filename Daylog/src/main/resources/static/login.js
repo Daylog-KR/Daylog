@@ -74,9 +74,31 @@ document.querySelectorAll('.social-btn').forEach(btn => {
     btn.addEventListener('click', () => startSocialLogin(btn.dataset.provider));
 });
 
-if (localStorage.getItem('accessToken')) {
-    window.location.href = SUCCESS_REDIRECT;
-}
+// [smsong] 이미 로그인된(유효한) 토큰이 있으면 방 목록으로.
+//  ⚠ 존재만 확인하면 만료된 토큰일 때 rooms.js가 다시 login으로 튕겨 무한 리다이렉트가 발생.
+//   → 여기서도 만료(exp)를 검증하고, 만료/손상 토큰이면 정리하고 로그인 화면을 유지.
+(function () {
+    function decodeExpValid(token) {
+        try {
+            const p = token.split('.')[1];
+            const json = decodeURIComponent(
+                atob(p.replace(/-/g, '+').replace(/_/g, '/'))
+                    .split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+            );
+            const payload = JSON.parse(json);
+            if (payload && payload.exp && Date.now() >= payload.exp * 1000) return false; // 만료
+            return true;
+        } catch (e) { return false; } // 손상된 토큰
+    }
+    const token = localStorage.getItem('accessToken');
+    if (token && decodeExpValid(token)) {
+        window.location.href = SUCCESS_REDIRECT;
+    } else if (token) {
+        // 만료/손상 토큰 정리 → 로그인 화면 유지 (무한 리다이렉트 차단)
+        ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid']
+            .forEach(k => localStorage.removeItem(k));
+    }
+})();
 
 // =====================================================
 // TOAST

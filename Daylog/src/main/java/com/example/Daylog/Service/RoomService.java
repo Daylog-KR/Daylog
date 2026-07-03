@@ -68,20 +68,37 @@ public class RoomService {
     private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY");
 
     @Transactional
-    public RoomDTO createRoom(String uid, String name, String type) {
+    public RoomDTO createRoom(String uid, String name, String type, String coupleSince) {
         String roomName = (name == null || name.trim().isEmpty()) ? "새로운 방" : name.trim();
         String t = (type == null) ? "COUPLE" : type.trim().toUpperCase();
         if (!VALID_TYPES.contains(t)) t = "FRIEND";
-        RoomEntity room = RoomEntity.builder()
+        RoomEntity.RoomEntityBuilder b = RoomEntity.builder()
                 .name(roomName)
                 .ownerUid(uid)
                 .inviteCode(generateUniqueCode())
-                .type(t)
-                .build();
-        room = roomRepository.save(room);
+                .type(t);
+        if ("COUPLE".equals(t)) {
+            // 커플 방: 생성자를 기본 '나'로, 디데이 기준일 저장
+            b.coupleLeftUid(uid);
+            if (coupleSince != null && !coupleSince.trim().isEmpty()) b.coupleSince(coupleSince.trim());
+        }
+        RoomEntity room = roomRepository.save(b.build());
         // 방장 자동 가입
         roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(uid).build());
         return RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
+    }
+
+    // ===== 디데이(만난 날짜) 설정 (방장만) =====
+    @Transactional
+    public RoomDTO setDday(Long roomId, String ownerUid, String since) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 설정할 수 있습니다");
+        }
+        room.setCoupleSince((since == null || since.trim().isEmpty()) ? null : since.trim());
+        roomRepository.save(room);
+        return getRoomWithMembers(roomId, ownerUid);
     }
 
     // ===== 코드로 입장 =====

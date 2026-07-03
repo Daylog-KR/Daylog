@@ -800,8 +800,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const locationMode = document.getElementById('location-mode');
     const fileInput = document.getElementById('memory-file');
 
-    // --- 디데이 ---
-    calculateDDay(new Date("2026-05-09"));
+    // --- 디데이 (방 커플 기준일로 표시, 커플 방에만) ---
+    applyDdayVisibility();
 
     // --- 로그아웃 ---
     document.getElementById('btn-logout').addEventListener('click', (e) => {
@@ -2338,29 +2338,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 //  그 외 유저 → 나=A, 상대방=B 로 고정 (본인 프로필 노출 안 함)
                 const _findU = (uid) => list.find(u => u.uid === uid) || null;
                 const _isCouple = isCoupleRoom(); // [smsong] 커플 방이면 '나/상대방' 카드 표시
-                // [smsong] 방장이 지정한 커플 슬롯(coupleLeftUid=나, coupleRightUid=상대방)을 우선 사용
+                // [smsong] 커플 슬롯(coupleLeftUid=나, coupleRightUid=상대방)은 '이 방 멤버'만 사용.
+                //  다른 방/비멤버 uid(예: 하드코딩된 A/B)는 절대 접근하지 않음.
                 var _info = Daylog.roomInfo;
-                var _lu = _info && _info.coupleLeftUid;
-                var _ru = _info && _info.coupleRightUid;
-                if (_lu || _ru) {
-                    meUser = _findU(_lu) || null;
-                    partnerUser = _findU(_ru) || null;
-                } else if (currentUid === COUPLE_B_UID) {
-                    meUser = _findU(COUPLE_B_UID); partnerUser = _findU(COUPLE_A_UID);
-                } else {
-                    meUser = _findU(COUPLE_A_UID); partnerUser = _findU(COUPLE_B_UID);
-                }
-                // [smsong] 표시(meUser/partnerUser)는 위처럼 고정하되,
-                //  프로필 '수정' 대상(currentUser)은 항상 실제 로그인된 유저로 설정
-                currentUser = _findU(currentUid) || meUser;
-
-                // [smsong] 접근 권한은 서버(권한 메뉴/DB) 기준 — loadMyPermission 이 게이트 처리
+                var _members = (_info && _info.members) || [];
+                var _memberUids = _members.map(function (m) { return m.uid; });
+                var _lu = (_info && _info.coupleLeftUid && _memberUids.indexOf(_info.coupleLeftUid) >= 0) ? _info.coupleLeftUid : null;
+                var _ru = (_info && _info.coupleRightUid && _memberUids.indexOf(_info.coupleRightUid) >= 0) ? _info.coupleRightUid : null;
+                meUser = _lu ? _findU(_lu) : null;
+                partnerUser = _ru ? _findU(_ru) : null;
+                // 프로필 '수정' 대상(currentUser)은 항상 실제 로그인 유저
+                currentUser = _findU(currentUid) || null;
 
                 Daylog.meUid = meUser && meUser.uid;
                 Daylog.partnerUid = partnerUser && partnerUser.uid;
-                // 추억 상세의 작성자 표시용 사용자 맵
+                // [smsong] 작성자 표시용 맵도 '이 방 멤버'만 포함 (비멤버 노출 방지)
                 Daylog.usersByUid = {};
-                [meUser, partnerUser].forEach(u => { if (u && u.uid) Daylog.usersByUid[u.uid] = u; });
+                _members.forEach(function (m) { var u = _findU(m.uid); if (u) Daylog.usersByUid[u.uid] = u; });
+                if (currentUser && currentUser.uid) Daylog.usersByUid[currentUser.uid] = currentUser;
 
                 if (!meUser) {
                     console.warn('[Daylog] 로그인 uid(' + currentUid + ')와 일치하는 사용자가 목록에 없습니다.');
@@ -2639,7 +2634,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateProfileStats() {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
-        set('stat-days', daysSince(DDAY_START));
+        var _dday = getDdayStart(); // [smsong] 방(coupleSince) 기준
+        set('stat-days', _dday ? daysSince(_dday) : '-');
         set('stat-total', memoryList.length);
         const meUid = meUser && meUser.uid;
         const pUid = partnerUser && partnerUser.uid;
@@ -2659,6 +2655,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyRoomProfileMode() {
         var coupleView = document.getElementById('couple-view');
         var memberView = document.getElementById('member-view');
+        if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
         if (isCoupleRoom()) {
             if (coupleView) coupleView.style.display = '';
             if (memberView) memberView.style.display = 'none';
@@ -4157,22 +4154,58 @@ function showDDayInfo() {
     const titleEl = document.getElementById('list-modal-title');
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
-    const start = new Date(DDAY_START);
-    const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
-    const n = daysSince(DDAY_START);
-    titleEl.innerHTML = 'D-Day'; // [smsong] 하트 제거
-    body.innerHTML =
-        '<div class="dday-info">' +
-        '<div class="dday-info-emoji">' + icon('calendar',28) + '</div>' +
-        '<div class="dday-info-label">우리가 만난 날</div>' + // [smsong]
-        '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
-        '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
-        '</div>';
+    var since = getDdayStart();
+    var canEdit = isCoupleRoom() && isRoomOwner();
+    titleEl.innerHTML = 'D-Day';
+    var html = '<div class="dday-info">';
+    if (since) {
+        const start = new Date(since);
+        const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
+        const n = daysSince(since);
+        html += '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
+                '<div class="dday-info-label">우리가 만난 날</div>' +
+                '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
+                '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>';
+    } else {
+        html += '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
+                '<div class="dday-info-label">만난 날짜가 설정되지 않았어요</div>';
+    }
+    if (canEdit) {
+        html += '<div class="dday-edit-row">' +
+                    '<input id="dday-edit-input" type="date" class="dday-edit-input" value="' + (since || '') + '">' +
+                    '<button type="button" id="dday-edit-save" class="dday-edit-save">저장</button>' +
+                '</div>';
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    if (canEdit) {
+        var saveBtn = document.getElementById('dday-edit-save');
+        if (saveBtn) saveBtn.addEventListener('click', saveDday);
+    }
     Daylog._openListKind = null;
     modal.classList.remove('list-fullscreen'); // [smsong] 디데이는 기존 카드 스타일 유지
     modal.classList.add('dday-mode'); // 디데이 폼 내부는 드래그(당겨서 새로고침) 비활성
     if (body) body.scrollTop = 0;
     modal.classList.remove('hidden');
+}
+
+// [smsong] 방장: 디데이(만난 날짜) 저장 → 방(coupleSince) 갱신
+function saveDday() {
+    var input = document.getElementById('dday-edit-input');
+    if (!input) return;
+    var roomId = getRoomId();
+    withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/dday', {
+        method: 'PUT', headers: Daylog.authHeaders(true),
+        body: JSON.stringify({ uid: getUid(), since: input.value || '' })
+    }), '저장 중...')
+        .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+        .then(function (room) {
+            Daylog.roomInfo = room;
+            showToast('저장되었어요');
+            applyDdayVisibility();
+            closeListModal();
+        })
+        .catch(function (err) { showToast('저장 실패: ' + (err.message || '오류')); console.error(err); });
 }
 
 // 타임라인/리스트 카드의 위치 표기 채우기
@@ -4204,7 +4237,20 @@ function applyCardLocation(scope, memory) {
 }
 function areaOf(addr) { return String(addr || '').split(' ').slice(0, 2).join(' '); }
 
-const DDAY_START = "2026-05-09"; // [smsong] 우리가 만난 날
+// [smsong] 디데이 기준일은 방(coupleSince)에서 가져옴 — 방마다 개별, 커플 방에만 적용
+function getDdayStart() {
+    return (typeof Daylog !== 'undefined' && Daylog.roomInfo && Daylog.roomInfo.coupleSince) ? Daylog.roomInfo.coupleSince : null;
+}
+// 커플 방 + 기준일 있을 때만 헤더/프로필 디데이 표시, 그 외(친구·가족·미설정)엔 숨김
+function applyDdayVisibility() {
+    var counter = document.querySelector('.dday-counter');
+    var card = document.getElementById('stat-card-dday');
+    var since = getDdayStart();
+    var show = isCoupleRoom() && !!since;
+    if (counter) counter.style.display = show ? '' : 'none';
+    if (card) card.style.display = show ? '' : 'none';
+    if (show) { var el = document.getElementById('dday-count'); if (el) el.innerText = daysSince(since); }
+}
 function daysSince(start) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

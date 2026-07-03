@@ -37,6 +37,9 @@ public class RoomEntity {
     private String coupleLeftUid;
     private String coupleRightUid;
 
+    // [smsong] 커플 방 디데이 기준일 (YYYY-MM-DD) — 방마다 개별 설정
+    private String coupleSince;
+
     private LocalDateTime createdAt;
 
     @PrePersist

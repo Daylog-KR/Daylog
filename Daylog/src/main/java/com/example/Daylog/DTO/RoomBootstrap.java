@@ -55,6 +55,7 @@ public class RoomBootstrap implements CommandLineRunner {
         boolean touched = false;
         if (room.getCoupleLeftUid() == null)  { room.setCoupleLeftUid(OWNER_UID);   touched = true; }
         if (room.getCoupleRightUid() == null) { room.setCoupleRightUid(PARTNER_UID); touched = true; }
+        if (room.getCoupleSince() == null)    { room.setCoupleSince("2026-05-09");   touched = true; } // 기존 디데이 보존
         if (touched) room = roomRepository.save(room);
 
         // 멤버 보장(중복 방지)

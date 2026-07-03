@@ -44,7 +44,8 @@ public class RoomController {
         verify(uid, ud);
         String name = body.get("name") == null ? null : String.valueOf(body.get("name"));
         String type = body.get("type") == null ? null : String.valueOf(body.get("type"));
-        return ResponseEntity.ok(roomService.createRoom(uid, name, type));
+        String coupleSince = body.get("coupleSince") == null ? null : String.valueOf(body.get("coupleSince"));
+        return ResponseEntity.ok(roomService.createRoom(uid, name, type, coupleSince));
     }
 
     // 코드로 입장 (body: { uid, code })
@@ -92,6 +93,16 @@ public class RoomController {
         String uid = body.get("uid");
         verify(uid, ud);
         return ResponseEntity.ok(roomService.setCouple(roomId, uid, body.get("leftUid"), body.get("rightUid")));
+    }
+
+    // 디데이(만난 날짜) 설정 (방장만) — body: { uid, since }
+    @PutMapping("/{roomId}/dday")
+    public ResponseEntity<RoomDTO> setDday(@PathVariable("roomId") Long roomId,
+                                           @RequestBody Map<String, String> body,
+                                           @AuthenticationPrincipal UserDetails ud) {
+        String uid = body.get("uid");
+        verify(uid, ud);
+        return ResponseEntity.ok(roomService.setDday(roomId, uid, body.get("since")));
     }
 
     // 멤버 강퇴 (방장만) — ?uid=방장uid, path=대상 uid

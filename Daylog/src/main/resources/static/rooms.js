@@ -47,6 +47,8 @@ const modalInput = document.getElementById('room-modal-input');
 const modalOk = document.getElementById('room-modal-ok');
 const modalCancel = document.getElementById('room-modal-cancel');
 const typeRow = document.getElementById('room-type-row');
+const ddayRow = document.getElementById('room-dday-row');
+const ddayInput = document.getElementById('room-dday-input');
 
 let modalMode = null; // 'create' | 'join'
 let selectedType = 'COUPLE';
@@ -60,6 +62,7 @@ function updateTypeChips() {
     document.querySelectorAll('.type-chip').forEach(ch => {
         ch.classList.toggle('active', ch.dataset.type === selectedType);
     });
+    if (ddayRow) ddayRow.style.display = (selectedType === 'COUPLE') ? 'flex' : 'none';
 }
 
 // ===== 유틸 =====
@@ -189,6 +192,7 @@ function openModal(mode) {
         modalInput.classList.add('code');
         modalInput.maxLength = 8;
         typeRow.style.display = 'none';
+        if (ddayRow) ddayRow.style.display = 'none';
     }
     modalEl.classList.remove('hidden');
     setTimeout(() => modalInput.focus(), 50);
@@ -209,6 +213,9 @@ async function submitModal() {
 async function createRoom(name) {
     try {
         const payload = { uid: uid, name: name, type: selectedType };
+        if (selectedType === 'COUPLE' && ddayInput && ddayInput.value) {
+            payload.coupleSince = ddayInput.value; // 만난 날짜 → 방 디데이 기준일
+        }
         const res = await fetch(`${API_BASE}/api/rooms`, {
             method: 'POST', headers: authHeaders(true),
             body: JSON.stringify(payload)
