@@ -1,0 +1,153 @@
+/* ===== Daylog 방 목록 — 웜톤(우드/베이지) ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --primary: #b08968;
+    --primary-light: #e6ccb2;
+    --primary-dark: #9c6644;
+    --bg-color: #fdfbf7;
+    --gray-50: #faf9f8;
+    --gray-100: #f3f0ec;
+    --gray-200: #e5e0d8;
+    --gray-300: #d1cbc1;
+    --gray-400: #a8a29a;
+    --gray-500: #7a756e;
+    --gray-600: #5c5751;
+    --gray-700: #45413c;
+    --gray-800: #2e2b28;
+    --white: #ffffff;
+    --danger: #c0563e;
+    --shadow-sm: 0 1px 3px rgba(139,115,85,0.08), 0 1px 2px rgba(139,115,85,0.05);
+    --shadow-md: 0 4px 15px rgba(139,115,85,0.08);
+    --shadow-lg: 0 10px 30px rgba(139,115,85,0.12), 0 4px 12px rgba(139,115,85,0.08);
+    --font-main: 'Noto Sans KR', sans-serif;
+    --font-logo: 'Lora', serif;
+}
+
+html, body {
+    height: 100%; font-family: var(--font-main);
+    background-color: var(--bg-color); color: var(--gray-800);
+}
+
+.rooms-page {
+    min-height: 100vh; min-height: 100dvh;
+    max-width: 560px; margin: 0 auto;
+    display: flex; flex-direction: column;
+    padding: max(20px, env(safe-area-inset-top)) 18px calc(env(safe-area-inset-bottom) + 18px);
+}
+
+/* 헤더 */
+.rooms-header { padding: 12px 4px 20px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-logo {
+    width: 52px; height: 52px; border-radius: 16px;
+    background: var(--white); border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-sm); flex-shrink: 0;
+}
+.brand-name { font-family: var(--font-logo); font-size: 24px; font-weight: 500; color: var(--primary-dark); letter-spacing: -0.3px; }
+.brand-sub { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+/* 목록 */
+.rooms-main { flex: 1 1 auto; }
+.rooms-list { display: flex; flex-direction: column; gap: 12px; }
+
+.room-card {
+    display: flex; align-items: stretch; gap: 10px;
+    background: var(--white); border: 1px solid var(--gray-200);
+    border-radius: 18px; padding: 16px 16px; box-shadow: var(--shadow-sm);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    animation: cardIn 0.4s ease both;
+}
+.room-card:active { transform: scale(0.99); }
+@keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.room-card-main { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.room-name {
+    font-size: 1.08rem; font-weight: 700; color: var(--gray-800);
+    display: flex; align-items: center; gap: 7px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.room-owner-badge {
+    font-size: 0.66rem; font-weight: 700; color: var(--primary-dark);
+    background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
+}
+.room-meta { font-size: 0.82rem; color: var(--gray-500); margin-top: 6px; }
+.room-code {
+    font-weight: 700; color: var(--primary-dark); letter-spacing: 1px;
+    background: var(--gray-100); border-radius: 6px; padding: 1px 7px;
+}
+.room-enter-hint { font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-top: 8px; }
+
+.room-card-actions { display: flex; flex-direction: column; gap: 6px; justify-content: center; flex-shrink: 0; }
+.room-icon-btn {
+    width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--gray-200); background: var(--gray-50); color: var(--gray-500);
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s ease;
+}
+.room-icon-btn:hover { background: var(--gray-100); color: var(--gray-700); }
+.room-icon-btn.danger { color: var(--danger); border-color: #ecccc2; }
+.room-icon-btn.danger:hover { background: #f7ece8; }
+
+.rooms-empty {
+    text-align: center; color: var(--gray-500); font-size: 0.95rem; line-height: 1.7;
+    padding: 60px 20px; border: 1px dashed var(--gray-300); border-radius: 18px; margin-top: 8px;
+}
+
+/* 하단 액션 */
+.rooms-actions { display: flex; gap: 10px; padding-top: 16px; }
+.room-action {
+    flex: 1 1 0; padding: 15px 12px; border-radius: 14px; cursor: pointer;
+    font-size: 0.95rem; font-weight: 600; font-family: var(--font-main);
+    background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200);
+    transition: all 0.18s ease;
+}
+.room-action:active { transform: scale(0.98); }
+.room-action.primary { background: var(--primary); color: var(--white); border-color: var(--primary); }
+.room-action.primary:hover { background: var(--primary-dark); }
+.room-action:hover { background: var(--gray-50); }
+
+/* 입력 모달 */
+.room-modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(40,37,34,0.5);
+    display: flex; align-items: flex-end; justify-content: center;
+    animation: fadeIn 0.2s ease;
+}
+.room-modal.hidden { display: none; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.room-modal-card {
+    width: 100%; max-width: 520px; margin: 0 auto;
+    background: var(--white); border-radius: 22px 22px 0 0;
+    padding: 22px 20px calc(env(safe-area-inset-bottom) + 22px);
+    box-shadow: var(--shadow-lg);
+    animation: sheetUp 0.28s cubic-bezier(0.32,0.72,0,1);
+}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.room-modal-title { font-size: 1.1rem; font-weight: 700; color: var(--gray-800); margin-bottom: 6px; }
+.room-modal-desc { font-size: 0.85rem; color: var(--gray-500); margin-bottom: 14px; }
+.room-modal-input {
+    width: 100%; padding: 14px 14px; border-radius: 12px;
+    border: 1px solid var(--gray-300); background: var(--gray-50);
+    font-size: 1rem; font-family: var(--font-main); color: var(--gray-800);
+    outline: none; transition: border 0.15s ease;
+}
+.room-modal-input:focus { border-color: var(--primary); background: var(--white); }
+.room-modal-input.code { letter-spacing: 3px; text-transform: uppercase; font-weight: 700; text-align: center; }
+.room-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.rm-btn {
+    flex: 1 1 0; padding: 14px; border-radius: 12px; cursor: pointer;
+    font-size: 0.95rem; font-weight: 600; font-family: var(--font-main);
+    background: var(--gray-100); color: var(--gray-600); border: none; transition: all 0.15s ease;
+}
+.rm-btn.primary { background: var(--primary); color: var(--white); }
+.rm-btn.primary:hover { background: var(--primary-dark); }
+.rm-btn:active { transform: scale(0.98); }
+
+#toast {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--gray-800); color: var(--white); padding: 12px 24px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s, transform 0.3s; z-index: 9999;
+    max-width: calc(100% - 48px); text-align: center; box-shadow: var(--shadow-md);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

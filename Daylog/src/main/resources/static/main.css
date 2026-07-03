@@ -1155,14 +1155,16 @@ input[type="date"]::-webkit-date-and-time-value {
 .c-edit-save:hover { background: var(--primary-dark); }
 
 /* ---- 프로필 하단 휴지통 버튼 ---- */
-.trash-menu-btn {
+.trash-menu-btn,
+.rooms-menu-btn {
     display: block; width: 100%; margin-top: 10px;
     background: var(--white); color: var(--gray-600);
     border: 1px solid var(--primary-light); border-radius: 14px;
     padding: 14px; font-size: 0.95rem; font-weight: 600;
     font-family: var(--font-main); cursor: pointer; transition: all 0.2s ease;
 }
-.trash-menu-btn:hover { background: var(--gray-50); }
+.trash-menu-btn:hover,
+.rooms-menu-btn:hover { background: var(--gray-50); }
 
 /* ---- 휴지통 모달 ---- */
 .trash-body {

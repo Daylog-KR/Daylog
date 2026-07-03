@@ -28,17 +28,19 @@ public class MemoryController {
     public ResponseEntity<MemoryDTO> createMemory(@RequestPart("uid") String uid,
                                                   @RequestPart("memoryData") String memoryData,
                                                   @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
+                                                  @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                   @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
         MemoryDTO memoryDTO = mapper.readValue(memoryData, MemoryDTO.class);
-        return ResponseEntity.ok(memoryService.createMemory(uid, memoryDTO, mediaData, userDetails));
+        return ResponseEntity.ok(memoryService.createMemory(uid, roomId, memoryDTO, mediaData, userDetails));
     }
 
     @GetMapping("/{uid}")
     public ResponseEntity<List<MemoryDTO>> getAllMemories(@PathVariable("uid") String uid,
+                                                          @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                           @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(memoryService.getAllMemories(uid, userDetails));
+        return ResponseEntity.ok(memoryService.getAllMemories(uid, roomId, userDetails));
     }
 
     // 본인 소유 추억 수정 (제목/내용/날짜 + 이미지 정렬/추가/삭제) — multipart
@@ -80,7 +82,8 @@ public class MemoryController {
     // 내가 휴지통으로 보낸 추억 목록
     @GetMapping("/trash/{uid}")
     public ResponseEntity<List<MemoryDTO>> getTrash(@PathVariable("uid") String uid,
+                                                    @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                     @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(memoryService.getTrash(uid, userDetails));
+        return ResponseEntity.ok(memoryService.getTrash(uid, roomId, userDetails));
     }
 }

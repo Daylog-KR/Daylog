@@ -28,18 +28,20 @@ public class ChecklistController {
     public ResponseEntity<ChecklistDTO> createChecklist(@RequestPart("uid") String uid,
                                                         @RequestPart("checklistData") String checklistData,
                                                         @RequestPart(value = "mediaData", required = false) List<MultipartFile> mediaData,
+                                                        @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                         @AuthenticationPrincipal UserDetails userDetails) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
         ChecklistDTO dto = mapper.readValue(checklistData, ChecklistDTO.class);
-        return ResponseEntity.ok(checklistService.createChecklist(uid, dto, mediaData, userDetails));
+        return ResponseEntity.ok(checklistService.createChecklist(uid, roomId, dto, mediaData, userDetails));
     }
 
     // 전체 조회 (지도/목록 공용)
     @GetMapping("/{uid}")
     public ResponseEntity<List<ChecklistDTO>> getAllChecklists(@PathVariable("uid") String uid,
+                                                               @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                                @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(checklistService.getAllChecklists(uid, userDetails));
+        return ResponseEntity.ok(checklistService.getAllChecklists(uid, roomId, userDetails));
     }
 
     // 본인 소유 수정 (제목/내용/타입/방문여부/방문일 + 이미지 정렬/추가/삭제) — 이미지 여러 장 선택
@@ -83,7 +85,8 @@ public class ChecklistController {
     // 내가 휴지통으로 보낸 가볼곳 목록
     @GetMapping("/trash/{uid}")
     public ResponseEntity<List<ChecklistDTO>> getTrash(@PathVariable("uid") String uid,
+                                                       @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                        @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(checklistService.getTrash(uid, userDetails));
+        return ResponseEntity.ok(checklistService.getTrash(uid, roomId, userDetails));
     }
 }

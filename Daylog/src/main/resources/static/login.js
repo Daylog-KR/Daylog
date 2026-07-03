@@ -6,7 +6,7 @@
 // =====================================================
 
 const CFG = window.APP_CONFIG || {};
-const SUCCESS_REDIRECT = 'main.html';
+const SUCCESS_REDIRECT = 'rooms.html'; // [smsong] 로그인 후 방 목록으로
 
 // provider 별 인가 엔드포인트 + config.js 의 client_id 매핑
 const OAUTH = {

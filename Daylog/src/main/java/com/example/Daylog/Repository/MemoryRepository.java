@@ -15,6 +15,17 @@ public interface MemoryRepository extends JpaRepository<MemoryEntity, Long> {
     // 휴지통에 없는(정상) 추억만 조회 — 지도/타임라인 노출용
     List<MemoryEntity> findByDeletedFalse();
 
+    // [smsong] 방 스코프: 해당 방의 정상 추억만
+    List<MemoryEntity> findByRoomIdAndDeletedFalse(Long roomId);
+
+    // [smsong] 방 스코프 휴지통: 내가 이 방에서 휴지통으로 보낸 추억
+    List<MemoryEntity> findByOwnerUidAndRoomIdAndDeletedTrue(String uid, Long roomId);
+
+    // [smsong] 마이그레이션: roomId 가 비어있는 기존 추억을 기본 방으로 이관
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE memories m SET m.roomId = :roomId WHERE m.roomId IS NULL")
+    int assignNullRoom(@Param("roomId") Long roomId);
+
     // 내가 휴지통으로 보낸 추억 목록
     List<MemoryEntity> findByOwnerUidAndDeletedTrue(String uid);
 

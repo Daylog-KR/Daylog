@@ -63,6 +63,9 @@ public class ChecklistEntity {
     // 다녀온 날짜 (visited=true 일 때만 의미 있음)
     private LocalDate visitedDate;
 
+    // [smsong] 소속 방(공유 공간) — 이 방의 멤버끼리만 공유
+    private Long roomId;
+
     // 작성자(= 체크리스트를 만든 사람) 연관관계 (MemoryEntity 패턴 동일)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")

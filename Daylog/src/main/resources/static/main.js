@@ -69,6 +69,8 @@ function authHeaders(withJson) {
     if (withJson) h['Content-Type'] = 'application/json';
     const t = getToken();
     if (t) h['Authorization'] = 'Bearer ' + t;
+    const rid = localStorage.getItem('selectedRoomId'); // [smsong] 방 스코프 — 모든 요청에 현재 방 첨부
+    if (rid) h['X-Room-Id'] = rid;
     return h;
 }
 
@@ -92,6 +94,8 @@ function redirectToLogin(msg) {
 // 유효하지 않으면 로그인 페이지로 보냄
 function requireAuthOrRedirect() {
     if (!isTokenValid()) { redirectToLogin(); return false; }
+    // [smsong] 방 미선택 시 방 목록으로 (방 스코프 진입 강제)
+    if (!localStorage.getItem('selectedRoomId')) { location.replace('rooms.html'); return false; }
     return true;
 }
 
@@ -2483,6 +2487,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-edit-profile').addEventListener('click', openEditPage);
     const btnTrash = document.getElementById('btn-trash');
     if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
+    // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
+    const btnRooms = document.getElementById('btn-rooms');
+    if (btnRooms) btnRooms.addEventListener('click', () => { location.href = 'rooms.html'; });
     const btnProfileLogout = document.getElementById('btn-profile-logout');
     if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');

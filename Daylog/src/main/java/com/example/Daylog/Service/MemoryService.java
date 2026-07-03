@@ -32,6 +32,7 @@ public class MemoryService {
     private final CommentService commentService;
     private final Storage storage;
     private final PermissionService permissionService; // [smsong] 권한 관리 연동
+    private final RoomService roomService; // [smsong] 방(공유 공간) 멤버십 검사
 
     @Value("${google.cloud.credentials.header}")
     private String googleCloudHeader;
@@ -115,12 +116,10 @@ public class MemoryService {
     }
 
     @Transactional
-    public MemoryDTO createMemory(String uid, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
+    public MemoryDTO createMemory(String uid, Long roomId, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
-        // [smsong] 생성 권한 검증 (없으면 생성 불가)
-        if (!permissionService.canCreate(userDetails)) {
-            throw new RuntimeException("생성 권한이 없습니다");
-        }
+        // [smsong] 방 멤버만 생성 가능
+        roomService.requireMember(uid, roomId);
 
         // 위치 데이터가 넘어오지 않은 경우 예외 처리
         if (memoryDTO.getLat() == null || memoryDTO.getLng() == null) {
@@ -128,6 +127,7 @@ public class MemoryService {
         }
 
         MemoryEntity memoryEntity = memoryDTO.dtoToEntity(owner);
+        memoryEntity.setRoomId(roomId); // [smsong] 방 스코프
 
         List<String> uploaded = uploadMediaList(mediaFiles);
         List<String> finalUrls = buildOrderedUrls(memoryDTO.getMediaOrder(), uploaded);
@@ -145,9 +145,9 @@ public class MemoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<MemoryDTO> getAllMemories(String uid, UserDetails userDetails) {
-        requireAccess(userDetails); // [smsong] 접근 권한 없는 사용자 차단
-        return memoryRepository.findByDeletedFalse().stream()
+    public List<MemoryDTO> getAllMemories(String uid, Long roomId, UserDetails userDetails) {
+        roomService.requireMember(uid, roomId); // [smsong] 방 멤버만 조회
+        return memoryRepository.findByRoomIdAndDeletedFalse(roomId).stream()
                 .map(MemoryDTO::entityToDto)
                 .collect(Collectors.toList());
     }
@@ -158,11 +158,8 @@ public class MemoryService {
         MemoryEntity memory = memoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
 
-        // [B] edit by smsong - 소유자 또는 '수정 권한' 보유자면 수정 가능
-        if (!permissionService.canEdit(userDetails)) { // [smsong] 소유자 우회 없이 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
-        // [E] edit by smsong
+        // [smsong] 이 콘텐츠가 속한 방의 멤버만 수정 가능
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
 
         if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
         if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
@@ -206,9 +203,7 @@ public class MemoryService {
     @Transactional
     public void moveToTrash(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
         memory.setDeleted(true);
         memory.setTrashedAt(java.time.LocalDateTime.now()); // [smsong] 30일 자동삭제 기준 시각
         memoryRepository.save(memory);
@@ -218,9 +213,7 @@ public class MemoryService {
     @Transactional
     public MemoryDTO restoreMemory(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
         memory.setDeleted(false);
         memory.setTrashedAt(null); // [smsong] 복원 시 자동삭제 타이머 해제
         return MemoryDTO.entityToDto(memoryRepository.save(memory));
@@ -230,9 +223,7 @@ public class MemoryService {
     @Transactional
     public void permanentDelete(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        if (!permissionService.canDelete(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
         commentService.deleteAllByMemory(id);
         memoryRepository.delete(memory);
     }
@@ -240,11 +231,11 @@ public class MemoryService {
     // 내가 휴지통으로 보낸 추억 목록 (조회 시 만료 항목 자동 삭제 + 남은 일수 계산)
     // [B] edit by smsong - 휴지통 30일 자동 삭제 + 오브젝트별 '며칠 뒤 자동 삭제' 계산
     @Transactional
-    public List<MemoryDTO> getTrash(String uid, UserDetails userDetails) {
-        requireAccess(userDetails); // [smsong] 접근 권한 검사
+    public List<MemoryDTO> getTrash(String uid, Long roomId, UserDetails userDetails) {
         UserEntity user = getAuthorizedUser(uid, userDetails);
+        roomService.requireMember(uid, roomId); // [smsong] 방 멤버만
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        List<MemoryEntity> trashed = memoryRepository.findByOwnerUidAndDeletedTrue(user.getUid());
+        List<MemoryEntity> trashed = memoryRepository.findByOwnerUidAndRoomIdAndDeletedTrue(user.getUid(), roomId);
 
         List<MemoryDTO> result = new ArrayList<>();
         for (MemoryEntity m : trashed) {

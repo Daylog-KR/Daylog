@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#fdfbf7">
+    <title>Daylog — 방 선택</title>
+    <!-- [smsong] PWA 매니페스트/아이콘 연결 -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Daylog">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="rooms.css?v=1.0.0">
+</head>
+<body>
+<div class="rooms-page">
+    <header class="rooms-header">
+        <div class="brand">
+            <div class="brand-logo">
+                <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#fffdf9" stroke="#b08968" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#b08968" stroke-width="2.2"/><circle cx="19.5" cy="18" r="1.5" fill="#b08968"/><circle cx="19.5" cy="27" r="1.5" fill="#b08968"/><circle cx="19.5" cy="36" r="1.5" fill="#b08968"/><circle cx="19.5" cy="45" r="1.5" fill="#b08968"/><g stroke="#e6ccb2" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="19" x2="45" y2="19"/><line x1="29" y1="25" x2="45" y2="25"/></g><path d="M37.5 50c-5-3.8-10-7-10-12a5.6 5.6 0 0 1 10-3.6A5.6 5.6 0 0 1 47.5 38c0 5-5 8.2-10 12z" fill="#c1462f"/><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#9c6644"/></svg>
+            </div>
+            <div class="brand-text">
+                <div class="brand-name">Daylog</div>
+                <div class="brand-sub">함께할 방을 선택하세요</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="rooms-main">
+        <div id="rooms-list" class="rooms-list"></div>
+        <div id="rooms-empty" class="rooms-empty" style="display:none;">
+            아직 참여한 방이 없어요.<br>방을 만들거나 초대 코드로 입장해보세요.
+        </div>
+    </main>
+
+    <div class="rooms-actions">
+        <button id="btn-create-room" class="room-action primary" type="button">+ 방 만들기</button>
+        <button id="btn-join-room" class="room-action" type="button">코드로 입장</button>
+    </div>
+</div>
+
+<!-- 입력 모달 (방 만들기 / 코드 입장 공용) -->
+<div id="room-modal" class="room-modal hidden">
+    <div class="room-modal-card">
+        <div class="room-modal-title" id="room-modal-title">방 만들기</div>
+        <div class="room-modal-desc" id="room-modal-desc">방 이름을 입력하세요.</div>
+        <input id="room-modal-input" class="room-modal-input" type="text" autocomplete="off" />
+        <div class="room-modal-actions">
+            <button id="room-modal-cancel" class="rm-btn" type="button">취소</button>
+            <button id="room-modal-ok" class="rm-btn primary" type="button">확인</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="config.js?v=1.0.0"></script>
+<script src="rooms.js?v=1.0.0"></script>
+</body>
+</html>

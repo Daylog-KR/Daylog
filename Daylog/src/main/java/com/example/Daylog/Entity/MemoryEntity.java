@@ -50,6 +50,9 @@ public class MemoryEntity {
     @Column(nullable = false)
     private boolean deleted;
 
+    // [smsong] 소속 방(공유 공간) — 이 방의 멤버끼리만 공유
+    private Long roomId;
+
     // 작성자 연관관계 (BuildingEntity 패턴 참고)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")

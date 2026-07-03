@@ -32,6 +32,7 @@ public class ChecklistService {
     private final Storage storage;
     private final PermissionService permissionService; // [smsong] 권한 관리 연동
     private final CommentService commentService; // [smsong] 가볼곳 영구삭제 시 댓글 정리
+    private final RoomService roomService; // [smsong] 방(공유 공간) 멤버십 검사
 
     @Value("${google.cloud.credentials.header}")
     private String googleCloudHeader;
@@ -66,9 +67,7 @@ public class ChecklistService {
     // 수정용: 소유자 또는 '수정 권한'
     private ChecklistEntity getEditableChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!permissionService.canEdit(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId()); // [smsong] 방 멤버만
         return c;
     }
     // [E] edit by smsong
@@ -125,12 +124,10 @@ public class ChecklistService {
     }
 
     @Transactional
-    public ChecklistDTO createChecklist(String uid, ChecklistDTO dto, List<MultipartFile> mediaFiles, UserDetails userDetails) {
+    public ChecklistDTO createChecklist(String uid, Long roomId, ChecklistDTO dto, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
-        // [smsong] 생성 권한 검증 (없으면 생성 불가)
-        if (!permissionService.canCreate(userDetails)) {
-            throw new RuntimeException("생성 권한이 없습니다");
-        }
+        // [smsong] 방 멤버만 생성 가능
+        roomService.requireMember(uid, roomId);
 
         if (dto.getLat() == null || dto.getLng() == null) {
             throw new IllegalArgumentException("위치 정보가 필수입니다.");
@@ -141,6 +138,7 @@ public class ChecklistService {
         }
 
         ChecklistEntity entity = dto.dtoToEntity(owner);
+        entity.setRoomId(roomId); // [smsong] 방 스코프
 
         List<String> uploaded = uploadMediaList(mediaFiles);
         List<String> finalUrls = buildOrderedUrls(dto.getMediaOrder(), uploaded);
@@ -159,9 +157,9 @@ public class ChecklistService {
 
     // 지도/목록 노출용 — 휴지통에 없는 가볼곳 조회 (커플 공유)
     @Transactional(readOnly = true)
-    public List<ChecklistDTO> getAllChecklists(String uid, UserDetails userDetails) {
-        requireAccess(userDetails); // [smsong] 접근 권한 없는 사용자 차단
-        return checklistRepository.findByDeletedFalse().stream()
+    public List<ChecklistDTO> getAllChecklists(String uid, Long roomId, UserDetails userDetails) {
+        roomService.requireMember(uid, roomId); // [smsong] 방 멤버만 조회
+        return checklistRepository.findByRoomIdAndDeletedFalse(roomId).stream()
                 .map(ChecklistDTO::entityToDto)
                 .collect(Collectors.toList());
     }
@@ -208,9 +206,7 @@ public class ChecklistService {
     @Transactional
     public void moveToTrash(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId()); // [smsong] 방 멤버만
         c.setDeleted(true);
         c.setTrashedAt(java.time.LocalDateTime.now()); // [smsong] 30일 자동삭제 기준 시각
         checklistRepository.save(c);
@@ -220,9 +216,7 @@ public class ChecklistService {
     @Transactional
     public ChecklistDTO restoreChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!permissionService.canTrash(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId()); // [smsong] 방 멤버만
         c.setDeleted(false);
         c.setTrashedAt(null); // [smsong] 복원 시 자동삭제 타이머 해제
         return ChecklistDTO.entityToDto(checklistRepository.save(c));
@@ -232,9 +226,7 @@ public class ChecklistService {
     @Transactional
     public void permanentDelete(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
-        if (!permissionService.canDelete(userDetails)) { // [smsong] 권한 기준
-            throw new RuntimeException("권한이 없습니다");
-        }
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId()); // [smsong] 방 멤버만
         commentService.deleteAllByChecklist(id); // [smsong] 연관 댓글 정리
         checklistRepository.delete(c);
     }
@@ -242,11 +234,11 @@ public class ChecklistService {
     // 내가 휴지통으로 보낸 가볼곳 목록 (조회 시 만료 항목 자동 삭제 + 남은 일수 계산)
     // [B] edit by smsong - 휴지통 30일 자동 삭제 + 오브젝트별 '며칠 뒤 자동 삭제' 계산
     @Transactional
-    public List<ChecklistDTO> getTrash(String uid, UserDetails userDetails) {
-        requireAccess(userDetails); // [smsong] 접근 권한 검사
+    public List<ChecklistDTO> getTrash(String uid, Long roomId, UserDetails userDetails) {
         UserEntity user = getAuthorizedUser(uid, userDetails);
+        roomService.requireMember(uid, roomId); // [smsong] 방 멤버만
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        List<ChecklistEntity> trashed = checklistRepository.findByOwnerUidAndDeletedTrue(user.getUid());
+        List<ChecklistEntity> trashed = checklistRepository.findByOwnerUidAndRoomIdAndDeletedTrue(user.getUid(), roomId);
 
         List<ChecklistDTO> result = new ArrayList<>();
         for (ChecklistEntity c : trashed) {
