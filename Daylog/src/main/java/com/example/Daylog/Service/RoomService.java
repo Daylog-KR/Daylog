@@ -65,13 +65,27 @@ public class RoomService {
     }
 
     // ===== 생성 =====
+    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY");
+
     @Transactional
-    public RoomDTO createRoom(String uid, String name) {
+    public RoomDTO createRoom(String uid, String name, String type, Integer maxMembers) {
         String roomName = (name == null || name.trim().isEmpty()) ? "새로운 방" : name.trim();
+        String t = (type == null) ? "COUPLE" : type.trim().toUpperCase();
+        if (!VALID_TYPES.contains(t)) t = "FRIEND";
+        int cap;
+        if ("COUPLE".equals(t)) {
+            cap = 2; // 커플은 2명 고정
+        } else {
+            cap = (maxMembers == null) ? 10 : maxMembers;
+            if (cap < 2) cap = 2;
+            if (cap > 50) cap = 50;
+        }
         RoomEntity room = RoomEntity.builder()
                 .name(roomName)
                 .ownerUid(uid)
                 .inviteCode(generateUniqueCode())
+                .type(t)
+                .maxMembers(cap)
                 .build();
         room = roomRepository.save(room);
         // 방장 자동 가입
@@ -89,6 +103,11 @@ public class RoomService {
         RoomEntity room = roomRepository.findByInviteCode(norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "유효하지 않은 초대 코드입니다"));
         if (!roomMemberRepository.existsByRoomIdAndUid(room.getId(), uid)) {
+            long count = roomMemberRepository.countByRoomId(room.getId());
+            Integer cap = room.getMaxMembers();
+            if (cap != null && count >= cap) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "방 정원이 가득 찼습니다");
+            }
             roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(uid).build());
         }
         return RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
@@ -115,6 +134,20 @@ public class RoomService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 나갈 수 없습니다. 방을 삭제하세요");
         }
         roomMemberRepository.deleteByRoomIdAndUid(roomId, uid);
+    }
+
+    // ===== 멤버 강퇴 (방장만) =====
+    @Transactional
+    public void kickMember(Long roomId, String ownerUid, String targetUid) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 멤버를 내보낼 수 있습니다");
+        }
+        if (room.getOwnerUid().equals(targetUid)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 내보낼 수 없습니다");
+        }
+        roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
     }
 
     // ===== 내가 속한 방 목록 =====

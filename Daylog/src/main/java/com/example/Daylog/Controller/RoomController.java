@@ -36,13 +36,22 @@ public class RoomController {
         return ResponseEntity.ok(roomService.listForUser(uid));
     }
 
-    // 방 생성 (body: { uid, name })
+    // 방 생성 (body: { uid, name, type, maxMembers })
     @PostMapping
-    public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, String> body,
+    public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, Object> body,
                                               @AuthenticationPrincipal UserDetails ud) {
-        String uid = body.get("uid");
+        String uid = body.get("uid") == null ? null : String.valueOf(body.get("uid"));
         verify(uid, ud);
-        return ResponseEntity.ok(roomService.createRoom(uid, body.get("name")));
+        String name = body.get("name") == null ? null : String.valueOf(body.get("name"));
+        String type = body.get("type") == null ? null : String.valueOf(body.get("type"));
+        Integer maxMembers = null;
+        Object mm = body.get("maxMembers");
+        if (mm instanceof Number) {
+            maxMembers = ((Number) mm).intValue();
+        } else if (mm != null) {
+            try { maxMembers = Integer.parseInt(String.valueOf(mm).trim()); } catch (NumberFormatException ignored) {}
+        }
+        return ResponseEntity.ok(roomService.createRoom(uid, name, type, maxMembers));
     }
 
     // 코드로 입장 (body: { uid, code })
@@ -79,6 +88,17 @@ public class RoomController {
                                           @AuthenticationPrincipal UserDetails ud) {
         verify(uid, ud);
         roomService.leaveRoom(roomId, uid);
+        return ResponseEntity.ok().build();
+    }
+
+    // 멤버 강퇴 (방장만) — ?uid=방장uid, path=대상 uid
+    @DeleteMapping("/{roomId}/members/{targetUid}")
+    public ResponseEntity<Void> kickMember(@PathVariable("roomId") Long roomId,
+                                           @PathVariable("targetUid") String targetUid,
+                                           @RequestParam("uid") String uid,
+                                           @AuthenticationPrincipal UserDetails ud) {
+        verify(uid, ud);
+        roomService.kickMember(roomId, uid, targetUid);
         return ResponseEntity.ok().build();
     }
 }

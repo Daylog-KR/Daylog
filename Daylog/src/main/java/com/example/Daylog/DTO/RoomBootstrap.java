@@ -40,6 +40,8 @@ public class RoomBootstrap implements CommandLineRunner {
                         .name(DEFAULT_NAME)
                         .ownerUid(OWNER_UID)
                         .inviteCode(DEFAULT_CODE)
+                        .type("COUPLE")   // [smsong] 송성민·강미르 기본 방은 커플 타입
+                        .maxMembers(2)
                         .build())
         );
 

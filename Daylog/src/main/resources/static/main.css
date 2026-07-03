@@ -1166,6 +1166,62 @@ input[type="date"]::-webkit-date-and-time-value {
 .trash-menu-btn:hover,
 .rooms-menu-btn:hover { background: var(--gray-50); }
 
+/* [smsong] 친구/가족 방 — 구성원 프로필 그리드 */
+.member-view-head { font-size: 0.95rem; font-weight: 700; color: var(--gray-700); margin: 4px 2px 14px; }
+.member-grid-inner { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.member-card {
+    background: var(--white); border: 1px solid var(--gray-200); border-radius: 18px;
+    padding: 18px 14px; text-align: center; box-shadow: 0 1px 3px rgba(139,115,85,0.06);
+}
+.member-card .member-avatar {
+    width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%;
+    overflow: hidden; background: var(--gray-100); border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center; color: var(--gray-400);
+}
+.member-card .member-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.member-name {
+    font-size: 0.98rem; font-weight: 700; color: var(--gray-800); margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.member-owner-badge {
+    font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
+    background: var(--primary-light); border-radius: 6px; padding: 2px 6px;
+}
+.member-counts { display: flex; gap: 8px; }
+.member-count-btn {
+    flex: 1 1 0; background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 12px; padding: 8px 4px; cursor: pointer; font-family: var(--font-main);
+    display: flex; flex-direction: column; gap: 2px; align-items: center; transition: all 0.15s ease;
+}
+.member-count-btn:hover { background: var(--primary-light); }
+.member-count-btn:active { transform: scale(0.97); }
+.member-count-btn b { font-size: 1.05rem; color: var(--primary-dark); }
+.member-count-btn span { font-size: 0.72rem; color: var(--gray-500); }
+
+/* [smsong] 멤버 관리(강퇴) 모달 */
+.rm-head { font-size: 0.85rem; color: var(--gray-500); padding: 0 4px 10px; }
+.rm-list { display: flex; flex-direction: column; gap: 8px; }
+.rm-item {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 14px; padding: 10px 12px;
+}
+.rm-avatar {
+    width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    background: var(--gray-100); display: flex; align-items: center; justify-content: center; color: var(--gray-400);
+}
+.rm-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.rm-name { flex: 1 1 auto; font-size: 0.95rem; font-weight: 600; color: var(--gray-800); display: flex; align-items: center; gap: 6px; }
+.rm-badge { font-size: 0.62rem; font-weight: 700; color: var(--primary-dark); background: var(--primary-light); border-radius: 6px; padding: 2px 6px; }
+.rm-kick {
+    flex-shrink: 0; font-size: 0.82rem; font-weight: 600; font-family: var(--font-main);
+    color: #c0563e; background: #f7ece8; border: 1px solid #ecccc2;
+    border-radius: 10px; padding: 8px 12px; cursor: pointer; transition: all 0.15s ease;
+}
+.rm-kick:hover { background: #f1ddd6; }
+.rm-kick:active { transform: scale(0.97); }
+
 /* ---- 휴지통 모달 ---- */
 .trash-body {
     margin-top: 6px; overflow-y: auto; max-height: 70vh;

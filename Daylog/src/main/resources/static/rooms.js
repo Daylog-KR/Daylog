@@ -46,8 +46,24 @@ const modalDesc = document.getElementById('room-modal-desc');
 const modalInput = document.getElementById('room-modal-input');
 const modalOk = document.getElementById('room-modal-ok');
 const modalCancel = document.getElementById('room-modal-cancel');
+const typeRow = document.getElementById('room-type-row');
+const capRow = document.getElementById('room-cap-row');
+const capInput = document.getElementById('room-cap-input');
 
 let modalMode = null; // 'create' | 'join'
+let selectedType = 'COUPLE';
+
+function typeLabel(type) {
+    if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
+    if (type === 'FAMILY') return { label: '가족', cls: 'family' };
+    return { label: '커플', cls: 'couple' };
+}
+function updateTypeChips() {
+    document.querySelectorAll('.type-chip').forEach(ch => {
+        ch.classList.toggle('active', ch.dataset.type === selectedType);
+    });
+    capRow.style.display = (selectedType === 'COUPLE') ? 'none' : 'flex';
+}
 
 // ===== 유틸 =====
 function esc(s) {
@@ -89,10 +105,12 @@ function renderRooms(rooms) {
         card.className = 'room-card';
 
         const ownerBadge = r.owner ? '<span class="room-owner-badge">방장</span>' : '';
+        const t = typeLabel(r.type);
+        const cap = r.maxMembers ? ('/' + r.maxMembers) : '';
         card.innerHTML = `
             <div class="room-card-main">
-                <div class="room-name">${esc(r.name)} ${ownerBadge}</div>
-                <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명 · 코드 <span class="room-code">${esc(r.inviteCode)}</span></div>
+                <div class="room-name">${esc(r.name)} ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
+                <div class="room-meta">멤버 ${Number(r.memberCount) || 0}${cap}명 · 코드 <span class="room-code">${esc(r.inviteCode)}</span></div>
                 <div class="room-enter-hint">탭하여 입장 →</div>
             </div>
             <div class="room-card-actions"></div>
@@ -135,6 +153,8 @@ function renderRooms(rooms) {
 function enterRoom(r) {
     localStorage.setItem('selectedRoomId', r.id);
     localStorage.setItem('selectedRoomName', r.name || '');
+    localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
+    localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
     location.href = 'main.html';
 }
 
@@ -157,11 +177,14 @@ function openModal(mode) {
     modalMode = mode;
     if (mode === 'create') {
         modalTitle.textContent = '방 만들기';
-        modalDesc.textContent = '방 이름을 입력하세요. 만든 사람이 방장이 됩니다.';
+        modalDesc.textContent = '방 이름과 종류를 정하세요. 만든 사람이 방장이 됩니다.';
         modalInput.value = '';
         modalInput.placeholder = '예: 우리의 추억';
         modalInput.classList.remove('code');
         modalInput.maxLength = 30;
+        typeRow.style.display = 'flex';
+        selectedType = 'COUPLE';
+        updateTypeChips();
     } else {
         modalTitle.textContent = '코드로 입장';
         modalDesc.textContent = '초대 코드를 입력하면 그 방의 멤버가 됩니다.';
@@ -169,6 +192,8 @@ function openModal(mode) {
         modalInput.placeholder = '초대 코드 6자리';
         modalInput.classList.add('code');
         modalInput.maxLength = 8;
+        typeRow.style.display = 'none';
+        capRow.style.display = 'none';
     }
     modalEl.classList.remove('hidden');
     setTimeout(() => modalInput.focus(), 50);
@@ -188,9 +213,18 @@ async function submitModal() {
 // ===== 방 생성 =====
 async function createRoom(name) {
     try {
+        const payload = { uid: uid, name: name, type: selectedType };
+        if (selectedType === 'COUPLE') {
+            payload.maxMembers = 2;
+        } else {
+            let cap = parseInt(capInput.value, 10);
+            if (isNaN(cap) || cap < 2) cap = 10;
+            if (cap > 50) cap = 50;
+            payload.maxMembers = cap;
+        }
         const res = await fetch(`${API_BASE}/api/rooms`, {
             method: 'POST', headers: authHeaders(true),
-            body: JSON.stringify({ uid: uid, name: name })
+            body: JSON.stringify(payload)
         });
         if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
         const room = await res.json();
@@ -208,6 +242,7 @@ async function joinRoom(code) {
             body: JSON.stringify({ uid: uid, code: code.toUpperCase() })
         });
         if (res.status === 404) { showToast('유효하지 않은 초대 코드입니다'); return; }
+        if (res.status === 409) { showToast('방 정원이 가득 찼습니다'); return; }
         if (!res.ok) { showToast('입장하지 못했습니다'); return; }
         const room = await res.json();
         closeModal();
@@ -253,6 +288,15 @@ async function leaveRoom(r) {
 // ===== 이벤트 바인딩 =====
 document.getElementById('btn-create-room').addEventListener('click', () => openModal('create'));
 document.getElementById('btn-join-room').addEventListener('click', () => openModal('join'));
+document.querySelectorAll('.type-chip').forEach(ch => {
+    ch.addEventListener('click', () => { selectedType = ch.dataset.type; updateTypeChips(); });
+});
+document.getElementById('btn-logout').addEventListener('click', () => {
+    if (!confirm('로그아웃 하시겠어요?')) return;
+    ['accessToken','currentUser','auth','selectedRoomId','selectedRoomName','selectedRoomType','selectedRoomOwnerUid']
+        .forEach(k => localStorage.removeItem(k));
+    location.replace('login.html');
+});
 modalOk.addEventListener('click', submitModal);
 modalCancel.addEventListener('click', closeModal);
 modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });

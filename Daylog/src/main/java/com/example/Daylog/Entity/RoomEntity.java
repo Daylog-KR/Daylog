@@ -28,6 +28,13 @@ public class RoomEntity {
     @Column(nullable = false, length = 16)
     private String inviteCode;
 
+    // [smsong] 방 타입: COUPLE(커플) / FRIEND(친구) / FAMILY(가족)
+    @Column(nullable = false, length = 16)
+    private String type;
+
+    // [smsong] 최대 수용 인원 (커플=2 고정, 친구/가족=2~50)
+    private Integer maxMembers;
+
     private LocalDateTime createdAt;
 
     @PrePersist

@@ -37,7 +37,24 @@ html, body {
 }
 
 /* 헤더 */
-.rooms-header { padding: 12px 4px 20px; }
+.rooms-header { padding: 12px 4px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rooms-logout-btn {
+    flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; cursor: pointer;
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
+    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+    transition: all 0.15s ease;
+}
+.rooms-logout-btn:hover { background: var(--gray-50); color: var(--danger); border-color: #ecccc2; }
+.rooms-logout-btn:active { transform: scale(0.96); }
+
+/* 방 타입 배지 */
+.room-type-badge {
+    font-size: 0.66rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; flex-shrink: 0;
+    background: var(--gray-100); color: var(--gray-600);
+}
+.room-type-badge.couple { background: #fbe9e5; color: #c0563e; }
+.room-type-badge.friend { background: #e7eef0; color: #4b7b86; }
+.room-type-badge.family { background: #eae7f2; color: #6b5b95; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-logo {
     width: 52px; height: 52px; border-radius: 16px;
@@ -143,6 +160,28 @@ html, body {
 .rm-btn.primary { background: var(--primary); color: var(--white); }
 .rm-btn.primary:hover { background: var(--primary-dark); }
 .rm-btn:active { transform: scale(0.98); }
+
+/* 방 타입 선택 칩 */
+.room-type-row { display: flex; gap: 8px; margin-top: 12px; }
+.type-chip {
+    flex: 1 1 0; padding: 12px 6px; border-radius: 12px; cursor: pointer;
+    font-size: 0.9rem; font-weight: 600; font-family: var(--font-main);
+    background: var(--gray-50); color: var(--gray-600); border: 1.5px solid var(--gray-200);
+    transition: all 0.15s ease;
+}
+.type-chip.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
+.type-chip:active { transform: scale(0.97); }
+
+/* 최대 인원 */
+.room-cap-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.room-cap-label { font-size: 0.9rem; font-weight: 600; color: var(--gray-600); }
+.room-cap-input {
+    width: 90px; padding: 12px 12px; border-radius: 12px; text-align: center;
+    border: 1px solid var(--gray-300); background: var(--gray-50);
+    font-size: 1rem; font-weight: 700; font-family: var(--font-main); color: var(--gray-800); outline: none;
+}
+.room-cap-input:focus { border-color: var(--primary); background: var(--white); }
+.room-cap-unit { font-size: 0.9rem; color: var(--gray-500); }
 
 #toast {
     position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
