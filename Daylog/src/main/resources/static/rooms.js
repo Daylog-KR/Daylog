@@ -166,16 +166,18 @@ function renderRooms(rooms) {
         const ownerBadge = r.owner ? '<span class="room-owner-badge">방장</span>' : '';
         const t = typeLabel(r.type);
         card.innerHTML = `
-            <div class="room-card-main">
-                <div class="room-name">${esc(r.name)} ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
+            <div class="room-card-body">
+                <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
                 <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
-                <div class="room-enter-hint">탭하여 입장 →</div>
             </div>
-            <div class="room-card-actions"></div>
+            <div class="room-card-footer">
+                <div class="room-enter-hint">탭하여 입장 →</div>
+                <div class="room-card-actions"></div>
+            </div>
         `;
 
-        const main = card.querySelector('.room-card-main');
-        main.addEventListener('click', () => enterRoom(r));
+        const body = card.querySelector('.room-card-body');
+        body.addEventListener('click', () => enterRoom(r));
 
         const actions = card.querySelector('.room-card-actions');
 
