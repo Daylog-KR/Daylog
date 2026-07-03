@@ -110,6 +110,26 @@ function showToast(msg) {
     setTimeout(() => t.classList.remove('show'), 2200);
 }
 
+// ===== 전역 로딩 오버레이 (main 과 동일: 처리/이동 중 클릭 차단 · 중복 표시 방지) =====
+let _loadingCount = 0;
+function showLoading(msg) {
+    _loadingCount++;
+    const ov = document.getElementById('loading-overlay');
+    if (ov) {
+        const t = ov.querySelector('.lo-text');
+        if (t) t.textContent = msg || '처리 중입니다...';
+        ov.classList.add('show');
+        ov.setAttribute('aria-hidden', 'false');
+    }
+}
+function hideLoading() {
+    _loadingCount = Math.max(0, _loadingCount - 1);
+    if (_loadingCount === 0) {
+        const ov = document.getElementById('loading-overlay');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    }
+}
+
 // ===== 방 목록 로드 =====
 // 두 탭 모두 '내가 속한 방'(기존 엔드포인트) 하나만 호출하고,
 //  받은 목록을 탭에 따라 프론트에서 필터링한다. (전체 방 조회 안 함 → 데이터 정합성 유지)
@@ -176,10 +196,12 @@ function renderRooms(rooms) {
             </div>
         `;
 
-        const body = card.querySelector('.room-card-body');
-        body.addEventListener('click', () => enterRoom(r));
+        // 카드 전체(버튼 영역 제외) 클릭 시 방 이동
+        card.addEventListener('click', () => enterRoom(r));
 
         const actions = card.querySelector('.room-card-actions');
+        // 버튼 영역 클릭은 이동으로 전파되지 않도록 차단 (개별 버튼도 stopPropagation)
+        actions.addEventListener('click', (e) => e.stopPropagation());
 
         // 코드 복사
         const copyBtn = document.createElement('button');
@@ -226,7 +248,9 @@ function enterRoom(r) {
     localStorage.setItem('selectedRoomName', r.name || '');
     localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
     localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
-    location.href = 'main.html';
+    showLoading('이동하는 중...'); // main 과 동일한 로딩 폼
+    // 오버레이가 먼저 그려지도록 아주 짧게 지연 후 이동
+    setTimeout(() => { location.href = 'main.html'; }, 60);
 }
 
 // ===== 코드 복사 =====
@@ -303,6 +327,7 @@ async function submitModal() {
 // ===== 방 이름 수정 (방장) =====
 async function renameRoom(r, name) {
     if (!r) { closeModal(); return; }
+    showLoading('저장하는 중...');
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}/name`, {
             method: 'PUT', headers: authHeaders(true),
@@ -315,10 +340,12 @@ async function renameRoom(r, name) {
         showToast('방 이름을 수정했어요');
         await loadRooms();
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
 }
 
 // ===== 방 생성 =====
 async function createRoom(name) {
+    showLoading('방을 만드는 중...');
     try {
         const body = { uid: uid, name: name, type: selectedType };
         if (selectedType === 'COUPLE' && ddayInput && ddayInput.value) {
@@ -335,10 +362,12 @@ async function createRoom(name) {
         showToast('방이 만들어졌어요');
         await loadRooms(); // 목록에서 코드 확인/공유 후 입장
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
 }
 
 // ===== 코드로 입장 =====
 async function joinRoom(code) {
+    showLoading('입장하는 중...');
     try {
         const res = await fetch(`${API_BASE}/api/rooms/join`, {
             method: 'POST', headers: authHeaders(true),
@@ -349,13 +378,15 @@ async function joinRoom(code) {
         if (!res.ok) { showToast('입장하지 못했습니다'); return; }
         const room = await res.json();
         closeModal();
-        enterRoom(room); // 입장 의도이므로 바로 방으로 이동
+        enterRoom(room); // 입장 의도이므로 바로 방으로 이동 (이동 로딩 유지)
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
 }
 
 // ===== 방 삭제 (방장) =====
 async function deleteRoom(r) {
     if (!confirm(`'${r.name}' 방을 삭제할까요?\n방의 모든 멤버가 나가게 됩니다.`)) return;
+    showLoading('삭제하는 중...');
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}?uid=${encodeURIComponent(uid)}`, {
             method: 'DELETE', headers: authHeaders(true)
@@ -370,11 +401,13 @@ async function deleteRoom(r) {
         showToast('방을 삭제했어요');
         await loadRooms();
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
 }
 
 // ===== 방 나가기 (멤버) =====
 async function leaveRoom(r) {
     if (!confirm(`'${r.name}' 방에서 나갈까요?`)) return;
+    showLoading('나가는 중...');
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}/leave?uid=${encodeURIComponent(uid)}`, {
             method: 'POST', headers: authHeaders(true)
@@ -388,6 +421,7 @@ async function leaveRoom(r) {
         showToast('방에서 나왔어요');
         await loadRooms();
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
 }
 
 // ===== 이벤트 바인딩 =====
