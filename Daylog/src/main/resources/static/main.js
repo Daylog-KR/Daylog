@@ -838,6 +838,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // [smsong] 상세보기가 열려 있으면 메뉴 전환 시 자동으로 내려감(닫기)
             if (_memorySheet && _memorySheet.isOpen()) closeDetailModal();
             if (_clSheet && _clSheet.isOpen()) closeChecklistDetail();
+            // [smsong] 탭 전환 시 필터 팝오버 닫기
+            ['tl-filter-pop', 'cl-filter-pop'].forEach(id => { var pe = document.getElementById(id); if (pe) pe.classList.add('hidden'); });
             document.body.setAttribute('data-active-tab', targetTab);
             tabContents.forEach(tab => {
                 tab.style.display = (tab.id === targetTab) ? 'block' : 'none';
@@ -2162,15 +2164,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tlKwBtn) tlKwBtn.addEventListener('click', runTlKeyword);
     if (tlKw) tlKw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runTlKeyword(); } });
     const tlFilterToggle = document.getElementById('tl-filter-toggle');
-    const tlFilterBar = document.getElementById('tl-filter-bar');
-    if (tlFilterToggle && tlFilterBar) {
-        tlFilterToggle.addEventListener('click', () => tlFilterBar.classList.toggle('hidden'));
+    const tlFilterPop = document.getElementById('tl-filter-pop');
+    if (tlFilterToggle && tlFilterPop) {
+        tlFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); tlFilterPop.classList.toggle('hidden'); });
     }
     const clFilterToggle = document.getElementById('cl-filter-toggle');
-    const clFilterWrap = document.getElementById('cl-filter-wrap');
-    if (clFilterToggle && clFilterWrap) {
-        clFilterToggle.addEventListener('click', () => clFilterWrap.classList.toggle('hidden'));
+    const clFilterPop = document.getElementById('cl-filter-pop');
+    if (clFilterToggle && clFilterPop) {
+        clFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); clFilterPop.classList.toggle('hidden'); });
     }
+    // [smsong] 바깥 클릭 시 필터 팝오버 닫기 (지도 필터와 동일한 동작)
+    document.addEventListener('click', (e) => {
+        const tw = document.getElementById('header-timeline-controls');
+        if (tlFilterPop && !tlFilterPop.classList.contains('hidden') && tw && !tw.contains(e.target)) tlFilterPop.classList.add('hidden');
+        const cw = document.getElementById('header-checklist-controls');
+        if (clFilterPop && !clFilterPop.classList.contains('hidden') && cw && !cw.contains(e.target)) clFilterPop.classList.add('hidden');
+    });
     const tlFilterSearch = document.getElementById('tl-filter-search');
     if (tlFilterSearch) tlFilterSearch.addEventListener('click', applyTimelineFilter);
     const tlFilterReset = document.getElementById('tl-filter-reset');
@@ -2250,7 +2259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
                 markerHtml = `<div class="custom-marker${nd}"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
             } else {
-                markerHtml = `<div class="marker-heart${nd}">${icon('heart',26,'',true)}</div>`;
+                markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
             }
             // [B] edit by smsong - 마커 앵커를 '말풍선 아래 세모(꼬리) 끝'에 맞춰 실제 위치가 정확히 찍히도록 보정
             //  사진 마커: 56x56(사진46+패딩3*2+테두리2*2) 박스, 아래 세모 끝 ≈ (28, 62)
@@ -3973,7 +3982,7 @@ function renderTrash(memories, comments, checklists) {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = m.mediaURL
                 ? '<div class="lm-thumb" style="background-image:url(\'' + m.mediaURL + '\')"></div>'
-                : '<div class="lm-thumb lm-thumb-empty">' + icon('heart',22,'color:#b08968;',true) + '</div>';
+                : '<div class="lm-thumb lm-thumb-empty">' + icon('book',22,'color:#b08968;') + '</div>';
             html +=
                 '<div class="trash-row">' +
                 thumb +
@@ -4092,13 +4101,13 @@ function openMemoryListModal(title, items) {
     body.innerHTML = '';
 
     if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('heart',40,'',true) + '</span><p>표시할 추억이 없습니다</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book',40,'color:#b08968;') + '</span><p>표시할 추억이 없습니다</p></div>';
     } else {
         items.forEach(memory => {
             const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = memory.mediaURL
                 ? `<div class="lm-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
-                : '<div class="lm-thumb lm-thumb-empty">' + icon('heart',22,'color:#b08968;',true) + '</div>';
+                : '<div class="lm-thumb lm-thumb-empty">' + icon('book',22,'color:#b08968;') + '</div>';
             const row = document.createElement('div');
             row.className = 'lm-row';
             row.innerHTML =

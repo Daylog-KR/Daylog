@@ -51,7 +51,7 @@ const ddayRow = document.getElementById('room-dday-row');
 const ddayInput = document.getElementById('room-dday-input');
 
 let modalMode = null; // 'create' | 'join'
-let selectedType = 'COUPLE';
+let selectedType = null; // [smsong] 방 생성 시 기본 미선택
 
 function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
@@ -60,7 +60,7 @@ function typeLabel(type) {
 }
 function updateTypeChips() {
     document.querySelectorAll('.type-chip').forEach(ch => {
-        ch.classList.toggle('active', ch.dataset.type === selectedType);
+        ch.classList.toggle('active', !!selectedType && ch.dataset.type === selectedType);
     });
     if (ddayRow) ddayRow.style.display = (selectedType === 'COUPLE') ? 'flex' : 'none';
 }
@@ -182,7 +182,7 @@ function openModal(mode) {
         modalInput.classList.remove('code');
         modalInput.maxLength = 30;
         typeRow.style.display = 'flex';
-        selectedType = 'COUPLE';
+        selectedType = null; // [smsong] 아무 타입도 선택되지 않은 상태로 시작
         updateTypeChips();
     } else {
         modalTitle.textContent = '코드로 입장';
@@ -202,6 +202,7 @@ function closeModal() { modalEl.classList.add('hidden'); modalMode = null; }
 async function submitModal() {
     const val = (modalInput.value || '').trim();
     if (!val) { showToast(modalMode === 'create' ? '방 이름을 입력하세요' : '초대 코드를 입력하세요'); return; }
+    if (modalMode === 'create' && !selectedType) { showToast('방 종류를 선택하세요'); return; }
     modalOk.disabled = true;
     try {
         if (modalMode === 'create') await createRoom(val);

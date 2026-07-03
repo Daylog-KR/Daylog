@@ -29,9 +29,51 @@
     </div>
     <div id="header-timeline-controls" class="header-timeline-controls">
         <!-- [B] edit by smsong - 필터 아이콘 변경(돋보기→깔때기) + 라벨 정정 --><button type="button" id="tl-filter-toggle" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="22 4 2 4 10 12.46 10 19 14 21 14 12.46 22 4"/></svg></button><!-- [E] edit by smsong -->
+        <div id="tl-filter-pop" class="map-filter-pop hdr-filter-pop hidden">
+                    <div class="filter-field">
+                        <span class="filter-label">검색어</span>
+                        <div class="filter-search-row">
+                            <input type="text" id="tl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
+                            <button type="button" id="tl-keyword-search" class="filter-search-btn">검색</button>
+                        </div>
+                    </div>
+                    <div class="filter-field">
+                        <span class="filter-label">장소</span>
+                        <select id="tl-filter-place" class="filter-select">
+                            <option value="">전체</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <span class="filter-label">날짜</span>
+                        <input type="date" id="tl-filter-date">
+                    </div>
+                    <div class="filter-bar-actions">
+                        <button type="button" id="tl-filter-search" class="filter-search-btn">검색</button>
+                        <button type="button" id="tl-filter-reset" class="filter-reset-btn">초기화</button>
+                    </div>
+        </div>
     </div>
     <div id="header-checklist-controls" class="header-checklist-controls">
         <!-- [B] edit by smsong - 필터 아이콘 변경(돋보기→깔때기) + 라벨 정정 --><button type="button" id="cl-filter-toggle" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="22 4 2 4 10 12.46 10 19 14 21 14 12.46 22 4"/></svg></button><!-- [E] edit by smsong -->
+        <div id="cl-filter-pop" class="map-filter-pop hdr-filter-pop hidden">
+                    <div class="filter-search-row cl-search-row">
+                        <input type="text" id="cl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
+                        <button type="button" id="cl-keyword-search" class="filter-search-btn">검색</button>
+                        <button type="button" id="cl-keyword-reset" class="filter-reset-btn">초기화</button>
+                    </div>
+                    <div id="cl-filter-bar" class="cl-filter-bar">
+                        <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
+                        <button type="button" class="cl-filter-chip" data-filter="CAFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b06a4f;" aria-hidden="true"><path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/></svg> 카페</button>
+                        <button type="button" class="cl-filter-chip" data-filter="FOOD"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#3f7fb0;" aria-hidden="true"><path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/></svg> 식당</button>
+                        <button type="button" class="cl-filter-chip" data-filter="SPOT"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#5f9e6f;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 장소</button>
+                        <button type="button" class="cl-filter-chip" data-filter="ETC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#7a756e;" aria-hidden="true"><path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg> 기타</button>
+                    </div>
+                    <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
+                        <button type="button" class="cl-vfilter-chip selected" data-vfilter="ALL">전체</button>
+                        <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> 다녀온 곳</button>
+                        <button type="button" class="cl-vfilter-chip" data-vfilter="TODO">가볼 곳</button>
+                    </div>
+        </div>
     </div>
     <div id="header-pick-search" class="header-pick-search">
         <div class="lm-search">
@@ -86,29 +128,6 @@
         <div class="content-wrapper">
             <section class="timeline-section">
                 <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg> 타임라인</h3>
-                <div id="tl-filter-bar" class="filter-bar hidden">
-                    <div class="filter-field">
-                        <span class="filter-label">검색어</span>
-                        <div class="filter-search-row">
-                            <input type="text" id="tl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
-                            <button type="button" id="tl-keyword-search" class="filter-search-btn">검색</button>
-                        </div>
-                    </div>
-                    <div class="filter-field">
-                        <span class="filter-label">장소</span>
-                        <select id="tl-filter-place" class="filter-select">
-                            <option value="">전체</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <span class="filter-label">날짜</span>
-                        <input type="date" id="tl-filter-date">
-                    </div>
-                    <div class="filter-bar-actions">
-                        <button type="button" id="tl-filter-search" class="filter-search-btn">검색</button>
-                        <button type="button" id="tl-filter-reset" class="filter-reset-btn">초기화</button>
-                    </div>
-                </div>
                 <div id="timeline-feed"></div>
             </section>
         </div>
@@ -119,25 +138,6 @@
         <div class="content-wrapper">
             <section class="timeline-section">
                 <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> 가볼곳</h3>
-                <div id="cl-filter-wrap" class="cl-filter-wrap hidden">
-                    <div class="filter-search-row cl-search-row">
-                        <input type="text" id="cl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
-                        <button type="button" id="cl-keyword-search" class="filter-search-btn">검색</button>
-                        <button type="button" id="cl-keyword-reset" class="filter-reset-btn">초기화</button>
-                    </div>
-                    <div id="cl-filter-bar" class="cl-filter-bar">
-                        <button type="button" class="cl-filter-chip selected" data-filter="ALL">전체</button>
-                        <button type="button" class="cl-filter-chip" data-filter="CAFE"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#b06a4f;" aria-hidden="true"><path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/></svg> 카페</button>
-                        <button type="button" class="cl-filter-chip" data-filter="FOOD"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#3f7fb0;" aria-hidden="true"><path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/></svg> 식당</button>
-                        <button type="button" class="cl-filter-chip" data-filter="SPOT"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#5f9e6f;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 장소</button>
-                        <button type="button" class="cl-filter-chip" data-filter="ETC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;color:#7a756e;" aria-hidden="true"><path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg> 기타</button>
-                    </div>
-                    <div id="cl-visited-filter-bar" class="cl-filter-bar cl-visited-filter">
-                        <button type="button" class="cl-vfilter-chip selected" data-vfilter="ALL">전체</button>
-                        <button type="button" class="cl-vfilter-chip" data-vfilter="VISITED"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> 다녀온 곳</button>
-                        <button type="button" class="cl-vfilter-chip" data-vfilter="TODO">가볼 곳</button>
-                    </div>
-                </div>
                 <div id="checklist-feed"></div>
             </section>
         </div>

@@ -83,12 +83,12 @@ body.picking .navbar { z-index: 700; } /* 검색/추천 드롭다운이 지도 �
 .header-pick-search .lm-suggestions { z-index: 720; }
 
 /* 헤더 안의 타임라인 검색 버튼 — 타임라인 탭에서만 오른쪽에 노출 */
-.header-timeline-controls { display: none; align-items: center; }
+.header-timeline-controls { display: none; align-items: center; position: relative; }
 body[data-active-tab="tab-timeline"] .header-timeline-controls { display: flex; margin-left: auto; }
 body[data-active-tab="tab-timeline"] #btn-logout { display: none; }
 
 /* 헤더 안의 가볼곳 검색 버튼 — 가볼곳 탭에서만 오른쪽에 노출 */
-.header-checklist-controls { display: none; align-items: center; }
+.header-checklist-controls { display: none; align-items: center; position: relative; }
 body[data-active-tab="tab-checklist"] .header-checklist-controls { display: flex; margin-left: auto; }
 body[data-active-tab="tab-checklist"] #btn-logout { display: none; }
 /* 가볼곳 필터(카테고리+방문여부) — 검색 버튼으로 토글 */
@@ -1820,6 +1820,17 @@ html, body { -webkit-font-smoothing: antialiased; }
     font-family: var(--font-main); font-size: 0.85rem; color: var(--gray-800); background: var(--gray-50); outline: none;
 }
 .map-filter-pop .mfp-allbtn { width: 100%; flex: none; }
+
+/* [smsong] 타임라인/가볼곳 필터 팝오버 — 지도 필터와 동일한 카드/애니메이션(mfpDrop) */
+.hdr-filter-pop { min-width: 284px; max-width: min(360px, 92vw); padding: 16px; }
+.hdr-filter-pop .filter-field { margin-bottom: 12px; }
+.hdr-filter-pop .filter-field:last-child { margin-bottom: 0; }
+.hdr-filter-pop .filter-bar-actions { display: flex; gap: 8px; margin-top: 4px; }
+.hdr-filter-pop .filter-bar-actions .filter-search-btn,
+.hdr-filter-pop .filter-bar-actions .filter-reset-btn { flex: 1 1 0; }
+.hdr-filter-pop .cl-search-row { margin-bottom: 10px; }
+.hdr-filter-pop .cl-filter-bar { margin-bottom: 8px; }
+.hdr-filter-pop .cl-filter-bar:last-child { margin-bottom: 0; }
 
 /* ===== 지도 몰입 모드: 지도 탭에서 화면 터치 시 헤더/하단바 숨김 (네이버 지도 앱 스타일) ===== */
 /* [B] edit by smsong - 딱딱한 display:none 대신 부드러운 슬라이드(올라가고/내려가며 사라지고 내려오고/올라옴) */
