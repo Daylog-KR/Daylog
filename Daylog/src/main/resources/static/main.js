@@ -184,7 +184,7 @@ function blockUnauthorizedUser() {
         '<div class="abx-icon">' + icon('lock',40) + '</div>' +
         '<p class="abx-msg">아직 접근 권한이 없습니다.<br>관리자 승인 후 이용할 수 있습니다.</p>' +
         '<button type="button" id="abx-request-btn" class="abx-request-btn">권한 요청하기</button>' +
-        '<button type="button" id="abx-login-btn" class="abx-login-btn">로그인 화면으로</button>' +
+        '<button type="button" id="abx-login-btn" class="abx-login-btn">방 화면으로</button>' +
         '<div class="abx-sub">권한을 요청하면 관리자에게 전달됩니다.</div>' +
         '</div>';
     document.body.appendChild(ov);
@@ -192,7 +192,8 @@ function blockUnauthorizedUser() {
     var rq = document.getElementById('abx-request-btn');
     if (rq) rq.addEventListener('click', requestAccessFromBlock);
     var lg = document.getElementById('abx-login-btn');
-    if (lg) lg.addEventListener('click', function () { logout(); location.replace('login.html'); });
+    // 방 화면으로: 토큰을 유지한 채 방 목록으로 이동 (logout 호출 X → rooms.js 가 로그인으로 되튕기지 않음)
+    if (lg) lg.addEventListener('click', function () { location.replace('rooms.html'); });
 }
 
 // ==========================================
