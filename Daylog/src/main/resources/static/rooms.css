@@ -126,7 +126,7 @@ html, body {
 }
 .room-enter-hint { font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-top: 8px; }
 
-.room-card-actions { display: flex; flex-direction: column; gap: 6px; justify-content: center; flex-shrink: 0; }
+.room-card-actions { display: flex; flex-direction: row; gap: 6px; align-items: center; flex-shrink: 0; }
 .room-icon-btn {
     width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
     border: 1px solid var(--gray-200); background: var(--gray-50); color: var(--gray-500);
