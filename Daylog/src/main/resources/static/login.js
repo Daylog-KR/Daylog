@@ -25,6 +25,9 @@ const OAUTH = {
     }
 };
 
+// 로그인 관련 로컬스토리지 키 (일괄 정리용)
+const AUTH_KEYS = ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid'];
+
 // =====================================================
 // 로그인 시작 — PKCE 없이 인가 URL 생성
 // =====================================================
@@ -37,7 +40,7 @@ function startSocialLogin(provider) {
         showToast(`${labelOf(provider)} 클라이언트가 설정되지 않았습니다.`);
         return;
     }
-    debugger;
+
     const redirectUri = CFG.FRONT_LOGIN_BASE;
 
     // provider 식별을 위해 state 에 담아 보냄 (콜백이 다른 출처여도 읽힘)
@@ -75,10 +78,12 @@ document.querySelectorAll('.social-btn').forEach(btn => {
 });
 
 // [smsong] 이미 로그인된(유효한) 토큰이 있으면 방 목록으로.
-//  ⚠ 존재만 확인하면 만료된 토큰일 때 rooms.js가 다시 login으로 튕겨 무한 리다이렉트가 발생.
-//   → 여기서도 만료(exp)를 검증하고, 만료/손상 토큰이면 정리하고 로그인 화면을 유지.
+//  ⚠ 존재만 확인하면 rooms.js 가 다시 login 으로 튕겨 무한 리다이렉트가 발생.
+//   → rooms.js 와 "완전히 동일한" 조건(만료 + uid 존재)으로 검증해야 한다.
+//     rooms.js 는 토큰이 있어도 uid(sub/uid/username/userId)를 못 뽑으면 login 으로 되돌린다.
+//     login 이 uid 없는 토큰을 유효하다고 보고 rooms 로 보내면 → 무한 루프.
 (function () {
-    function decodeExpValid(token) {
+    function usableToken(token) {
         try {
             const p = token.split('.')[1];
             const json = decodeURIComponent(
@@ -86,17 +91,25 @@ document.querySelectorAll('.social-btn').forEach(btn => {
                     .split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
             );
             const payload = JSON.parse(json);
-            if (payload && payload.exp && Date.now() >= payload.exp * 1000) return false; // 만료
+            if (!payload) return false;
+            if (payload.exp && Date.now() >= payload.exp * 1000) return false; // 만료
+
+            // rooms.js 와 동일한 uid 추출 조건. uid 가 없으면 rooms 에서 되튕기므로 여기서도 무효 처리.
+            const uid = payload.sub || payload.uid || payload.username || payload.userId;
+            if (!uid) return false;
+
             return true;
-        } catch (e) { return false; } // 손상된 토큰
+        } catch (e) {
+            return false; // 손상된 토큰
+        }
     }
+
     const token = localStorage.getItem('accessToken');
-    if (token && decodeExpValid(token)) {
-        window.location.href = SUCCESS_REDIRECT;
+    if (token && usableToken(token)) {
+        window.location.replace(SUCCESS_REDIRECT); // history 오염 방지 위해 replace
     } else if (token) {
-        // 만료/손상 토큰 정리 → 로그인 화면 유지 (무한 리다이렉트 차단)
-        ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid']
-            .forEach(k => localStorage.removeItem(k));
+        // 만료/손상/uid없음 토큰 정리 → 로그인 화면 유지 (무한 리다이렉트 차단)
+        AUTH_KEYS.forEach(k => localStorage.removeItem(k));
     }
 })();
 

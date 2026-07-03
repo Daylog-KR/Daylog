@@ -8,6 +8,9 @@ const CFG = window.APP_CONFIG || {};
 const API_BASE = (CFG && CFG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
+// 로그인 관련 로컬스토리지 키 (일괄 정리용)
+const AUTH_KEYS = ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid'];
+
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
 function decodeJwt(token) {
@@ -29,13 +32,31 @@ function authHeaders(withJson) {
     return h;
 }
 
+// =====================================================
+// ⭐ 무한 리다이렉트 차단의 핵심:
+//   로그인 화면으로 돌려보낼 때는 "항상" 토큰을 먼저 지운다.
+//   그래야 login.js 가 남아있는 토큰을 보고 다시 rooms 로 튕기지 않는다.
+//   (login → rooms → login → rooms ... 루프의 종료 조건 확보)
+// =====================================================
+let __redirecting = false;
+function gotoLoginCleared() {
+    if (__redirecting) return;      // 중복 호출 방지
+    __redirecting = true;
+    AUTH_KEYS.forEach(k => localStorage.removeItem(k));
+    location.replace('login.html');
+}
+
 // ===== 인증 가드 =====
 const token = getToken();
 const payload = decodeJwt(token);
-if (!token || !payload || (payload.exp && Date.now() >= payload.exp * 1000)) {
-    location.replace('login.html');
-}
+const expired = !!(payload && payload.exp && Date.now() >= payload.exp * 1000);
 const uid = payload && (payload.sub || payload.uid || payload.username || payload.userId);
+
+// 토큰 없음 / 디코드 실패 / 만료 / uid 추출 불가 → 토큰 정리 후 로그인으로
+const validSession = !!token && !!payload && !expired && !!uid;
+if (!validSession) {
+    gotoLoginCleared();
+}
 
 // ===== 엘리먼트 =====
 const listEl = document.getElementById('rooms-list');
@@ -81,10 +102,11 @@ function showToast(msg) {
 
 // ===== 방 목록 로드 =====
 async function loadRooms() {
-    if (!uid) { location.replace('login.html'); return; }
+    if (!uid) { gotoLoginCleared(); return; }
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
-        if (res.status === 401 || res.status === 403) { location.replace('login.html'); return; }
+        // 서버가 토큰을 거부(401/403)하면 → 토큰 정리 후 로그인으로 (여기서 안 지우면 login 이 되튕김)
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
         if (!res.ok) { showToast('방 목록을 불러오지 못했습니다'); return; }
         const rooms = await res.json();
         renderRooms(Array.isArray(rooms) ? rooms : []);
@@ -213,14 +235,15 @@ async function submitModal() {
 // ===== 방 생성 =====
 async function createRoom(name) {
     try {
-        const payload = { uid: uid, name: name, type: selectedType };
+        const body = { uid: uid, name: name, type: selectedType };
         if (selectedType === 'COUPLE' && ddayInput && ddayInput.value) {
-            payload.coupleSince = ddayInput.value; // 만난 날짜 → 방 디데이 기준일
+            body.coupleSince = ddayInput.value; // 만난 날짜 → 방 디데이 기준일
         }
         const res = await fetch(`${API_BASE}/api/rooms`, {
             method: 'POST', headers: authHeaders(true),
-            body: JSON.stringify(payload)
+            body: JSON.stringify(body)
         });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
         if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
         const room = await res.json();
         closeModal();
@@ -236,6 +259,7 @@ async function joinRoom(code) {
             method: 'POST', headers: authHeaders(true),
             body: JSON.stringify({ uid: uid, code: code.toUpperCase() })
         });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
         if (res.status === 404) { showToast('유효하지 않은 초대 코드입니다'); return; }
         if (!res.ok) { showToast('입장하지 못했습니다'); return; }
         const room = await res.json();
@@ -251,6 +275,7 @@ async function deleteRoom(r) {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}?uid=${encodeURIComponent(uid)}`, {
             method: 'DELETE', headers: authHeaders(true)
         });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
         if (!res.ok) { showToast('삭제하지 못했습니다'); return; }
         // 현재 보던 방을 삭제했다면 선택 해제
         if (localStorage.getItem('selectedRoomId') === String(r.id)) {
@@ -269,6 +294,7 @@ async function leaveRoom(r) {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}/leave?uid=${encodeURIComponent(uid)}`, {
             method: 'POST', headers: authHeaders(true)
         });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
         if (!res.ok) { showToast('나가지 못했습니다'); return; }
         if (localStorage.getItem('selectedRoomId') === String(r.id)) {
             localStorage.removeItem('selectedRoomId');
@@ -287,8 +313,7 @@ document.querySelectorAll('.type-chip').forEach(ch => {
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
     if (!confirm('로그아웃 하시겠어요?')) return;
-    ['accessToken','currentUser','auth','selectedRoomId','selectedRoomName','selectedRoomType','selectedRoomOwnerUid']
-        .forEach(k => localStorage.removeItem(k));
+    AUTH_KEYS.forEach(k => localStorage.removeItem(k));
     location.replace('login.html');
 });
 modalOk.addEventListener('click', submitModal);
@@ -297,4 +322,5 @@ modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(
 modalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitModal(); });
 
 // ===== 시작 =====
-loadRooms();
+// 유효한 세션일 때만 로드. (이미 gotoLoginCleared() 로 이동 중이면 실행 안 함)
+if (validSession) loadRooms();
