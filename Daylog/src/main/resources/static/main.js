@@ -168,7 +168,7 @@ function readLocalName() {
 function normalizeDisplayName(name) {
     const n = String(name || '').trim().toLowerCase();
     if (ME_ALIAS.map(s => s.toLowerCase()).includes(n)) return '송성민';
-    return '강미르';
+    return '송성민';
 }
 
 let _blocked = false;
