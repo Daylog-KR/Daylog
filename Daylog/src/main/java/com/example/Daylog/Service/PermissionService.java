@@ -2,182 +2,164 @@ package com.example.Daylog.Service;
 
 import com.example.Daylog.DTO.PermissionDTO;
 import com.example.Daylog.Entity.PermissionEntity;
+import com.example.Daylog.Entity.RoomEntity;
+import com.example.Daylog.Entity.RoomMemberEntity;
 import com.example.Daylog.Entity.UserEntity;
 import com.example.Daylog.Repository.PermissionRepository;
+import com.example.Daylog.Repository.RoomMemberRepository;
+import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
-// [B] edit by smsong - 사용자 권한 관리 서비스 (uid 기반)
-//  관리자 = uid '3635939452' (무조건 모든 권한 + 접근). 이 uid만 상시 접근 허용(부트스트랩).
-//  그 외 사용자는 관리자가 승인/부여해야 접근·기능 가능. (이름 하드코딩 전부 제거)
+// [smsong] 방별 사용자 권한 관리 서비스. 관리자 = 각 방의 방장(고정 uid 아님).
+//  방장은 항상 전권. 그 외 멤버는 방장이 접근/CRUD 권한을 부여해야 사용 가능.
 @Service
 @RequiredArgsConstructor
 public class PermissionService {
 
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
+    private final RoomRepository roomRepository;
+    private final RoomMemberRepository roomMemberRepository;
 
-    public static final String ADMIN_UID = "3635939452";
-
-    // ===== 판별 (uid 기준) =====
-    private boolean isAdminUid(String uid) { return uid != null && ADMIN_UID.equals(uid.trim()); }
-    private boolean privileged(String uid) { return isAdminUid(uid); } // 상시 허용 = 관리자 uid만
-
-    public boolean isAdmin(UserDetails ud) { return ud != null && isAdminUid(ud.getUsername()); }
-
-    private Optional<PermissionEntity> rowOf(UserDetails ud) {
-        if (ud == null) return Optional.empty();
-        return permissionRepository.findByUid(ud.getUsername());
+    // ===== 관리자(=방장) 판별 =====
+    public boolean isOwner(Long roomId, String uid) {
+        if (roomId == null || uid == null) return false;
+        return roomRepository.findById(roomId).map(r -> uid.equals(r.getOwnerUid())).orElse(false);
+    }
+    private Optional<PermissionEntity> rowOf(Long roomId, String uid) {
+        if (roomId == null || uid == null) return Optional.empty();
+        return permissionRepository.findByRoomIdAndUid(roomId, uid);
     }
 
-    // ===== 실효 권한 (Memory/Checklist 서비스에서 사용) =====
-    public boolean hasAccess(UserDetails ud) {
-        if (ud == null) return false;
-        if (privileged(ud.getUsername())) return true;
-        return rowOf(ud).map(PermissionEntity::isAdminApproved).orElse(false);
+    // ===== 실효 권한 (Memory/Checklist에서 사용). 방장은 전권 =====
+    public boolean hasAccess(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isAdminApproved).orElse(false); }
+    public boolean canCreate(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanCreate).orElse(false); }
+    public boolean canEdit(String uid, Long roomId)   { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanEdit).orElse(false); }
+    public boolean canTrash(String uid, Long roomId)  { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanTrash).orElse(false); }
+    public boolean canDelete(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanDelete).orElse(false); }
+
+    public void requireAccess(String uid, Long roomId)   { if (!hasAccess(uid, roomId)) throw forbid("이 방에 대한 접근 권한이 없습니다"); }
+    public void requireCanCreate(String uid, Long roomId){ if (!canCreate(uid, roomId)) throw forbid("생성 권한이 없습니다"); }
+    public void requireCanEdit(String uid, Long roomId)  { if (!canEdit(uid, roomId))   throw forbid("수정 권한이 없습니다"); }
+    public void requireCanTrash(String uid, Long roomId) { if (!canTrash(uid, roomId))  throw forbid("휴지통 권한이 없습니다"); }
+    public void requireCanDelete(String uid, Long roomId){ if (!canDelete(uid, roomId)) throw forbid("삭제 권한이 없습니다"); }
+    private ResponseStatusException forbid(String m) { return new ResponseStatusException(HttpStatus.FORBIDDEN, m); }
+
+    private void syncSnapshot(PermissionEntity e, UserEntity u) {
+        if (u == null) return;
+        e.setName(u.getName()); e.setNickname(u.getNickname()); e.setEmail(u.getEmail());
+        e.setProvider(u.getProvider()); e.setProfileURL(u.getProfileURL());
     }
-    public boolean canCreate(UserDetails ud) {
-        if (ud == null) return false;
-        if (privileged(ud.getUsername())) return true;
-        return rowOf(ud).map(PermissionEntity::isCanCreate).orElse(false);
-    }
-    public boolean canEdit(UserDetails ud) {
-        if (ud == null) return false;
-        if (privileged(ud.getUsername())) return true;
-        return rowOf(ud).map(PermissionEntity::isCanEdit).orElse(false);
-    }
-    public boolean canTrash(UserDetails ud) {
-        if (ud == null) return false;
-        if (privileged(ud.getUsername())) return true;
-        return rowOf(ud).map(PermissionEntity::isCanTrash).orElse(false);
-    }
-    public boolean canDelete(UserDetails ud) {
-        if (ud == null) return false;
-        if (privileged(ud.getUsername())) return true;
-        return rowOf(ud).map(PermissionEntity::isCanDelete).orElse(false);
+    private PermissionEntity getOrCreate(Long roomId, String uid) {
+        return permissionRepository.findByRoomIdAndUid(roomId, uid)
+                .orElseGet(() -> PermissionEntity.builder().roomId(roomId).uid(uid).requestStatus("NONE").build());
     }
 
-    private void syncSnapshot(PermissionEntity e, UserEntity user) {
-        if (user == null) return;
-        e.setUser(user);
-        e.setName(user.getName());
-        e.setNickname(user.getNickname());
-        e.setEmail(user.getEmail());
-        e.setProvider(user.getProvider());
-        e.setProfileURL(user.getProfileURL());
-    }
-
-    // ===== 등록(upsert): 로그인 시 권한 목록 등록 + 본인 실효권한 반환 + 접근 자가치유 =====
+    // ===== 등록(upsert): 앱 진입 시 본인 실효권한 반환 + 접근 자가치유 =====
     @Transactional
-    public PermissionDTO registerAndGetMine(UserDetails ud) {
-        if (ud == null) throw new RuntimeException("권한이 없습니다");
-        String uid = ud.getUsername();
+    public PermissionDTO registerAndGetMine(String uid, Long roomId) {
+        requireRoom(roomId);
         UserEntity user = userRepository.findByUid(uid).orElse(null);
-        PermissionEntity e = permissionRepository.findByUid(uid)
-                .orElseGet(() -> PermissionEntity.builder().uid(uid).requestStatus("NONE").build());
+        PermissionEntity e = getOrCreate(roomId, uid);
         syncSnapshot(e, user);
-
-        boolean admin = isAdminUid(uid);
-        boolean priv = privileged(uid);
-        boolean access = priv || e.isAdminApproved();
+        boolean owner = isOwner(roomId, uid);
+        boolean access = owner || e.isAdminApproved();
         e.setAccessAllowed(access);
         if (access && !"APPROVED".equals(e.getRequestStatus())) e.setRequestStatus("APPROVED");
         if (!access && "APPROVED".equals(e.getRequestStatus())) e.setRequestStatus("NONE");
-
         e = permissionRepository.save(e);
-        return PermissionDTO.effective(e, admin, priv);
+        return PermissionDTO.effective(e, owner, owner);
     }
 
     @Transactional(readOnly = true)
-    public PermissionDTO getMine(UserDetails ud) {
-        if (ud == null) throw new RuntimeException("권한이 없습니다");
-        String uid = ud.getUsername();
-        boolean admin = isAdminUid(uid);
-        boolean priv = privileged(uid);
-        PermissionEntity e = permissionRepository.findByUid(uid)
-                .orElseGet(() -> PermissionEntity.builder().uid(uid).requestStatus("NONE").build());
-        return PermissionDTO.effective(e, admin, priv);
+    public PermissionDTO getMine(String uid, Long roomId) {
+        requireRoom(roomId);
+        boolean owner = isOwner(roomId, uid);
+        PermissionEntity e = getOrCreate(roomId, uid);
+        return PermissionDTO.effective(e, owner, owner);
     }
 
-    // ===== 접근 요청 (차단된 사용자도 호출 가능) =====
+    // ===== 접근 요청 (차단된 사용자도 호출) =====
     @Transactional
-    public PermissionDTO requestAccess(UserDetails ud) {
-        if (ud == null) throw new RuntimeException("권한이 없습니다");
-        String uid = ud.getUsername();
+    public PermissionDTO requestAccess(String uid, Long roomId) {
+        requireRoom(roomId);
         UserEntity user = userRepository.findByUid(uid).orElse(null);
-        PermissionEntity e = permissionRepository.findByUid(uid)
-                .orElseGet(() -> PermissionEntity.builder().uid(uid).build());
+        PermissionEntity e = getOrCreate(roomId, uid);
         syncSnapshot(e, user);
-        boolean priv = privileged(uid);
-        if (!priv && !e.isAdminApproved()) {
-            e.setRequestStatus("PENDING");
-            e.setRequestedAt(LocalDateTime.now());
-        }
+        boolean owner = isOwner(roomId, uid);
+        if (!owner && !e.isAdminApproved()) { e.setRequestStatus("PENDING"); e.setRequestedAt(LocalDateTime.now()); }
         e = permissionRepository.save(e);
-        return PermissionDTO.effective(e, isAdminUid(uid), priv);
+        return PermissionDTO.effective(e, owner, owner);
     }
 
-    // ===== 관리자: 전체 사용자 목록 =====
-    @Transactional(readOnly = true)
-    public List<PermissionDTO> listAll(UserDetails ud) {
-        requireAdmin(ud);
-        return permissionRepository.findAllByOrderByAccessAllowedDescUpdatedAtDesc().stream()
-                .map(e -> {
-                    boolean adm = isAdminUid(e.getUid());
-                    return PermissionDTO.raw(e, adm, adm);
-                })
-                .collect(Collectors.toList());
-    }
-
-    // ===== 관리자: 권한 변경 (생성/수정/휴지통/삭제 + 접근) =====
+    // ===== 방장: 방 멤버 목록(권한 포함). 멤버마다 행 보장 =====
     @Transactional
-    public PermissionDTO updatePermission(String targetUid, PermissionDTO patch, UserDetails ud) {
-        requireAdmin(ud);
-        PermissionEntity e = permissionRepository.findByUid(targetUid)
-                .orElseThrow(() -> new IllegalArgumentException("대상 사용자를 찾을 수 없습니다."));
-        // null 이 들어와도 안전하게 처리 (Boolean.TRUE.equals)
+    public List<PermissionDTO> listAll(Long roomId, String requesterUid) {
+        requireOwner(roomId, requesterUid);
+        RoomEntity room = roomRepository.findById(roomId).orElseThrow(this::notFound);
+        List<RoomMemberEntity> members = roomMemberRepository.findByRoomId(roomId);
+        List<PermissionDTO> result = new ArrayList<>();
+        for (RoomMemberEntity m : members) {
+            boolean owner = m.getUid().equals(room.getOwnerUid());
+            PermissionEntity e = getOrCreate(roomId, m.getUid());
+            syncSnapshot(e, userRepository.findByUid(m.getUid()).orElse(null));
+            if (owner) { e.setAccessAllowed(true); e.setAdminApproved(true); if (!"APPROVED".equals(e.getRequestStatus())) e.setRequestStatus("APPROVED"); }
+            e = permissionRepository.save(e);
+            result.add(PermissionDTO.raw(e, owner, owner));
+        }
+        result.sort((a, b) -> rank(a) - rank(b));
+        return result;
+    }
+    private int rank(PermissionDTO x) {
+        if (Boolean.TRUE.equals(x.getAdmin())) return 0;
+        if ("PENDING".equals(x.getRequestStatus())) return 1;
+        if (Boolean.TRUE.equals(x.getAccessAllowed())) return 2;
+        return 3;
+    }
+
+    // ===== 방장: 권한 변경 =====
+    @Transactional
+    public PermissionDTO updatePermission(Long roomId, String targetUid, PermissionDTO patch, String requesterUid) {
+        requireOwner(roomId, requesterUid);
+        PermissionEntity e = permissionRepository.findByRoomIdAndUid(roomId, targetUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대상 사용자를 찾을 수 없습니다."));
         e.setCanCreate(Boolean.TRUE.equals(patch.getCanCreate()));
         e.setCanEdit(Boolean.TRUE.equals(patch.getCanEdit()));
         e.setCanTrash(Boolean.TRUE.equals(patch.getCanTrash()));
         e.setCanDelete(Boolean.TRUE.equals(patch.getCanDelete()));
         boolean approve = Boolean.TRUE.equals(patch.getAccessAllowed());
-        e.setAdminApproved(approve);
-        e.setAccessAllowed(approve);
-        e.setRequestStatus(approve ? "APPROVED" : "REJECTED");
-        e.setDecidedAt(LocalDateTime.now());
+        e.setAdminApproved(approve); e.setAccessAllowed(approve);
+        e.setRequestStatus(approve ? "APPROVED" : "REJECTED"); e.setDecidedAt(LocalDateTime.now());
         e = permissionRepository.save(e);
-        boolean adm = isAdminUid(e.getUid());
-        return PermissionDTO.raw(e, adm, adm);
+        boolean owner = isOwner(roomId, targetUid);
+        return PermissionDTO.raw(e, owner, owner);
     }
 
-    // ===== 관리자: 접근 요청 승인/거절 =====
+    // ===== 방장: 접근 요청 승인/거절 =====
     @Transactional
-    public PermissionDTO decideAccess(String targetUid, boolean approve, UserDetails ud) {
-        requireAdmin(ud);
-        PermissionEntity e = permissionRepository.findByUid(targetUid)
-                .orElseThrow(() -> new IllegalArgumentException("대상 사용자를 찾을 수 없습니다."));
-        e.setAdminApproved(approve);
-        e.setAccessAllowed(approve);
-        e.setRequestStatus(approve ? "APPROVED" : "REJECTED");
-        e.setDecidedAt(LocalDateTime.now());
-        if (!approve) {
-            e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false);
-        }
+    public PermissionDTO decideAccess(Long roomId, String targetUid, boolean approve, String requesterUid) {
+        requireOwner(roomId, requesterUid);
+        PermissionEntity e = permissionRepository.findByRoomIdAndUid(roomId, targetUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대상 사용자를 찾을 수 없습니다."));
+        e.setAdminApproved(approve); e.setAccessAllowed(approve);
+        e.setRequestStatus(approve ? "APPROVED" : "REJECTED"); e.setDecidedAt(LocalDateTime.now());
+        if (!approve) { e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false); }
         e = permissionRepository.save(e);
-        boolean adm = isAdminUid(e.getUid());
-        return PermissionDTO.raw(e, adm, adm);
+        boolean owner = isOwner(roomId, targetUid);
+        return PermissionDTO.raw(e, owner, owner);
     }
 
-    private void requireAdmin(UserDetails ud) {
-        if (!isAdmin(ud)) throw new RuntimeException("관리자만 접근할 수 있습니다.");
-    }
+    private void requireRoom(Long roomId) { if (roomId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방 정보(X-Room-Id)가 없습니다"); }
+    private void requireOwner(Long roomId, String uid) { requireRoom(roomId); if (!isOwner(roomId, uid)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 접근할 수 있습니다."); }
+    private ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"); }
 }
-// [E] edit by smsong

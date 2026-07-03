@@ -1,7 +1,9 @@
 package com.example.Daylog.DTO;
 
 import com.example.Daylog.Entity.RoomEntity;
+import com.example.Daylog.Entity.PermissionEntity;
 import com.example.Daylog.Entity.RoomMemberEntity;
+import com.example.Daylog.Repository.PermissionRepository;
 import com.example.Daylog.Repository.ChecklistRepository;
 import com.example.Daylog.Repository.MemoryRepository;
 import com.example.Daylog.Repository.RoomMemberRepository;
@@ -25,6 +27,7 @@ public class RoomBootstrap implements CommandLineRunner {
     private final RoomMemberRepository roomMemberRepository;
     private final MemoryRepository memoryRepository;
     private final ChecklistRepository checklistRepository;
+    private final PermissionRepository permissionRepository;
 
     private static final String DEFAULT_CODE = "DAYLOG";
     private static final String OWNER_UID = "3635939452";   // 송성민
@@ -62,6 +65,10 @@ public class RoomBootstrap implements CommandLineRunner {
         ensureMember(room.getId(), OWNER_UID);
         ensureMember(room.getId(), PARTNER_UID);
 
+        // [smsong] 기존 멤버는 이전처럼 전권 유지 → 방별 권한 도입 후에도 잠기지 않도록 승인 처리
+        grantFull(room.getId(), OWNER_UID);
+        grantFull(room.getId(), PARTNER_UID);
+
         // roomId 없는 기존 콘텐츠를 기본 방으로 이관 (첫 실행에만 실제 반영)
         int m = memoryRepository.assignNullRoom(room.getId());
         int c = checklistRepository.assignNullRoom(room.getId());
@@ -74,5 +81,14 @@ public class RoomBootstrap implements CommandLineRunner {
         if (!roomMemberRepository.existsByRoomIdAndUid(roomId, uid)) {
             roomMemberRepository.save(RoomMemberEntity.builder().roomId(roomId).uid(uid).build());
         }
+    }
+
+    private void grantFull(Long roomId, String uid) {
+        PermissionEntity e = permissionRepository.findByRoomIdAndUid(roomId, uid)
+                .orElseGet(() -> PermissionEntity.builder().roomId(roomId).uid(uid).build());
+        e.setAccessAllowed(true); e.setAdminApproved(true);
+        e.setCanCreate(true); e.setCanEdit(true); e.setCanTrash(true); e.setCanDelete(true);
+        e.setRequestStatus("APPROVED");
+        permissionRepository.save(e);
     }
 }

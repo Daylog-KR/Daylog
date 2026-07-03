@@ -1960,10 +1960,12 @@ body.picking .bottom-nav {
 .perm-pending { background: #fff3d6; color: #9a6b00; }
 .perm-rejected { background: #fdecec; color: #c0392b; }
 .perm-none { background: var(--gray-100, #f1f1f1); color: var(--gray-500, #888); }
-.perm-access { flex: 0 0 auto; }
+.perm-access { flex: 0 0 auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .perm-btn { border: none; border-radius: 10px; padding: 8px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; font-family: var(--font-main); }
 .perm-approve { background: #1e7d3c; color: #fff; }
 .perm-revoke { background: #fdecec; color: #c0392b; }
+.perm-kick-btn { background: #f7ece8; color: #c0563e; border: 1px solid #ecccc2; }
+.perm-kick-btn:hover { background: #f1ddd6; }
 .perm-flags { display: flex; gap: 6px; flex: 1 1 100%; }
 .perm-chip {
     flex: 1; border: 1px solid var(--gray-200, #e2ddd6); background: var(--white, #fff);

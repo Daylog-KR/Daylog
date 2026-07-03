@@ -118,8 +118,9 @@ public class MemoryService {
     @Transactional
     public MemoryDTO createMemory(String uid, Long roomId, MemoryDTO memoryDTO, List<MultipartFile> mediaFiles, UserDetails userDetails) {
         UserEntity owner = getAuthorizedUser(uid, userDetails);
-        // [smsong] 방 멤버만 생성 가능
+        // [smsong] 방 멤버 + 생성 권한
         roomService.requireMember(uid, roomId);
+        permissionService.requireCanCreate(uid, roomId);
 
         // 위치 데이터가 넘어오지 않은 경우 예외 처리
         if (memoryDTO.getLat() == null || memoryDTO.getLng() == null) {
@@ -147,6 +148,7 @@ public class MemoryService {
     @Transactional(readOnly = true)
     public List<MemoryDTO> getAllMemories(String uid, Long roomId, UserDetails userDetails) {
         roomService.requireMember(uid, roomId); // [smsong] 방 멤버만 조회
+        permissionService.requireAccess(uid, roomId); // [smsong] 방 접근 권한(방장 승인) 필요
         return memoryRepository.findByRoomIdAndDeletedFalse(roomId).stream()
                 .map(MemoryDTO::entityToDto)
                 .collect(Collectors.toList());
@@ -158,8 +160,9 @@ public class MemoryService {
         MemoryEntity memory = memoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("추억을 찾을 수 없습니다"));
 
-        // [smsong] 이 콘텐츠가 속한 방의 멤버만 수정 가능
+        // [smsong] 이 방의 멤버 + 수정 권한
         roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        permissionService.requireCanEdit(userDetails.getUsername(), memory.getRoomId());
 
         if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
         if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
@@ -203,7 +206,8 @@ public class MemoryService {
     @Transactional
     public void moveToTrash(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        permissionService.requireCanTrash(userDetails.getUsername(), memory.getRoomId()); // [smsong] 휴지통 권한
         memory.setDeleted(true);
         memory.setTrashedAt(java.time.LocalDateTime.now()); // [smsong] 30일 자동삭제 기준 시각
         memoryRepository.save(memory);
@@ -213,7 +217,8 @@ public class MemoryService {
     @Transactional
     public MemoryDTO restoreMemory(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        permissionService.requireCanTrash(userDetails.getUsername(), memory.getRoomId()); // [smsong] 휴지통 권한
         memory.setDeleted(false);
         memory.setTrashedAt(null); // [smsong] 복원 시 자동삭제 타이머 해제
         return MemoryDTO.entityToDto(memoryRepository.save(memory));
@@ -223,7 +228,8 @@ public class MemoryService {
     @Transactional
     public void permanentDelete(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
-        roomService.requireMember(userDetails.getUsername(), memory.getRoomId()); // [smsong] 방 멤버만
+        roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        permissionService.requireCanDelete(userDetails.getUsername(), memory.getRoomId()); // [smsong] 삭제 권한
         commentService.deleteAllByMemory(id);
         memoryRepository.delete(memory);
     }
@@ -233,7 +239,8 @@ public class MemoryService {
     @Transactional
     public List<MemoryDTO> getTrash(String uid, Long roomId, UserDetails userDetails) {
         UserEntity user = getAuthorizedUser(uid, userDetails);
-        roomService.requireMember(uid, roomId); // [smsong] 방 멤버만
+        roomService.requireMember(uid, roomId);
+        permissionService.requireAccess(uid, roomId); // [smsong] 방 접근 권한 필요
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         List<MemoryEntity> trashed = memoryRepository.findByOwnerUidAndRoomIdAndDeletedTrue(user.getUid(), roomId);
 

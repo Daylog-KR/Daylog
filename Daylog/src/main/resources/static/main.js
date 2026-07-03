@@ -134,11 +134,8 @@ async function handleResponse(res) {
 }
 
 // ==========================================
-// 1-b. 사용자 uid 기반 접근 권한 (관리자 uid '3635939452' 만 상시 접근, 그 외는 관리자 승인)
+// 1-b. 접근 권한은 '방별' 관리 — 관리자 = 각 방의 방장 (하드코딩 uid 없음)
 // ==========================================
-const ADMIN_UID = '3635939452';                 // [smsong] 관리자 = 유일 상시 접근 uid (이름 하드코딩 제거)
-const COUPLE_A_UID = '3635939452';              // [smsong] 프로필 고정: A(관리자)
-const COUPLE_B_UID = '4958158544';              // [smsong] 프로필 고정: B
 const ME_ALIAS = ['송성민', 's s'];             // (표시용) '송성민'으로 정규화할 이름
 
 // [smsong] 방(공유 공간) 컨텍스트 헬퍼
@@ -166,10 +163,6 @@ function readLocalName() {
     return '';
 }
 
-// 현재 로그인 uid 가 관리자(3635939452)인지 (로컬 판정 · 서버 실패 시 폴백용)
-function isAdminUidLocal() {
-    try { return String(getUid() || '').trim() === ADMIN_UID; } catch (_) { return false; }
-}
 
 // 표시용 정규화: 송성민/s s -> '송성민', 그 외 -> '강미르'
 function normalizeDisplayName(name) {
@@ -293,22 +286,38 @@ if (Daylog) Daylog.applyPermButtons = applyPermButtons;
 // [B] edit by smsong - 권한 로딩 / 관리자 권한 메뉴 / 접근 요청
 function applyMyPermUI() {
     var p = (Daylog && Daylog.myPerm) ? Daylog.myPerm : null;
-    var admin = (p && p.admin) || isAdminUidLocal(); // 서버 권한 또는 로컬 uid(관리자 3635939452)로 표시
+    var admin = (p && p.admin) || isRoomOwner(); // [smsong] 방장 = 관리자 (하드코딩 uid 제거)
     var btn = document.getElementById('btn-perm-admin');
     if (btn) btn.style.display = admin ? '' : 'none';
     applyPermButtons(); // 생성 FAB 표시/차단 반영
 }
-// 앱 진입 시: 방 멤버십이 실제 게이트(백엔드 X-Room-Id/requireMember). 프론트는 방 멤버=전체 권한, 방장=관리자.
+// 앱 진입 시: 방별 권한을 서버에 등록(upsert)하고 받아와 게이트/관리자 메뉴 결정
+//  관리자 = 방장. 미승인 멤버는 차단 화면(권한 요청 폼) 표시.
 function loadMyPermission() {
-    var ownerUid = localStorage.getItem('selectedRoomOwnerUid') || '';
-    var isRoomOwner = !!(getUid() && getUid() === ownerUid);
-    // 방 멤버는 생성/수정/휴지통/삭제 전부 가능(같은 방 공유), 방장은 추가로 관리자(멤버 관리)
-    Daylog.myPerm = {
-        admin: isRoomOwner, accessAllowed: true,
-        canCreate: true, canEdit: true, canTrash: true, canDelete: true
-    };
-    applyMyPermUI();
-    return Promise.resolve(Daylog.myPerm);
+    if (!(Daylog && Daylog.api)) return Promise.resolve(null);
+    return fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
+        .then(function (res) {
+            if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status); throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
+        .then(function (p) {
+            Daylog.myPerm = p || null;
+            applyMyPermUI();
+            if (p && !p.accessAllowed && !p.admin) { blockUnauthorizedUser(); } // 접근 미허용 → 차단
+            return p;
+        })
+        .catch(function () {
+            // 서버 확인 불가 → 방장(로컬 판정, 하드코딩 아님)만 전권 폴백, 그 외는 차단
+            if (isRoomOwner()) {
+                Daylog.myPerm = { admin: true, accessAllowed: true, canCreate: true, canEdit: true, canTrash: true, canDelete: true };
+                applyMyPermUI();
+            } else {
+                Daylog.myPerm = null;
+                applyMyPermUI();
+                blockUnauthorizedUser();
+            }
+            return null;
+        });
 }
 if (Daylog) Daylog.loadMyPermission = loadMyPermission;
 
@@ -360,12 +369,18 @@ function renderRoomMembers(room) {
     });
 }
 function kickRoomMember(targetUid, name) {
-    if (!confirm("'" + name + "' 님을 방에서 내보낼까요?")) return;
+    var nm = name || (((Daylog._permList || []).find(function (x) { return x.uid === targetUid; }) || {}).nickname) || targetUid;
+    if (!confirm("'" + nm + "' 님을 방에서 내보낼까요?")) return;
     var roomId = getRoomId();
     withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) + '?uid=' + encodeURIComponent(getUid()),
         { method: 'DELETE', headers: Daylog.authHeaders(true) }), '내보내는 중...')
         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
-        .then(function () { showToast('멤버를 내보냈습니다'); openRoomMembers(); if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile(); if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true); })
+        .then(function () {
+            showToast('멤버를 내보냈습니다');
+            if (typeof openPermissionAdmin === 'function') openPermissionAdmin(); // 목록 새로고침
+            if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile();
+            if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true);
+        })
         .catch(function (err) { showToast('내보내기 실패'); console.error(err); });
 }
 function closeRoomMembers() {
@@ -467,9 +482,10 @@ function renderPermissionList(list) {
             '</div>' +
             '<div class="perm-access">' +
               (p.admin ? '' :
-                (p.accessAllowed
+                ((p.accessAllowed
                   ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
-                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
+                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')
+                  + '<button type="button" class="perm-btn perm-kick-btn" onclick="kickRoomMember(\'' + p.uid + '\')">내보내기</button>')) +
             '</div>' +
             '<div class="perm-flags">' +
               permToggle(p, 'canCreate', '생성', lockToggles) +
@@ -2333,9 +2349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(users => {
                 const list = users || [];
                 console.log('[Daylog] /user/all 응답:', list);
-                // [smsong] 프로필 표시를 uid 기준으로 고정
-                //  A(3635939452) 로그인 → 나=A, 상대방=B / B(4958158544) 로그인 → 나=B, 상대방=A
-                //  그 외 유저 → 나=A, 상대방=B 로 고정 (본인 프로필 노출 안 함)
+                // [smsong] 커플 '나/상대방'은 이 방에 설정된 커플 슬롯(방 멤버)만 사용
                 const _findU = (uid) => list.find(u => u.uid === uid) || null;
                 const _isCouple = isCoupleRoom(); // [smsong] 커플 방이면 '나/상대방' 카드 표시
                 // [smsong] 커플 슬롯(coupleLeftUid=나, coupleRightUid=상대방)은 '이 방 멤버'만 사용.
@@ -2552,9 +2566,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
     });
-    // [smsong] 방장 전용 멤버 관리(강퇴) 모달 열기/닫기
+    // [smsong] 방장 전용 권한 관리(접근/CRUD/내보내기) 모달 열기/닫기
     const btnPermAdmin = document.getElementById('btn-perm-admin');
-    if (btnPermAdmin) btnPermAdmin.addEventListener('click', openRoomMembers);
+    if (btnPermAdmin) btnPermAdmin.addEventListener('click', openPermissionAdmin);
     const rmClose = document.getElementById('room-members-close');
     if (rmClose) rmClose.addEventListener('click', closeRoomMembers);
     const rmModal = document.getElementById('room-members-modal');
