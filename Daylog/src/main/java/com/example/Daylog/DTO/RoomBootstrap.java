@@ -29,7 +29,7 @@ public class RoomBootstrap implements CommandLineRunner {
     private static final String DEFAULT_CODE = "DAYLOG";
     private static final String OWNER_UID = "3635939452";   // 송성민
     private static final String PARTNER_UID = "4958158544"; // 강미르
-    private static final String DEFAULT_NAME = "우리의 추억";
+    private static final String DEFAULT_NAME = "성민메루";
 
     @Override
     @Transactional
