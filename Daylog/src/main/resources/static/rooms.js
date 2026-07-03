@@ -74,13 +74,14 @@ const typeRow = document.getElementById('room-type-row');
 const ddayRow = document.getElementById('room-dday-row');
 const ddayInput = document.getElementById('room-dday-input');
 // [smsong] 상단 탭
-const tabMineEl = document.getElementById('tab-mine');
-const tabAllEl = document.getElementById('tab-all');
+const tabMemberEl = document.getElementById('tab-member'); // 내가 속한 방
+const tabOwnerEl = document.getElementById('tab-owner');   // 내가 방장인 방
 const mainEl = document.querySelector('.rooms-main');
 
 let modalMode = null; // 'create' | 'join'
 let selectedType = null; // [smsong] 방 생성 시 기본 미선택
-let currentView = 'mine'; // [smsong] 'mine'(내 방) | 'all'(전체 방)
+let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방)
+let myRooms = []; // [smsong] 내가 속한 방 원본(한 번 받아 탭별로 필터링)
 
 function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
@@ -109,49 +110,48 @@ function showToast(msg) {
 }
 
 // ===== 방 목록 로드 =====
-// 상단 탭에 따라 엔드포인트를 다르게 호출한다.
-//  - 내 방 보기 : 내가 속한 방 (기존 엔드포인트)
-//  - 전체 방 보기: 전체 방
-//    ⚠ 백엔드의 '전체 방 조회' 실제 경로에 맞게 ALL_ROOMS_URL 을 수정하세요.
-const MINE_ROOMS_URL = () => `${API_BASE}/api/rooms/${encodeURIComponent(uid)}`;
-const ALL_ROOMS_URL  = () => `${API_BASE}/api/rooms/all`; // ⚠ 필요 시 실제 경로로 변경
-
+// 두 탭 모두 '내가 속한 방'(기존 엔드포인트) 하나만 호출하고,
+//  받은 목록을 탭에 따라 프론트에서 필터링한다. (전체 방 조회 안 함 → 데이터 정합성 유지)
+//   - 내가 속한 방  : 전부
+//   - 내가 방장인 방: owner === true 만
 async function loadRooms() {
     if (!uid) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
-    const url = (currentView === 'all') ? ALL_ROOMS_URL() : MINE_ROOMS_URL();
     try {
-        const res = await fetch(url, { headers: authHeaders(true) });
+        const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
         // 서버가 토큰을 거부(401/403)하면 → 토큰 정리 후 로그인으로 (여기서 안 지우면 login 이 되튕김)
         if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
-        if (!res.ok) {
-            showToast(currentView === 'all' ? '전체 방 목록을 불러오지 못했습니다' : '방 목록을 불러오지 못했습니다');
-            renderRooms([]);
-            return;
-        }
+        if (!res.ok) { showToast('방 목록을 불러오지 못했습니다'); myRooms = []; renderCurrentView(); return; }
         const rooms = await res.json();
-        renderRooms(Array.isArray(rooms) ? rooms : []);
+        myRooms = Array.isArray(rooms) ? rooms : [];
+        renderCurrentView();
     } catch (e) {
         console.error(e);
         showToast('서버에 연결하지 못했습니다');
     }
 }
 
-// ===== 탭 전환 (내 방 보기 / 전체 방 보기) =====
+// 현재 탭에 맞춰 필터링 후 렌더
+function renderCurrentView() {
+    const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
+    renderRooms(list);
+}
+
+// ===== 탭 전환 (내가 속한 방 / 내가 방장인 방) =====
 function setView(view) {
     if (currentView === view) return;
     currentView = view;
-    if (tabMineEl) tabMineEl.classList.toggle('active', view === 'mine');
-    if (tabAllEl)  tabAllEl.classList.toggle('active', view === 'all');
+    if (tabMemberEl) tabMemberEl.classList.toggle('active', view === 'member');
+    if (tabOwnerEl)  tabOwnerEl.classList.toggle('active', view === 'owner');
     if (mainEl) mainEl.scrollTop = 0;
-    loadRooms();
+    renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터
 }
 
 // ===== 렌더링 =====
 function renderRooms(rooms) {
     listEl.innerHTML = '';
     if (!rooms.length) {
-        emptyEl.innerHTML = (currentView === 'all')
-            ? '표시할 방이 없어요.'
+        emptyEl.innerHTML = (currentView === 'owner')
+            ? '내가 방장인 방이 없어요.<br>방을 만들어보세요.'
             : '아직 참여한 방이 없어요.<br>방을 만들거나 초대 코드로 입장해보세요.';
         emptyEl.style.display = 'block';
         return;
@@ -187,8 +187,7 @@ function renderRooms(rooms) {
         copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyCode(r.inviteCode); });
         actions.appendChild(copyBtn);
 
-        // 방장이면 삭제 / 아니면 나가기
-        //  전체 방 보기에서 내가 방장이 아닌 방은 '나가기'가 의미 없으므로 위험 버튼을 표시하지 않는다.
+        // 방장이면 삭제 / 아니면 나가기 (둘 다 내가 속한 방이므로 나가기 유효)
         const dangerBtn = document.createElement('button');
         dangerBtn.className = 'room-icon-btn danger';
         dangerBtn.type = 'button';
@@ -196,13 +195,12 @@ function renderRooms(rooms) {
             dangerBtn.title = '방 삭제';
             dangerBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
             dangerBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteRoom(r); });
-            actions.appendChild(dangerBtn);
-        } else if (currentView !== 'all') {
+        } else {
             dangerBtn.title = '방 나가기';
             dangerBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
             dangerBtn.addEventListener('click', (e) => { e.stopPropagation(); leaveRoom(r); });
-            actions.appendChild(dangerBtn);
         }
+        actions.appendChild(dangerBtn);
 
         listEl.appendChild(card);
     });
@@ -344,8 +342,8 @@ async function leaveRoom(r) {
 }
 
 // ===== 이벤트 바인딩 =====
-if (tabMineEl) tabMineEl.addEventListener('click', () => setView('mine'));
-if (tabAllEl)  tabAllEl.addEventListener('click', () => setView('all'));
+if (tabMemberEl) tabMemberEl.addEventListener('click', () => setView('member'));
+if (tabOwnerEl)  tabOwnerEl.addEventListener('click', () => setView('owner'));
 document.getElementById('btn-create-room').addEventListener('click', () => openModal('create'));
 document.getElementById('btn-join-room').addEventListener('click', () => openModal('join'));
 document.querySelectorAll('.type-chip').forEach(ch => {
