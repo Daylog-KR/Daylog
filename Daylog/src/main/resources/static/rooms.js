@@ -78,10 +78,11 @@ const tabMemberEl = document.getElementById('tab-member'); // 내가 속한 방
 const tabOwnerEl = document.getElementById('tab-owner');   // 내가 방장인 방
 const mainEl = document.querySelector('.rooms-main');
 
-let modalMode = null; // 'create' | 'join'
+let modalMode = null; // 'create' | 'join' | 'rename'
 let selectedType = null; // [smsong] 방 생성 시 기본 미선택
 let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방)
 let myRooms = []; // [smsong] 내가 속한 방 원본(한 번 받아 탭별로 필터링)
+let renameTarget = null; // [smsong] 이름 수정 대상 방
 
 function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
@@ -167,7 +168,7 @@ function renderRooms(rooms) {
         card.innerHTML = `
             <div class="room-card-main">
                 <div class="room-name">${esc(r.name)} ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
-                <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명 · 코드 <span class="room-code">${esc(r.inviteCode)}</span></div>
+                <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
                 <div class="room-enter-hint">탭하여 입장 →</div>
             </div>
             <div class="room-card-actions"></div>
@@ -186,6 +187,17 @@ function renderRooms(rooms) {
         copyBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
         copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyCode(r.inviteCode); });
         actions.appendChild(copyBtn);
+
+        // 방장이면 이름 수정 버튼
+        if (r.owner) {
+            const editBtn = document.createElement('button');
+            editBtn.className = 'room-icon-btn';
+            editBtn.type = 'button';
+            editBtn.title = '방 이름 수정';
+            editBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+            editBtn.addEventListener('click', (e) => { e.stopPropagation(); openRenameModal(r); });
+            actions.appendChild(editBtn);
+        }
 
         // 방장이면 삭제 / 아니면 나가기 (둘 다 내가 속한 방이므로 나가기 유효)
         const dangerBtn = document.createElement('button');
@@ -225,8 +237,8 @@ async function copyCode(code) {
             ta.value = code; document.body.appendChild(ta); ta.select();
             document.execCommand('copy'); document.body.removeChild(ta);
         }
-        showToast('초대 코드를 복사했어요: ' + code);
-    } catch (e) { showToast('복사에 실패했습니다: ' + code); }
+        showToast('초대 코드를 복사했어요');
+    } catch (e) { showToast('복사에 실패했습니다'); }
 }
 
 // ===== 모달 =====
@@ -255,17 +267,52 @@ function openModal(mode) {
     modalEl.classList.remove('hidden');
     setTimeout(() => modalInput.focus(), 50);
 }
-function closeModal() { modalEl.classList.add('hidden'); modalMode = null; }
+
+// [smsong] 방 이름 수정 모달 (방장 전용)
+function openRenameModal(r) {
+    modalMode = 'rename';
+    renameTarget = r;
+    modalTitle.textContent = '방 이름 수정';
+    modalDesc.textContent = '방장만 이름을 바꿀 수 있어요.';
+    modalInput.value = r.name || '';
+    modalInput.placeholder = '방 이름';
+    modalInput.classList.remove('code');
+    modalInput.maxLength = 30;
+    typeRow.style.display = 'none';
+    if (ddayRow) ddayRow.style.display = 'none';
+    modalEl.classList.remove('hidden');
+    setTimeout(() => { modalInput.focus(); modalInput.select(); }, 50);
+}
+
+function closeModal() { modalEl.classList.add('hidden'); modalMode = null; renameTarget = null; }
 
 async function submitModal() {
     const val = (modalInput.value || '').trim();
-    if (!val) { showToast(modalMode === 'create' ? '방 이름을 입력하세요' : '초대 코드를 입력하세요'); return; }
+    if (!val) { showToast(modalMode === 'join' ? '초대 코드를 입력하세요' : '방 이름을 입력하세요'); return; }
     if (modalMode === 'create' && !selectedType) { showToast('방 종류를 선택하세요'); return; }
     modalOk.disabled = true;
     try {
         if (modalMode === 'create') await createRoom(val);
+        else if (modalMode === 'rename') await renameRoom(renameTarget, val);
         else await joinRoom(val);
     } finally { modalOk.disabled = false; }
+}
+
+// ===== 방 이름 수정 (방장) =====
+async function renameRoom(r, name) {
+    if (!r) { closeModal(); return; }
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${r.id}/name`, {
+            method: 'PUT', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid, name: name })
+        });
+        if (res.status === 401) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (res.status === 403) { showToast('방장만 이름을 수정할 수 있습니다'); return; }
+        if (!res.ok) { showToast('이름을 수정하지 못했습니다'); return; }
+        closeModal();
+        showToast('방 이름을 수정했어요');
+        await loadRooms();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
 }
 
 // ===== 방 생성 =====
@@ -283,7 +330,7 @@ async function createRoom(name) {
         if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
         const room = await res.json();
         closeModal();
-        showToast('방이 만들어졌어요 · 코드 ' + (room.inviteCode || ''));
+        showToast('방이 만들어졌어요');
         await loadRooms(); // 목록에서 코드 확인/공유 후 입장
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
 }

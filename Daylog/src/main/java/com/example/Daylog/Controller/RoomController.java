@@ -95,6 +95,16 @@ public class RoomController {
         return ResponseEntity.ok(roomService.setCouple(roomId, uid, body.get("leftUid"), body.get("rightUid")));
     }
 
+    // 방 이름 수정 (방장만) — body: { uid, name }
+    @PutMapping("/{roomId}/name")
+    public ResponseEntity<RoomDTO> renameRoom(@PathVariable("roomId") Long roomId,
+                                              @RequestBody Map<String, String> body,
+                                              @AuthenticationPrincipal UserDetails ud) {
+        String uid = body.get("uid");
+        verify(uid, ud);
+        return ResponseEntity.ok(roomService.renameRoom(roomId, uid, body.get("name")));
+    }
+
     // 디데이(만난 날짜) 설정 (방장만) — body: { uid, since }
     @PutMapping("/{roomId}/dday")
     public ResponseEntity<RoomDTO> setDday(@PathVariable("roomId") Long roomId,

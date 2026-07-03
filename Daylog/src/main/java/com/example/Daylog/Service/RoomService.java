@@ -88,6 +88,22 @@ public class RoomService {
         return RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
     }
 
+    // ===== 방 이름 수정 (방장만) =====
+    @Transactional
+    public RoomDTO renameRoom(Long roomId, String ownerUid, String name) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 이름을 수정할 수 있습니다");
+        }
+        if (name == null || name.trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방 이름을 입력하세요");
+        }
+        room.setName(name.trim());
+        roomRepository.save(room);
+        return RoomDTO.from(room, ownerUid, roomMemberRepository.countByRoomId(room.getId()));
+    }
+
     // ===== 디데이(만난 날짜) 설정 (방장만) =====
     @Transactional
     public RoomDTO setDday(Long roomId, String ownerUid, String since) {
