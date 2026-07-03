@@ -134,6 +134,7 @@ async function loadRooms() {
 function renderCurrentView() {
     const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
     renderRooms(list);
+    if (mainEl) mainEl.scrollTop = 0; // [smsong] 렌더 직후 항상 맨 위에서 시작 (탭 전환 시 이전 스크롤 위치 캐시 방지)
 }
 
 // ===== 탭 전환 (내가 속한 방 / 내가 방장인 방) =====
@@ -142,8 +143,7 @@ function setView(view) {
     currentView = view;
     if (tabMemberEl) tabMemberEl.classList.toggle('active', view === 'member');
     if (tabOwnerEl)  tabOwnerEl.classList.toggle('active', view === 'owner');
-    if (mainEl) mainEl.scrollTop = 0;
-    renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터
+    renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터 (스크롤 초기화 포함)
 }
 
 // ===== 렌더링 =====
