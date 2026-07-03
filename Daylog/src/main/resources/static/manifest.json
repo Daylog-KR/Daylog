@@ -2,7 +2,7 @@
   "name": "Daylog",
   "short_name": "Daylog",
   "description": "순간을 기록하는 공간",
-  "start_url": "main.html",
+  "start_url": "index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

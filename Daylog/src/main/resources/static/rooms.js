@@ -38,11 +38,14 @@ function authHeaders(withJson) {
 //   그래야 login.js 가 남아있는 토큰을 보고 다시 rooms 로 튕기지 않는다.
 //   (login → rooms → login → rooms ... 루프의 종료 조건 확보)
 // =====================================================
+// main.js 와 동일한 문구: 토큰 없음/만료 시 안내 후 로그인 화면으로.
+const AUTH_EXPIRED_MSG = '토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주십시오.';
 let __redirecting = false;
-function gotoLoginCleared() {
-    if (__redirecting) return;      // 중복 호출 방지
+function gotoLoginCleared(msg) {
+    if (__redirecting) return;      // 중복 호출/중복 alert 방지
     __redirecting = true;
-    AUTH_KEYS.forEach(k => localStorage.removeItem(k));
+    if (msg) alert(msg);            // 안내 메시지 (main.js 와 동일 패턴)
+    AUTH_KEYS.forEach(k => localStorage.removeItem(k)); // 토큰 제거 → login.js 되튕김 방지
     location.replace('login.html');
 }
 
@@ -55,7 +58,7 @@ const uid = payload && (payload.sub || payload.uid || payload.username || payloa
 // 토큰 없음 / 디코드 실패 / 만료 / uid 추출 불가 → 토큰 정리 후 로그인으로
 const validSession = !!token && !!payload && !expired && !!uid;
 if (!validSession) {
-    gotoLoginCleared();
+    gotoLoginCleared(AUTH_EXPIRED_MSG);
 }
 
 // ===== 엘리먼트 =====
@@ -102,11 +105,11 @@ function showToast(msg) {
 
 // ===== 방 목록 로드 =====
 async function loadRooms() {
-    if (!uid) { gotoLoginCleared(); return; }
+    if (!uid) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
         // 서버가 토큰을 거부(401/403)하면 → 토큰 정리 후 로그인으로 (여기서 안 지우면 login 이 되튕김)
-        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (!res.ok) { showToast('방 목록을 불러오지 못했습니다'); return; }
         const rooms = await res.json();
         renderRooms(Array.isArray(rooms) ? rooms : []);
@@ -243,7 +246,7 @@ async function createRoom(name) {
             method: 'POST', headers: authHeaders(true),
             body: JSON.stringify(body)
         });
-        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
         const room = await res.json();
         closeModal();
@@ -259,7 +262,7 @@ async function joinRoom(code) {
             method: 'POST', headers: authHeaders(true),
             body: JSON.stringify({ uid: uid, code: code.toUpperCase() })
         });
-        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (res.status === 404) { showToast('유효하지 않은 초대 코드입니다'); return; }
         if (!res.ok) { showToast('입장하지 못했습니다'); return; }
         const room = await res.json();
@@ -275,7 +278,7 @@ async function deleteRoom(r) {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}?uid=${encodeURIComponent(uid)}`, {
             method: 'DELETE', headers: authHeaders(true)
         });
-        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (!res.ok) { showToast('삭제하지 못했습니다'); return; }
         // 현재 보던 방을 삭제했다면 선택 해제
         if (localStorage.getItem('selectedRoomId') === String(r.id)) {
@@ -294,7 +297,7 @@ async function leaveRoom(r) {
         const res = await fetch(`${API_BASE}/api/rooms/${r.id}/leave?uid=${encodeURIComponent(uid)}`, {
             method: 'POST', headers: authHeaders(true)
         });
-        if (res.status === 401 || res.status === 403) { gotoLoginCleared(); return; }
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (!res.ok) { showToast('나가지 못했습니다'); return; }
         if (localStorage.getItem('selectedRoomId') === String(r.id)) {
             localStorage.removeItem('selectedRoomId');
