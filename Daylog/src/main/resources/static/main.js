@@ -2259,7 +2259,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!sorted.length) {
             timelineFeed.innerHTML =
-                '<div class="empty-state"><span class="es-icon">' + icon('heart',40,'',true) + '</span>' +
+                '<div class="empty-state"><span class="es-icon">' + icon('book',40) + '</span>' +
                 '<p>기록이 존재하지 않음</p></div>';
             return;
         }

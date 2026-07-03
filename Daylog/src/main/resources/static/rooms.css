@@ -168,7 +168,9 @@ html, body {
     font-size: 0.9rem; font-weight: 600; font-family: var(--font-main);
     background: var(--gray-50); color: var(--gray-600); border: 1.5px solid var(--gray-200);
     transition: all 0.15s ease;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
 }
+.type-chip svg { flex-shrink: 0; }
 .type-chip.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
 .type-chip:active { transform: scale(0.97); }
 
