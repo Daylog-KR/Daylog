@@ -44,6 +44,7 @@ html, body {
     color: var(--gray-800);
     overflow: hidden;
     overflow-x: hidden;      /* [수정] 모바일 좌우 드래그 및 가로 스크롤 완전 차단 */
+    overscroll-behavior-x: none; /* [smsong] iOS 좌우 러버밴딩(튕김) 차단 */
     -webkit-font-smoothing: antialiased;
 }
 
@@ -149,7 +150,8 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
 .container {
     height: calc(100vh - var(--header-height) - var(--bottom-nav-height));
     height: calc(100dvh - var(--header-height) - var(--bottom-nav-height));
-    overflow-y: auto; background-color: var(--bg-color);
+    overflow-y: auto; overflow-x: hidden; background-color: var(--bg-color);
+    touch-action: pan-y; overscroll-behavior-x: none; /* [smsong] 세로 스크롤만 */
     position: relative;
 }
 
@@ -516,6 +518,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     overflow-y: auto;
     overflow-x: hidden;      /* [추가] 폼 내부 가로 스크롤 및 드래그 완전 차단 */
     overscroll-behavior-x: none; /* [추가] 모바일 가로 스와이프 시 튕김(바운스) 현상 방지 */
+    touch-action: pan-y;     /* [smsong] 세로 스크롤만 허용 */
     padding: 24px; box-shadow: var(--shadow-md);
     /* [B] edit by smsong - 안드로이드 모달 콘텐츠 깜빡임 방지: 독립 합성 레이어로 격리 */
     transform: translateZ(0); isolation: isolate;
@@ -1415,7 +1418,7 @@ input[type="date"]::-webkit-date-and-time-value {
 @keyframes ptrSpin { to { transform: rotate(360deg); } }
 
 /* 가로 드래그 잠금 — 타임라인/내 정보/리스트는 세로 스크롤만 */
-.content-wrapper, .list-modal-body, .trash-body { touch-action: pan-y; }
+.content-wrapper, .list-modal-body, .trash-body { touch-action: pan-y; overflow-x: hidden; overscroll-behavior-x: none; }
 
 /* ---- 사진 편집기 (자르기/회전) ---- */
 .pe-content { padding: 20px; }
@@ -1599,8 +1602,8 @@ input[type="date"]::-webkit-date-and-time-value {
 
 /* ---- 가볼곳 카테고리 필터 칩 ---- */
 .cl-filter-bar {
-    display: flex; gap: 8px; margin: 4px 0 12px; padding-bottom: 4px;
-    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; padding-bottom: 4px;
+    /* [smsong] 가로 스크롤 제거 → 칩이 넘치면 줄바꿈(위아래 스크롤만) */
 }
 .cl-filter-bar::-webkit-scrollbar { display: none; }
 .cl-filter-chip {
@@ -1885,7 +1888,8 @@ body.picking .bottom-nav {
 
 /* ================= 상세: 이미지 캐러셀 ================= */
 .detail-carousel { position: relative; width: 100%; margin: 0 0 4px; }
-.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; }
+/* [smsong] touch-action: pan-y → 세로 스크롤 유지 + 가로 스와이프는 캐러셀(사진 넘기기) */
+.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: pan-y; }
 .carousel-track { display: flex; height: 100%; transition: transform 0.32s cubic-bezier(.22,.61,.36,1); }
 .carousel-slide { min-width: 100%; height: 100%; }
 .carousel-slide img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; image-orientation: from-image; }
@@ -2068,8 +2072,9 @@ body.picking .bottom-nav {
 }
 /* 본문 스크롤 영역 */
 .detail-sheet .sheet-body {
-    flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;                 /* [smsong] 세로 스크롤만 허용(가로 드래그 차단) */
+    overscroll-behavior: contain; overscroll-behavior-x: none;
     /* [smsong] 하단 네비가 시트 위에 겹쳐 보이므로, 마지막 내용이 네비에 가리지 않도록 여백 확보 */
     padding: 16px 20px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 28px);
 }

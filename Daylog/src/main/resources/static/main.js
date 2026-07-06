@@ -13,6 +13,16 @@
     } catch (e) { /* noop */ }
 })();
 
+// [B] edit by smsong - bfcache(뒤로가기 캐시) 복원 시 로딩 오버레이가 켜진 채 남아 '무한 로딩'되는 것 방지.
+//  (핵심 원인은 rooms.js 이지만 main.html 로 되돌아오는 경로에서도 안전하게 오버레이를 끈다.)
+window.addEventListener('pageshow', function () {
+    try {
+        var ov = document.getElementById('loading-overlay');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    } catch (e) {}
+});
+// [E] edit by smsong
+
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
@@ -591,6 +601,22 @@ function thumbHtml(mediaURL, cls) {
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
+
+// [B] edit by smsong - 원본 이미지 URL → 서버가 만든 소형 썸네일(thumb_ 접두) URL 파생.
+//  지도 마커/목록에서 원본(수 MB) 대신 썸네일을 써서 줌 인/아웃 시 재합성 부담 제거.
+Daylog.thumbUrlOf = function (url) {
+    if (!url) return url;
+    var i = url.lastIndexOf('/');
+    if (i < 0) return 'thumb_' + url;
+    return url.substring(0, i + 1) + 'thumb_' + url.substring(i + 1);
+};
+// 썸네일이 아직 없거나(구버전 기록/HEIC 등) 로드 실패하면 원본으로 폴백
+Daylog._thumbFallback = function (img) {
+    img.onerror = null;
+    var full = img.getAttribute('data-full');
+    if (full && img.src !== full) img.src = full;
+};
+// [E] edit by smsong
 
 // [smsong] 이미지 프리로드: 목록 로드 시 썸네일/마커/상세 첫 이미지를 미리 브라우저 캐시에 적재 → 즉시 표시
 const _preloadedImgs = new Set();
@@ -2256,9 +2282,13 @@ document.addEventListener('DOMContentLoaded', () => {
             let markerHtml;
             const nd = _suppressDrop ? ' nodrop' : '';
             if (memory.mediaURL) {
-                new Image().src = memory.mediaURL; // 사전 캐싱
-                // <img> 대신 background-image 로 그려 줌 인/아웃 시 재로딩(깜빡임) 최소화
-                markerHtml = `<div class="custom-marker${nd}"><div class="cm-photo" style="background-image:url('${memory.mediaURL}')"></div></div>`;
+                // [B] edit by smsong - 지도 마커는 소형 썸네일(<img>)로 그림 → 줌 시 대용량 원본 재합성 제거(성능).
+                //  썸네일이 없으면(구버전 기록/HEIC) onerror 로 원본 폴백.
+                const _full = memory.mediaURL;
+                const _thumb = Daylog.thumbUrlOf(_full);
+                new Image().src = _thumb; // 썸네일 사전 캐싱
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _full + '" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+                // [E] edit by smsong
             } else {
                 markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
             }
@@ -4658,7 +4688,8 @@ function bindCarousel(rootEl, urls) {
         im0.onload = () => { if (im0.naturalWidth && im0.naturalHeight) vp.style.aspectRatio = im0.naturalWidth + ' / ' + im0.naturalHeight; };
         im0.src = urls[0];
     }
-    vp.addEventListener('pointerdown', (e) => { dragging = true; moved = false; startX = e.clientX; dx = 0; track.style.transition = 'none'; });
+    // [smsong] setPointerCapture → 빠른 스와이프 시 포인터가 뷰포트를 벗어나도 끝까지 추적
+    vp.addEventListener('pointerdown', (e) => { dragging = true; moved = false; startX = e.clientX; dx = 0; track.style.transition = 'none'; try { vp.setPointerCapture(e.pointerId); } catch (_) {} });
     vp.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
