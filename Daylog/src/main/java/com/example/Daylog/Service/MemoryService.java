@@ -69,11 +69,42 @@ public class MemoryService {
                     .setContentType(contentType)
                     .build();
             storage.create(blobInfo, mediaFile.getBytes());
+            uploadThumbnailQuietly(mediaFile, fileName); // [smsong] 지도 마커/목록용 소형 썸네일 동시 생성
             return googleCloudHeader + fileName;
         } catch (IOException e) {
             throw new RuntimeException("업로드 실패", e);
         }
     }
+
+    // [B] edit by smsong - 원본과 같은 이름 앞에 'thumb_' 를 붙인 소형 JPEG 썸네일 생성.
+    //  프론트는 원본 URL 에서 'thumb_' 파생 URL 을 만들어 지도 마커/목록 썸네일에 사용(원본은 상세/라이트박스용).
+    //  ※ 별도 DB 컬럼/DTO 필드 불필요. 실패(HEIC 등 디코드 불가) 시 조용히 skip → 프론트가 원본으로 폴백.
+    private static final int THUMB_MAX = 400; // 썸네일 최대 변(px)
+    private void uploadThumbnailQuietly(MultipartFile file, String baseFileName) {
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(file.getInputStream());
+            if (src == null) return;
+            int w = src.getWidth(), h = src.getHeight();
+            if (w <= 0 || h <= 0) return;
+            double scale = Math.min(1.0, (double) THUMB_MAX / Math.max(w, h));
+            int tw = Math.max(1, (int) Math.round(w * scale));
+            int th = Math.max(1, (int) Math.round(h * scale));
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(tw, th, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, tw, th, null);
+            g.dispose();
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(dst, "jpg", baos);
+            BlobId thumbId = BlobId.of(bucket, "thumb_" + baseFileName);
+            BlobInfo thumbInfo = BlobInfo.newBuilder(thumbId).setContentType("image/jpeg").build();
+            storage.create(thumbInfo, baos.toByteArray());
+        } catch (Exception e) {
+            // 썸네일 실패는 치명적이지 않음 → 조용히 무시(원본으로 폴백)
+        }
+    }
+    // [E] edit by smsong
 
     private static final int MAX_IMAGES = 10;
 

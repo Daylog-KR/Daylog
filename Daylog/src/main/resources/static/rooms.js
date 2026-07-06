@@ -83,6 +83,7 @@ let selectedType = null; // [smsong] 방 생성 시 기본 미선택
 let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방)
 let myRooms = []; // [smsong] 내가 속한 방 원본(한 번 받아 탭별로 필터링)
 let renameTarget = null; // [smsong] 이름 수정 대상 방
+let selectedImageFile = null; // [smsong] 방 생성/수정 시 첨부한 대표 이미지
 
 function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
@@ -129,6 +130,68 @@ function hideLoading() {
         if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
     }
 }
+
+// [B] edit by smsong - 뒤로가기(bfcache 복원) 시 로딩 오버레이가 켜진 채 되살아나 '영원히 로딩'되는 문제 해결.
+//  방 입장 시 showLoading()을 켠 채로 main.html 로 떠났다가, 브라우저 뒤로가기로 이 페이지가
+//  bfcache 에서 복원되면 오버레이가 그대로 남아 멈춰 보인다. → 복원 시점에 무조건 오버레이를 끈다.
+function _forceHideOverlay() {
+    _loadingCount = 0;
+    const ov = document.getElementById('loading-overlay');
+    if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    __redirecting = false; // 재진입 시 정상 동작하도록 리다이렉트 가드도 해제
+}
+window.addEventListener('pageshow', function () {
+    // e.persisted === true → bfcache 복원. (일반 로드 때도 안전하게 오버레이 정리)
+    _forceHideOverlay();
+});
+// [E] edit by smsong
+
+// [B] edit by smsong - 방 대표 이미지 픽커/미리보기/업로드
+const imgPickerRow = document.getElementById('room-img-row');
+const imgInput = document.getElementById('room-img-input');
+const imgPreview = document.getElementById('room-img-preview');
+const imgClearBtn = document.getElementById('room-img-clear');
+
+function resetRoomImagePicker(previewUrl) {
+    selectedImageFile = null;
+    if (imgInput) imgInput.value = '';
+    if (imgPreview) {
+        if (previewUrl) {
+            imgPreview.style.backgroundImage = `url('${previewUrl}')`;
+            imgPreview.classList.add('has-img');
+        } else {
+            imgPreview.style.backgroundImage = '';
+            imgPreview.classList.remove('has-img');
+        }
+    }
+    if (imgClearBtn) imgClearBtn.style.display = previewUrl ? 'inline-flex' : 'none';
+}
+if (imgInput) {
+    imgInput.addEventListener('change', () => {
+        const f = imgInput.files && imgInput.files[0];
+        if (!f) return;
+        selectedImageFile = f;
+        const url = URL.createObjectURL(f);
+        if (imgPreview) { imgPreview.style.backgroundImage = `url('${url}')`; imgPreview.classList.add('has-img'); }
+        if (imgClearBtn) imgClearBtn.style.display = 'inline-flex';
+    });
+}
+if (imgPreview) imgPreview.addEventListener('click', () => { if (imgInput) imgInput.click(); });
+if (imgClearBtn) imgClearBtn.addEventListener('click', () => resetRoomImagePicker(''));
+
+// 방 대표 이미지 업로드 (생성/이름수정 성공 후 호출) — 백엔드: POST /api/rooms/{id}/image (multipart, part명 'mediaData')
+async function uploadRoomImage(roomId, file) {
+    if (!roomId || !file) return;
+    try {
+        const fd = new FormData();
+        fd.append('mediaData', file);
+        const res = await fetch(`${API_BASE}/api/rooms/${roomId}/image`, {
+            method: 'POST', headers: authHeaders(false), body: fd // FormData → Content-Type 자동
+        });
+        if (!res.ok) { showToast('방은 저장됐지만 이미지 업로드는 실패했어요'); }
+    } catch (e) { showToast('이미지 업로드 중 오류가 발생했어요'); }
+}
+// [E] edit by smsong
 
 // ===== 방 목록 로드 =====
 // 두 탭 모두 '내가 속한 방'(기존 엔드포인트) 하나만 호출하고,
@@ -185,10 +248,19 @@ function renderRooms(rooms) {
 
         const ownerBadge = r.owner ? '<span class="room-owner-badge">방장</span>' : '';
         const t = typeLabel(r.type);
+        // [B] edit by smsong - 방 썸네일 (이미지 있으면 표시, 없으면 타입별 자리표시자)
+        const imgUrl = r.imageUrl || r.thumbnailUrl || '';
+        const thumbHtml = imgUrl
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('room-thumb-empty','${t.cls}')"></div>`
+            : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
+        // [E] edit by smsong
         card.innerHTML = `
-            <div class="room-card-body">
-                <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
-                <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
+            <div class="room-card-top">
+                ${thumbHtml}
+                <div class="room-card-body">
+                    <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
+                    <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
+                </div>
             </div>
             <div class="room-card-footer">
                 <div class="room-enter-hint">탭하여 입장 →</div>
@@ -280,6 +352,8 @@ function openModal(mode) {
         typeRow.style.display = 'flex';
         selectedType = null; // [smsong] 아무 타입도 선택되지 않은 상태로 시작
         updateTypeChips();
+        if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 대표 이미지 첨부
+        resetRoomImagePicker('');
     } else {
         modalTitle.textContent = '코드로 입장';
         modalDesc.textContent = '초대 코드를 입력하면 그 방의 멤버가 됩니다.';
@@ -289,6 +363,7 @@ function openModal(mode) {
         modalInput.maxLength = 8;
         typeRow.style.display = 'none';
         if (ddayRow) ddayRow.style.display = 'none';
+        if (imgPickerRow) imgPickerRow.style.display = 'none'; // [smsong] 입장 모드엔 이미지 없음
     }
     modalEl.classList.remove('hidden');
     setTimeout(() => modalInput.focus(), 50);
@@ -306,11 +381,16 @@ function openRenameModal(r) {
     modalInput.maxLength = 30;
     typeRow.style.display = 'none';
     if (ddayRow) ddayRow.style.display = 'none';
+    if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 이름 수정 시 대표 이미지도 변경 가능
+    resetRoomImagePicker(r.imageUrl || r.thumbnailUrl || '');
     modalEl.classList.remove('hidden');
     setTimeout(() => { modalInput.focus(); modalInput.select(); }, 50);
 }
 
-function closeModal() { modalEl.classList.add('hidden'); modalMode = null; renameTarget = null; }
+function closeModal() {
+    modalEl.classList.add('hidden'); modalMode = null; renameTarget = null;
+    resetRoomImagePicker(''); // [smsong] 닫을 때 이미지 선택 초기화
+}
 
 async function submitModal() {
     const val = (modalInput.value || '').trim();
@@ -336,8 +416,9 @@ async function renameRoom(r, name) {
         if (res.status === 401) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (res.status === 403) { showToast('방장만 이름을 수정할 수 있습니다'); return; }
         if (!res.ok) { showToast('이름을 수정하지 못했습니다'); return; }
+        if (selectedImageFile) await uploadRoomImage(r.id, selectedImageFile); // [smsong] 대표 이미지 변경
         closeModal();
-        showToast('방 이름을 수정했어요');
+        showToast('방 정보를 수정했어요');
         await loadRooms();
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
     finally { hideLoading(); }
@@ -358,6 +439,7 @@ async function createRoom(name) {
         if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
         const room = await res.json();
+        if (selectedImageFile && room && room.id) await uploadRoomImage(room.id, selectedImageFile); // [smsong] 대표 이미지 첨부
         closeModal();
         showToast('방이 만들어졌어요');
         await loadRooms(); // 목록에서 코드 확인/공유 후 입장

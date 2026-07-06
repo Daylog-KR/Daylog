@@ -58,6 +58,18 @@
         <div class="room-modal-title" id="room-modal-title">방 만들기</div>
         <div class="room-modal-desc" id="room-modal-desc">방 이름을 입력하세요.</div>
         <input id="room-modal-input" class="room-modal-input" type="text" autocomplete="off" />
+        <!-- [smsong] 방 대표 이미지 (생성/이름수정 모드) -->
+        <div id="room-img-row" class="room-img-row" style="display:none;">
+            <div id="room-img-preview" class="room-img-preview" title="이미지 선택">
+                <span class="room-img-plus"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg></span>
+            </div>
+            <div class="room-img-meta">
+                <div class="room-img-label">방 대표 이미지</div>
+                <div class="room-img-sub">탭하여 사진을 선택하세요 (선택)</div>
+                <button id="room-img-clear" class="room-img-clear" type="button" style="display:none;">이미지 제거</button>
+            </div>
+            <input id="room-img-input" type="file" accept="image/*" hidden />
+        </div>
         <!-- [smsong] 방 타입 (생성 모드 전용) -->
         <div id="room-type-row" class="room-type-row" style="display:none;">
             <button class="type-chip active" data-type="COUPLE" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/></svg> 커플</button>

@@ -109,8 +109,21 @@ html, body {
 .room-card:active { transform: scale(0.99); }
 @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+/* [smsong] 위쪽 한 줄: 썸네일 + 이름/멤버수 */
+.room-card-top { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.room-thumb {
+    flex: 0 0 60px; width: 60px; height: 60px; border-radius: 14px; overflow: hidden;
+    background: var(--gray-100); position: relative;
+}
+.room-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 이미지 없을 때 타입별 은은한 그라데이션 자리표시자 */
+.room-thumb-empty { background: linear-gradient(135deg, var(--primary-light), var(--gray-100)); }
+.room-thumb-empty.couple { background: linear-gradient(135deg, #fbe9e5, #f7d9d1); }
+.room-thumb-empty.friend { background: linear-gradient(135deg, #e7eef0, #d6e5e9); }
+.room-thumb-empty.family { background: linear-gradient(135deg, #eae7f2, #ddd6ec); }
+
 /* 위쪽: 이름/배지 + 멤버수 (탭하면 입장) */
-.room-card-body { min-width: 0; cursor: pointer; }
+.room-card-body { min-width: 0; cursor: pointer; flex: 1 1 auto; }
 .room-name {
     font-size: 1.08rem; font-weight: 700; color: var(--gray-800);
     display: flex; align-items: center; gap: 7px; min-width: 0;
@@ -208,6 +221,25 @@ html, body {
 .rm-btn.primary { background: var(--primary); color: var(--white); }
 .rm-btn.primary:hover { background: var(--primary-dark); }
 .rm-btn:active { transform: scale(0.98); }
+
+/* [smsong] 방 대표 이미지 픽커 */
+.room-img-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+.room-img-preview {
+    flex: 0 0 68px; width: 68px; height: 68px; border-radius: 14px; cursor: pointer;
+    background: var(--gray-50); border: 1.5px dashed var(--gray-300);
+    background-size: cover; background-position: center;
+    display: flex; align-items: center; justify-content: center; color: var(--gray-400);
+    transition: all 0.15s ease;
+}
+.room-img-preview.has-img { border-style: solid; border-color: var(--gray-200); color: transparent; }
+.room-img-preview:active { transform: scale(0.97); }
+.room-img-meta { min-width: 0; }
+.room-img-label { font-size: 0.9rem; font-weight: 700; color: var(--gray-700); }
+.room-img-sub { font-size: 0.78rem; color: var(--gray-500); margin-top: 2px; }
+.room-img-clear {
+    margin-top: 6px; font-size: 0.76rem; font-weight: 600; color: var(--danger);
+    background: none; border: none; padding: 0; cursor: pointer; font-family: var(--font-main);
+}
 
 /* 방 타입 선택 칩 */
 .room-type-row { display: flex; gap: 8px; margin-top: 12px; }

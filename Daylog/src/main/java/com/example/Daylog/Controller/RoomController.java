@@ -4,10 +4,12 @@ import com.example.Daylog.DTO.RoomDTO;
 import com.example.Daylog.Service.RoomService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -104,6 +106,16 @@ public class RoomController {
         verify(uid, ud);
         return ResponseEntity.ok(roomService.renameRoom(roomId, uid, body.get("name")));
     }
+
+    // [B] edit by smsong - 방 대표 이미지 변경 (방장만) — multipart, part명 'mediaData'
+    @PostMapping(value = "/{roomId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<RoomDTO> uploadRoomImage(@PathVariable("roomId") Long roomId,
+                                                   @RequestPart("mediaData") MultipartFile mediaData,
+                                                   @AuthenticationPrincipal UserDetails ud) {
+        if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
+        return ResponseEntity.ok(roomService.updateRoomImage(roomId, ud.getUsername(), mediaData));
+    }
+    // [E] edit by smsong
 
     // 디데이(만난 날짜) 설정 (방장만) — body: { uid, since }
     @PutMapping("/{roomId}/dday")

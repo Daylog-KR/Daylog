@@ -40,6 +40,11 @@ public class RoomEntity {
     // [smsong] 커플 방 디데이 기준일 (YYYY-MM-DD) — 방마다 개별 설정
     private String coupleSince;
 
+    // [B] edit by smsong - 방 대표 이미지 URL (GCS). 목록 카드 썸네일로 표시. null 이면 타입별 자리표시자.
+    @Column(length = 512)
+    private String imageUrl;
+    // [E] edit by smsong
+
     private LocalDateTime createdAt;
 
     @PrePersist

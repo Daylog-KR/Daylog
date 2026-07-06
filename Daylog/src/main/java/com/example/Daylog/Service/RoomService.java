@@ -7,16 +7,23 @@ import com.example.Daylog.Entity.UserEntity;
 import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.BlobInfo;
+import com.google.cloud.storage.Storage;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 // [smsong] 방 생성/입장/삭제/조회 + 멤버십 검사
 @Service
@@ -26,6 +33,13 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
+    private final Storage storage; // [smsong] 방 대표 이미지 GCS 업로드
+
+    // [smsong] GCS 설정 (MemoryService/ChecklistService 와 동일 프로퍼티)
+    @Value("${google.cloud.storage.bucket}")
+    private String bucket;
+    @Value("${google.cloud.credentials.header}")
+    private String googleCloudHeader;
 
     // 헷갈리는 문자(0/O/1/I) 제외한 초대 코드용 알파벳
     private static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -140,8 +154,10 @@ public class RoomService {
         if (!room.getOwnerUid().equals(uid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 삭제할 수 있습니다");
         }
+        String imageUrl = room.getImageUrl(); // [smsong] 삭제 전 대표 이미지 URL 확보
         roomMemberRepository.deleteByRoomId(roomId);
         roomRepository.delete(room);
+        deleteMediaQuietly(imageUrl); // [smsong] 방 삭제 시 대표 이미지(원본+썸네일) GCS 정리
     }
 
     // ===== 방 나가기 (멤버 스스로 탈퇴, 방장은 불가 → 삭제 사용) =====
@@ -229,4 +245,84 @@ public class RoomService {
         dto.setMembers(memberDtos);
         return dto;
     }
+
+    // ===== 방 대표 이미지 변경 (방장만) =====
+    // [B] edit by smsong - 방 카드 썸네일용 대표 이미지 업로드. 프론트: POST /api/rooms/{id}/image (multipart, part명 'mediaData')
+    @Transactional
+    public RoomDTO updateRoomImage(Long roomId, String ownerUid, MultipartFile file) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 이미지를 변경할 수 있습니다");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지가 없습니다");
+        }
+        String oldUrl = room.getImageUrl();
+        String url = uploadMedia(file);
+        room.setImageUrl(url);
+        roomRepository.save(room);
+        deleteMediaQuietly(oldUrl); // 이전 이미지/썸네일 정리(있으면)
+        return RoomDTO.from(room, ownerUid, roomMemberRepository.countByRoomId(room.getId()));
+    }
+
+    // GCS 업로드 (MemoryService.uploadMedia 와 동일 패턴 + 썸네일 동시 생성)
+    private String uploadMedia(MultipartFile mediaFile) {
+        try {
+            UUID uuid = UUID.randomUUID();
+            String original = mediaFile.getOriginalFilename();
+            String ext = (original != null && original.contains(".")) ? original.substring(original.lastIndexOf(".")) : "";
+            String fileName = uuid.toString() + ext;
+
+            BlobId blobId = BlobId.of(bucket, fileName);
+            BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("image/jpeg").build();
+            storage.create(blobInfo, mediaFile.getBytes());
+            uploadThumbnailQuietly(mediaFile, fileName); // [smsong] 카드용 소형 썸네일 동시 생성
+            return googleCloudHeader + fileName;
+        } catch (IOException e) {
+            throw new RuntimeException("업로드 실패", e);
+        }
+    }
+
+    // 원본과 같은 이름 앞에 'thumb_' 를 붙인 소형 JPEG 썸네일 생성 (실패 시 조용히 skip)
+    private static final int THUMB_MAX = 400;
+    private void uploadThumbnailQuietly(MultipartFile file, String baseFileName) {
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(file.getInputStream());
+            if (src == null) return;
+            int w = src.getWidth(), h = src.getHeight();
+            if (w <= 0 || h <= 0) return;
+            double scale = Math.min(1.0, (double) THUMB_MAX / Math.max(w, h));
+            int tw = Math.max(1, (int) Math.round(w * scale));
+            int th = Math.max(1, (int) Math.round(h * scale));
+            java.awt.image.BufferedImage dst = new java.awt.image.BufferedImage(tw, th, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, tw, th, null);
+            g.dispose();
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(dst, "jpg", baos);
+            BlobId thumbId = BlobId.of(bucket, "thumb_" + baseFileName);
+            BlobInfo thumbInfo = BlobInfo.newBuilder(thumbId).setContentType("image/jpeg").build();
+            storage.create(thumbInfo, baos.toByteArray());
+        } catch (Exception e) {
+            // 썸네일 실패는 치명적이지 않음 → 조용히 무시(프론트가 원본으로 폴백)
+        }
+    }
+
+    // 이전 대표 이미지(원본+썸네일)를 GCS 에서 제거 (실패해도 무시)
+    private void deleteMediaQuietly(String url) {
+        try {
+            if (url == null || url.isEmpty()) return;
+            if (googleCloudHeader == null || !url.startsWith(googleCloudHeader)) return;
+            String fileName = url.substring(googleCloudHeader.length());
+            if (fileName.isEmpty()) return;
+            storage.delete(BlobId.of(bucket, fileName));
+            storage.delete(BlobId.of(bucket, "thumb_" + fileName));
+        } catch (Exception e) {
+            // 정리 실패는 무시
+        }
+    }
+    // [E] edit by smsong
 }
