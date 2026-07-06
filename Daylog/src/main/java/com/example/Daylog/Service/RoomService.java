@@ -46,7 +46,7 @@ public class RoomService {
     private static final int CODE_LEN = 6;
     private final SecureRandom random = new SecureRandom();
 
-    // ===== 멤버십 =====
+    // ===== 멤버십 ======
     public boolean isMember(String uid, Long roomId) {
         if (uid == null || roomId == null) return false;
         return roomMemberRepository.existsByRoomIdAndUid(roomId, uid);
