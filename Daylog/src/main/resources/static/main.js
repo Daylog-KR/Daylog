@@ -4665,7 +4665,7 @@ function bindCarousel(rootEl, urls) {
     const prev = car.querySelector('.carousel-arrow.prev');
     const next = car.querySelector('.carousel-arrow.next');
     const cur = car.querySelector('.cc-cur');
-    let idx = 0, startX = 0, dx = 0, dragging = false, moved = false;
+    let idx = 0, startX = 0, startY = 0, dx = 0, dy = 0, dragging = false, moved = false, axis = null;
 
     function go(i) {
         idx = Math.max(0, Math.min(urls.length - 1, i));
@@ -4688,22 +4688,39 @@ function bindCarousel(rootEl, urls) {
         im0.onload = () => { if (im0.naturalWidth && im0.naturalHeight) vp.style.aspectRatio = im0.naturalWidth + ' / ' + im0.naturalHeight; };
         im0.src = urls[0];
     }
-    // [smsong] setPointerCapture → 빠른 스와이프 시 포인터가 뷰포트를 벗어나도 끝까지 추적
-    vp.addEventListener('pointerdown', (e) => { dragging = true; moved = false; startX = e.clientX; dx = 0; track.style.transition = 'none'; try { vp.setPointerCapture(e.pointerId); } catch (_) {} });
+    // [B] edit by smsong - 방향 잠금(directional lock): 가로 제스처면 사진만 넘기고 페이지 스크롤은 고정,
+    //  세로 제스처면 사진을 움직이지 않음(오넘김 방지). 뷰포트는 CSS touch-action:none 이라 세로 드리프트로
+    //  인한 스크롤이 발생하지 않음.
+    vp.addEventListener('pointerdown', (e) => {
+        dragging = true; moved = false; axis = null;
+        startX = e.clientX; startY = e.clientY; dx = 0; dy = 0;
+        track.style.transition = 'none';
+        try { vp.setPointerCapture(e.pointerId); } catch (_) {}
+    });
     vp.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
+        dy = e.clientY - startY;
+        // 첫 유의미한 이동에서 축 결정 (가로 우세 → 사진 넘김 / 세로 우세 → 무시)
+        if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+            axis = (Math.abs(dx) >= Math.abs(dy)) ? 'x' : 'y';
+        }
+        if (axis === 'y') return; // 세로 제스처: 사진 이동 안 함(스크롤도 CSS로 고정)
         if (Math.abs(dx) > 6) moved = true;
         track.style.transform = 'translateX(calc(' + (-idx * 100) + '% + ' + dx + 'px))';
     });
     const endSwipe = () => {
         if (!dragging) return;
         dragging = false;
-        if (dx < -50 && idx < urls.length - 1) go(idx + 1);
-        else if (dx > 50 && idx > 0) go(idx - 1);
-        else go(idx);
+        if (axis !== 'y') { // 가로 제스처일 때만 넘김 판정
+            if (dx < -50 && idx < urls.length - 1) go(idx + 1);
+            else if (dx > 50 && idx > 0) go(idx - 1);
+            else go(idx);
+        }
+        axis = null;
         setTimeout(() => { moved = false; }, 30);
     };
+    // [E] edit by smsong
     vp.addEventListener('pointerup', endSwipe);
     vp.addEventListener('pointercancel', endSwipe);
     go(0);

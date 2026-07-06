@@ -1888,8 +1888,8 @@ body.picking .bottom-nav {
 
 /* ================= 상세: 이미지 캐러셀 ================= */
 .detail-carousel { position: relative; width: 100%; margin: 0 0 4px; }
-/* [smsong] touch-action: pan-y → 세로 스크롤 유지 + 가로 스와이프는 캐러셀(사진 넘기기) */
-.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: pan-y; }
+/* [smsong] touch-action: none → 사진 영역에서는 가로=사진넘김만, 세로 스크롤은 고정(넘길 때 스크롤 방지). JS 방향잠금과 함께 동작 */
+.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: none; }
 .carousel-track { display: flex; height: 100%; transition: transform 0.32s cubic-bezier(.22,.61,.36,1); }
 .carousel-slide { min-width: 100%; height: 100%; }
 .carousel-slide img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; image-orientation: from-image; }
