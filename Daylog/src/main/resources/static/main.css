@@ -155,22 +155,6 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
     position: relative;
 }
 
-/* [B] edit by smsong - 당겨서 새로고침 (UpFit 스타일: 최상단에서 아래로 당기면 새로고침) */
-.ptr-spin {
-    position: fixed; left: 50%;
-    top: calc(var(--header-height) + env(safe-area-inset-top, 0px) - 6px);
-    width: 36px; height: 36px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--white); box-shadow: var(--shadow-sm); color: var(--primary);
-    opacity: 0; z-index: 45; pointer-events: none;
-    transform: translate(-50%, -12px) scale(0.5);
-    transition: opacity 0.16s ease;
-}
-.ptr-spin.visible { opacity: 1; }
-.ptr-spin.spinning svg { animation: ptrSpin 0.7s linear infinite; transform: none !important; }
-@keyframes ptrSpin { to { transform: rotate(360deg); } }
-/* [E] edit by smsong */
-
 /* 탭 전환 페이드/슬라이드 */
 .tab-content { } /* [smsong] iOS 밝기 깜빡임·전환지연 제거: 탭 진입 페이드 삭제 */
 @keyframes tabFade { from { opacity: 0; } to { opacity: 1; } }
