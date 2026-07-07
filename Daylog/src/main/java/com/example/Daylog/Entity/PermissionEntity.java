@@ -54,6 +54,12 @@ public class PermissionEntity {
     @Builder.Default
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean rejectSeen = false; // 거절 안내를 이미 봤는지(중복 표시 방지)
+
+    // [B] edit by smsong - 승인 후 환영/이용수칙 폼을 이미 봤는지(최초 1회 표시)
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
+    private boolean welcomeSeen = false;
+    // [E] edit by smsong
     // [E] edit by smsong
 
     private LocalDateTime requestedAt;

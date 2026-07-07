@@ -30,6 +30,7 @@ public class PermissionDTO {
     private String requestStatus;
     private LocalDateTime requestedAt;
     private LocalDateTime decidedAt;
+    private Boolean welcomeSeen; // [B] edit by smsong - 승인 후 환영 폼 표시 여부(최초 1회)
 
     // 관리자 목록용: 실제 저장된 원본 플래그 그대로 (토글 상태 관리)
     public static PermissionDTO raw(PermissionEntity e, boolean isAdmin, boolean isBootstrap) {
@@ -67,7 +68,8 @@ public class PermissionDTO {
                 .bootstrap(isBootstrap)
                 .requestStatus(e.getRequestStatus())
                 .requestedAt(e.getRequestedAt())
-                .decidedAt(e.getDecidedAt());
+                .decidedAt(e.getDecidedAt())
+                .welcomeSeen(e.isWelcomeSeen()); // [B] edit by smsong
     }
 }
 // [E] edit by smsong

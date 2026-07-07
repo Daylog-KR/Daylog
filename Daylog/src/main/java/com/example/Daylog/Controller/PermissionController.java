@@ -88,6 +88,14 @@ public class PermissionController {
         return ResponseEntity.ok().build();
     }
 
+    // [B] edit by smsong - 승인된 멤버: 환영/이용수칙 폼을 봤음을 기록 (최초 1회 후)
+    @PostMapping("/welcome-seen")
+    public ResponseEntity<Void> welcomeSeen(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                            @AuthenticationPrincipal UserDetails ud) {
+        permissionService.markWelcomeSeen(uidOf(ud), roomId);
+        return ResponseEntity.ok().build();
+    }
+
     // [B] edit by smsong - 거절된 유저: '요청 대기중인 방'에서 해당 방 제거(X)
     @PostMapping("/dismiss")
     public ResponseEntity<Void> dismiss(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,

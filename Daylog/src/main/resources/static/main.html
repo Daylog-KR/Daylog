@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
-    <link rel="icon" type="image/svg+xml" href="icons/icon-master.svg">
+    <link rel="icon" type="image/svg+xml" href="icon-master.svg">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <meta name="theme-color" content="#9c6644">
     <meta name="apple-mobile-web-app-title" content="Daylog">
@@ -267,6 +267,43 @@
         </div>
         <p class="perm-desc">이 방에 접근을 요청한 사용자가 있습니다. 수락하면 즉시 이용할 수 있고, 거절하면 접근이 차단됩니다.</p>
         <div id="access-request-body" class="perm-body"><div class="perm-loading">불러오는 중...</div></div>
+    </div>
+</div>
+<!-- [E] edit by smsong -->
+
+<!-- [B] edit by smsong - 승인된 멤버 최초 진입: 환영 + 이용수칙 동의 폼 -->
+<div id="welcome-modal" class="modal hidden">
+    <div class="modal-content welcome-content">
+        <div class="welcome-logo-wrap">
+            <div class="welcome-burst" id="welcome-burst"></div>
+            <div class="welcome-logo">
+                <svg width="40" height="40" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#fffdf9" stroke="#b08968" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#b08968" stroke-width="2.2"/><circle cx="19.5" cy="16" r="1.5" fill="#b08968"/><circle cx="19.5" cy="24" r="1.5" fill="#b08968"/><circle cx="19.5" cy="32" r="1.5" fill="#b08968"/><circle cx="19.5" cy="40" r="1.5" fill="#b08968"/><circle cx="19.5" cy="48" r="1.5" fill="#b08968"/><g stroke="#e6ccb2" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="20" x2="40" y2="20"/><line x1="29" y1="27" x2="46" y2="27"/><line x1="29" y1="34" x2="42" y2="34"/><line x1="29" y1="41" x2="46" y2="41"/><line x1="29" y1="48" x2="44" y2="48"/></g><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#9c6644"/></svg>
+            </div>
+        </div>
+        <h2 class="welcome-title"><span id="welcome-room-name">우리</span>의 방에 오신 것을 환영합니다!</h2>
+        <p class="welcome-sub">함께 추억과 가볼 곳을 기록하는 공간이에요.</p>
+
+        <div class="welcome-rules">
+            <div class="welcome-rules-title">기본 이용 수칙</div>
+            <ul>
+                <li>서로를 존중하는 댓글 매너를 지켜주세요.</li>
+                <li>다른 멤버의 기록·사진을 함부로 퍼가거나 외부에 공유하지 말아주세요.</li>
+                <li>부적절하거나 불쾌감을 주는 내용은 삼가주세요.</li>
+                <li>방 안의 정보는 이 방 멤버끼리만 함께 봐주세요.</li>
+            </ul>
+        </div>
+
+        <div class="welcome-note">
+            현재는 <b>조회</b>만 가능해요. 기록 <b>생성·수정·삭제</b> 권한이 필요하면
+            방장(관리자)에게 권한을 요청해 주세요.
+        </div>
+
+        <label class="welcome-consent">
+            <input type="checkbox" id="welcome-consent-check">
+            <span>위 이용 수칙을 확인했으며 이에 동의합니다.</span>
+        </label>
+
+        <button id="welcome-enter-btn" class="welcome-enter-btn" type="button" disabled>방 이용하기</button>
     </div>
 </div>
 <!-- [E] edit by smsong -->

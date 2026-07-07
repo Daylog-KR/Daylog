@@ -317,6 +317,10 @@ function loadMyPermission() {
             if (p && !p.accessAllowed && !p.admin) { blockUnauthorizedUser(); } // 접근 미허용 → 차단
             // [B] edit by smsong - 방장(관리자)이면 진입 시 대기중 접근 요청 알림 확인
             else if ((p && p.admin) || isRoomOwner()) { try { checkPendingAccessRequests(); } catch (e) {} }
+            // [B] edit by smsong - 승인된 일반 멤버 최초 진입: 환영/이용수칙 폼 1회 표시
+            if (p && p.accessAllowed && !p.admin && !isRoomOwner() && p.welcomeSeen === false) {
+                try { showWelcomeModal(); } catch (e) {}
+            }
             // [E] edit by smsong
             return p;
         })
@@ -418,6 +422,52 @@ function _permFetch(path, opts) {
             return res.text().then(function (t) { return t ? JSON.parse(t) : null; });
         });
 }
+
+// [B] edit by smsong - 승인된 멤버 최초 진입: 환영 + 이용수칙 동의 폼
+function showWelcomeModal() {
+    var modal = document.getElementById('welcome-modal');
+    if (!modal) return;
+    var nameEl = document.getElementById('welcome-room-name');
+    if (nameEl) nameEl.textContent = localStorage.getItem('selectedRoomName') || '우리';
+    var chk = document.getElementById('welcome-consent-check');
+    var btn = document.getElementById('welcome-enter-btn');
+    if (chk) chk.checked = false;
+    if (btn) btn.disabled = true;
+    modal.classList.remove('hidden');
+    setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
+}
+function fireWelcomeBurst() {
+    var burst = document.getElementById('welcome-burst');
+    if (!burst) return;
+    burst.innerHTML = '';
+    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1'];
+    var N = 14;
+    for (var i = 0; i < N; i++) {
+        var p = document.createElement('span');
+        p.className = 'welcome-particle';
+        var ang = (Math.PI * 2) * (i / N) + (Math.random() * 0.4 - 0.2);
+        var dist = 46 + Math.random() * 34;
+        p.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(1) + 'px');
+        p.style.setProperty('--ty', (Math.sin(ang) * dist).toFixed(1) + 'px');
+        p.style.background = colors[i % colors.length];
+        p.style.animationDelay = (Math.random() * 0.05).toFixed(3) + 's';
+        burst.appendChild(p);
+    }
+}
+function closeWelcomeModal() {
+    var modal = document.getElementById('welcome-modal');
+    if (modal) modal.classList.add('hidden');
+}
+function confirmWelcome() {
+    // 서버에 '봤음' 기록(실패해도 방 이용은 진행) 후 닫기
+    if (Daylog && Daylog.api) {
+        _permFetch('/api/permissions/welcome-seen', { method: 'POST', headers: Daylog.authHeaders(true) })
+            .then(function () {}).catch(function () {});
+    }
+    if (Daylog && Daylog.myPerm) Daylog.myPerm.welcomeSeen = true;
+    closeWelcomeModal();
+}
+// [E] edit by smsong
 
 // 차단 화면에서 '권한 요청하기' (실패해도 반드시 화면에 사유 표시)
 function requestAccessFromBlock() {
@@ -2752,6 +2802,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const rrModal = document.getElementById('reject-reason-modal');
     if (rrModal) rrModal.addEventListener('click', (e) => { if (e.target.id === 'reject-reason-modal') _closeRejectReason(null); });
+    // [B] edit by smsong - 환영 폼: 동의 체크 시 '방 이용하기' 버튼 활성화
+    const wChk = document.getElementById('welcome-consent-check');
+    const wBtn = document.getElementById('welcome-enter-btn');
+    if (wChk && wBtn) wChk.addEventListener('change', function () { wBtn.disabled = !wChk.checked; });
+    if (wBtn) wBtn.addEventListener('click', confirmWelcome);
     // [E] edit by smsong
     // 헤더의 디데이 클릭 → 디데이 폼 열기
     const headerDday = document.querySelector('.dday-counter');

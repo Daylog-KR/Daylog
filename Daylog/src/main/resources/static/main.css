@@ -531,6 +531,73 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .modal-header h3 { font-size: 1.15rem; color: var(--gray-800); }
+
+/* [B] edit by smsong - 승인 후 환영/이용수칙 동의 폼 */
+.welcome-content { text-align: center; }
+.welcome-logo-wrap { position: relative; display: flex; justify-content: center; margin: 6px 0 16px; }
+.welcome-logo {
+    width: 84px; height: 84px; border-radius: 24px;
+    background: var(--white); border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-sm); position: relative; z-index: 2;
+    animation: welcomeLogoPop 0.7s var(--ease-spring) both;
+}
+@keyframes welcomeLogoPop {
+    0%   { transform: scale(0) rotate(-18deg); opacity: 0; }
+    55%  { transform: scale(1.18) rotate(6deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); }
+}
+/* 축포(팡) — 로고 뒤 링 + 사방으로 튀는 입자 */
+.welcome-burst { position: absolute; top: 50%; left: 50%; width: 0; height: 0; z-index: 1; pointer-events: none; }
+.welcome-burst::before {
+    content: ''; position: absolute; top: 0; left: 0; transform: translate(-50%, -50%);
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 3px solid var(--primary-light);
+    animation: welcomeRing 0.7s ease-out 0.05s both;
+}
+@keyframes welcomeRing {
+    0%   { width: 24px; height: 24px; opacity: 0.85; }
+    100% { width: 150px; height: 150px; opacity: 0; }
+}
+.welcome-particle {
+    position: absolute; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: welcomeParticle 0.72s ease-out both;
+}
+@keyframes welcomeParticle {
+    0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+    25%  { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1); opacity: 0; }
+}
+.welcome-title { font-size: 1.24rem; font-weight: 700; color: var(--gray-800); line-height: 1.45; margin: 0; }
+.welcome-title span { color: var(--primary-dark); }
+.welcome-sub { font-size: 0.9rem; color: var(--gray-500); margin-top: 8px; }
+.welcome-rules {
+    text-align: left; background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 14px; padding: 14px 16px; margin-top: 18px;
+}
+.welcome-rules-title { font-size: 0.85rem; font-weight: 700; color: var(--primary-dark); margin-bottom: 8px; }
+.welcome-rules ul { margin: 0; padding-left: 18px; }
+.welcome-rules li { font-size: 0.86rem; color: var(--gray-600); line-height: 1.7; }
+.welcome-note {
+    text-align: left; font-size: 0.85rem; line-height: 1.6; color: var(--gray-600);
+    background: #fdf2ee; border: 1px solid #f0d9cf; border-radius: 12px; padding: 12px 14px; margin-top: 12px;
+}
+.welcome-note b { color: var(--primary-dark); }
+.welcome-consent {
+    display: flex; align-items: flex-start; gap: 9px; margin-top: 16px;
+    text-align: left; cursor: pointer; font-size: 0.88rem; color: var(--gray-600); line-height: 1.5;
+}
+.welcome-consent input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
+.welcome-enter-btn {
+    width: 100%; margin-top: 18px; padding: 15px; border-radius: 14px; border: none;
+    font-size: 1rem; font-weight: 700; font-family: var(--font-main); cursor: pointer;
+    background: var(--primary); color: var(--white); transition: all 0.18s ease;
+}
+.welcome-enter-btn:disabled { background: var(--gray-200); color: var(--gray-400); cursor: not-allowed; }
+.welcome-enter-btn:not(:disabled):hover { background: var(--primary-dark); }
+.welcome-enter-btn:not(:disabled):active { transform: scale(0.98); }
+/* [E] edit by smsong */
 .close-modal {
     background: none; border: none; font-size: 1.6rem; line-height: 1; color: var(--gray-400);
     cursor: pointer; width: 34px; height: 34px; border-radius: 50%;

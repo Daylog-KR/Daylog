@@ -206,6 +206,15 @@ public class PermissionService {
         return PermissionDTO.raw(e, owner, owner);
     }
 
+    // [B] edit by smsong - 승인된 멤버: 환영/이용수칙 폼을 봤음을 기록 (최초 1회 표시 후 호출)
+    @Transactional
+    public void markWelcomeSeen(String uid, Long roomId) {
+        requireRoom(roomId);
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            if (!e.isWelcomeSeen()) { e.setWelcomeSeen(true); permissionRepository.save(e); }
+        });
+    }
+
     // [B] edit by smsong - 거절 안내를 봤음을 기록 (rooms 페이지 1회 안내 후 호출)
     @Transactional
     public void markRejectSeen(String uid, Long roomId) {
