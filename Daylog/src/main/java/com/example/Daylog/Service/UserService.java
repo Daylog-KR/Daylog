@@ -359,6 +359,29 @@ public class UserService {
                 throw new RuntimeException("사용자 이메일을 가져올 수 없습니다.");
             }
 
+            // [B] edit by smsong  프로필 사진(profile_image) 추출
+            // 카카오 응답 구조: kakao_account.profile.profile_image_url / thumbnail_image_url
+            // (구버전 호환) properties.profile_image / thumbnail_image
+            String profileImageUrl = null;
+            if (kakaoAccount != null) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+                if (profile != null) {
+                    profileImageUrl = (String) profile.get("profile_image_url");
+                    if (profileImageUrl == null) {
+                        profileImageUrl = (String) profile.get("thumbnail_image_url");
+                    }
+                }
+            }
+            if (profileImageUrl == null && properties != null) {
+                profileImageUrl = (String) properties.get("profile_image");
+                if (profileImageUrl == null) {
+                    profileImageUrl = (String) properties.get("thumbnail_image");
+                }
+            }
+            logger.info("카카오 프로필 사진 URL : {}", profileImageUrl);
+            // [E] edit by smsong
+
             UserEntity userEntity = userRepository.findByUid(uid).orElse(null);
 
             boolean isNewUser = false;
@@ -367,6 +390,7 @@ public class UserService {
                         .uid(uid)
                         .name(name)
                         .email(email)
+                        .profileURL(profileImageUrl) // [B][E] edit by smsong  신규 가입 시 카카오 프로필 사진 저장
                         .password(passwordEncoder.encode("oauth2user"))
                         .provider("kakao")
                         .build();
@@ -375,6 +399,14 @@ public class UserService {
             } else {
                 userEntity.setName(name);
                 userEntity.setEmail(email);
+                // [B] edit by smsong  프로필 사진 갱신
+                // 사용자가 앱에서 직접 올린 이미지(GCS)를 매 로그인마다 덮어쓰지 않도록,
+                // 기존 profileURL 이 비어있을 때만 카카오 이미지로 채운다.
+                if (profileImageUrl != null
+                        && (userEntity.getProfileURL() == null || userEntity.getProfileURL().isEmpty())) {
+                    userEntity.setProfileURL(profileImageUrl);
+                }
+                // [E] edit by smsong
                 userRepository.save(userEntity);
             }
 
