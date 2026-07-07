@@ -275,6 +275,57 @@ html, body {
 .room-cap-input:focus { border-color: var(--primary); background: var(--white); }
 .room-cap-unit { font-size: 0.9rem; color: var(--gray-500); }
 
+/* [B] edit by smsong - 코드 입장 미리보기 모달 */
+.preview-room {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 16px; padding: 14px; margin-top: 4px;
+}
+.preview-thumb {
+    flex: 0 0 60px; width: 60px; height: 60px; border-radius: 14px; overflow: hidden;
+    background: var(--gray-100); background-size: cover; background-position: center;
+}
+.preview-info { min-width: 0; }
+.preview-name {
+    font-size: 1.08rem; font-weight: 700; color: var(--gray-800);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.preview-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.preview-count { font-size: 0.82rem; color: var(--gray-500); }
+.preview-note {
+    margin-top: 12px; padding: 11px 13px; border-radius: 12px;
+    font-size: 0.85rem; line-height: 1.55; font-weight: 500;
+    background: #fdf2ee; color: var(--primary-dark); border: 1px solid #f0d9cf;
+}
+
+/* [B] edit by smsong - 거절 안내 모달 */
+.reject-icon { color: var(--danger); display: flex; justify-content: center; margin-bottom: 8px; }
+#reject-modal .room-modal-title { text-align: center; }
+#reject-modal .room-modal-desc { text-align: center; }
+.reject-reason {
+    margin-top: 12px; padding: 13px 14px; border-radius: 12px;
+    background: #f9ece8; border: 1px solid #ecccc2; color: var(--gray-700);
+    font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+}
+.reject-reason .reject-reason-label {
+    display: block; font-size: 0.74rem; font-weight: 700; color: var(--danger);
+    margin-bottom: 5px; letter-spacing: 0.3px;
+}
+
+/* [B] edit by smsong - 요청 대기중/거절 카드 상태 배지 */
+.room-status-badge {
+    font-size: 0.66rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; flex-shrink: 0;
+}
+.room-status-badge.pending { background: #fbf1df; color: #b07d2a; }
+.room-status-badge.rejected { background: #f9e0d9; color: var(--danger); }
+.room-card.is-rejected { opacity: 0.86; }
+.room-reject-reason {
+    margin-top: 4px; font-size: 0.8rem; color: var(--gray-600); line-height: 1.5;
+    background: #f9ece8; border: 1px solid #ecccc2; border-radius: 10px; padding: 8px 10px;
+    white-space: pre-wrap; word-break: break-word;
+}
+.room-pending-hint { font-size: 0.78rem; color: var(--gray-500); font-weight: 600; }
+
 #toast {
     position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
     background: var(--gray-800); color: var(--white); padding: 12px 24px; border-radius: 8px;

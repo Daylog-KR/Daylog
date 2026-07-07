@@ -519,9 +519,47 @@ function togglePerm(uid, key) {
     patch[key] = !p[key];
     putPermission(uid, patch);
 }
+// [B] edit by smsong - 거절 사유 입력 모달 (Promise 반환: 확인=문자열(빈 문자열 허용), 취소=null)
+var _rejectReasonResolver = null;
+function promptRejectReason() {
+    return new Promise(function (resolve) {
+        var modal = document.getElementById('reject-reason-modal');
+        var input = document.getElementById('reject-reason-input');
+        if (!modal || !input) { resolve(''); return; } // 모달 없으면 사유 없이 진행
+        input.value = '';
+        _rejectReasonResolver = resolve;
+        modal.classList.remove('hidden');
+        setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
+    });
+}
+function _closeRejectReason(result) {
+    var modal = document.getElementById('reject-reason-modal');
+    if (modal) modal.classList.add('hidden');
+    var r = _rejectReasonResolver; _rejectReasonResolver = null;
+    if (r) r(result); // null = 거절 자체를 취소
+}
+// 거절 시 사유를 붙여 /decide 호출 (approve=false 전용)
+function _decideRejectUrl(uid, reason) {
+    var u = '/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=false';
+    if (reason && String(reason).trim()) u += '&reason=' + encodeURIComponent(String(reason).trim());
+    return u;
+}
+// [E] edit by smsong
+
 function decideAccess(uid, approve) {
-    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=' + approve,
-        { method: 'POST', headers: Daylog.authHeaders(true) }), approve ? '허용하는 중...' : '거절하는 중...')
+    // [B] edit by smsong - 거절이면 사유 입력 후 진행 (취소 시 아무 것도 안 함)
+    if (!approve) {
+        promptRejectReason().then(function (reason) {
+            if (reason === null) return; // 사유 모달에서 취소
+            withLoading(_permFetch(_decideRejectUrl(uid, reason),
+                { method: 'POST', headers: Daylog.authHeaders(true) }), '거절하는 중...')
+                .then(function () { openPermissionAdmin(); })
+                .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
+        });
+        return;
+    }
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=true',
+        { method: 'POST', headers: Daylog.authHeaders(true) }), '허용하는 중...')
         .then(function () { openPermissionAdmin(); })
         .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
@@ -575,8 +613,23 @@ function renderAccessRequests(list) {
 }
 function decideAccessRequest(uid, approve, btnEl) {
     var row = btnEl ? btnEl.closest('.areq-row') : null;
-    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=' + approve,
-        { method: 'POST', headers: Daylog.authHeaders(true) }), approve ? '수락하는 중...' : '거절하는 중...')
+    // [B] edit by smsong - 거절이면 사유 입력 후 진행
+    if (!approve) {
+        promptRejectReason().then(function (reason) {
+            if (reason === null) return; // 취소
+            _sendDecideRequest(uid, false, reason, row);
+        });
+        return;
+    }
+    _sendDecideRequest(uid, true, null, row);
+}
+// [B] edit by smsong - 접근 요청 수락/거절 실제 전송 (거절 시 reason 포함)
+function _sendDecideRequest(uid, approve, reason, row) {
+    var url = approve
+        ? '/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=true'
+        : _decideRejectUrl(uid, reason);
+    withLoading(_permFetch(url, { method: 'POST', headers: Daylog.authHeaders(true) }),
+        approve ? '수락하는 중...' : '거절하는 중...')
         .then(function () {
             showToast(approve ? '접근을 수락했습니다' : '접근을 거절했습니다');
             if (row && row.parentNode) row.parentNode.removeChild(row);
@@ -2687,6 +2740,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (areqClose) areqClose.addEventListener('click', closeAccessRequestModal);
     const areqModal = document.getElementById('access-request-modal');
     if (areqModal) areqModal.addEventListener('click', (e) => { if (e.target.id === 'access-request-modal') closeAccessRequestModal(); });
+    // [B] edit by smsong - 거절 사유 입력 모달 (취소=사유없이 닫기, X/배경=거절 취소)
+    const rrClose = document.getElementById('reject-reason-close');
+    if (rrClose) rrClose.addEventListener('click', () => _closeRejectReason(null));
+    const rrCancel = document.getElementById('reject-reason-cancel');
+    if (rrCancel) rrCancel.addEventListener('click', () => _closeRejectReason(null));
+    const rrConfirm = document.getElementById('reject-reason-confirm');
+    if (rrConfirm) rrConfirm.addEventListener('click', () => {
+        const inp = document.getElementById('reject-reason-input');
+        _closeRejectReason(inp ? inp.value : '');
+    });
+    const rrModal = document.getElementById('reject-reason-modal');
+    if (rrModal) rrModal.addEventListener('click', (e) => { if (e.target.id === 'reject-reason-modal') _closeRejectReason(null); });
     // [E] edit by smsong
     // 헤더의 디데이 클릭 → 디데이 폼 열기
     const headerDday = document.querySelector('.dday-counter');

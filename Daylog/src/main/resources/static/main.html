@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
-    <link rel="icon" type="image/svg+xml" href="icon-master.svg">
+    <link rel="icon" type="image/svg+xml" href="icons/icon-master.svg">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <meta name="theme-color" content="#9c6644">
     <meta name="apple-mobile-web-app-title" content="Daylog">
@@ -267,6 +267,25 @@
         </div>
         <p class="perm-desc">이 방에 접근을 요청한 사용자가 있습니다. 수락하면 즉시 이용할 수 있고, 거절하면 접근이 차단됩니다.</p>
         <div id="access-request-body" class="perm-body"><div class="perm-loading">불러오는 중...</div></div>
+    </div>
+</div>
+<!-- [E] edit by smsong -->
+
+<!-- [B] edit by smsong - 거절 사유 입력 모달 (방장이 접근 요청 거절 시) -->
+<div id="reject-reason-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:420px;">
+        <div class="modal-header">
+            <h2 class="modal-title">입장 요청 거절</h2>
+            <button type="button" class="close-btn" id="reject-reason-close">&times;</button>
+        </div>
+        <p class="perm-desc">거절 사유를 남기면 요청한 사용자에게 전달됩니다. (선택 사항)</p>
+        <textarea id="reject-reason-input" rows="3" maxlength="500"
+            placeholder="예: 아는 사람만 참여할 수 있는 방이에요."
+            style="width:100%;padding:12px 13px;border:1px solid var(--gray-300,#d1cbc1);border-radius:12px;font-family:inherit;font-size:0.95rem;color:var(--gray-800,#2e2b28);background:var(--gray-50,#faf9f8);outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+            <button type="button" id="reject-reason-cancel" class="perm-btn" style="flex:1;background:var(--gray-100,#f3f0ec);color:var(--gray-600,#5c5751);">취소</button>
+            <button type="button" id="reject-reason-confirm" class="perm-btn perm-revoke" style="flex:1;">거절하기</button>
+        </div>
     </div>
 </div>
 <!-- [E] edit by smsong -->

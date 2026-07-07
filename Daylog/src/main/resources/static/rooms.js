@@ -32,6 +32,13 @@ function authHeaders(withJson) {
     return h;
 }
 
+// [B] edit by smsong - 권한 API(reject-seen/dismiss)는 방을 X-Room-Id 헤더로 구분
+function roomHeaders(roomId) {
+    const h = authHeaders(false);
+    if (roomId != null) h['X-Room-Id'] = String(roomId);
+    return h;
+}
+
 // =====================================================
 // ⭐ 무한 리다이렉트 차단의 핵심:
 //   로그인 화면으로 돌려보낼 때는 "항상" 토큰을 먼저 지운다.
@@ -76,12 +83,31 @@ const ddayInput = document.getElementById('room-dday-input');
 // [smsong] 상단 탭
 const tabMemberEl = document.getElementById('tab-member'); // 내가 속한 방
 const tabOwnerEl = document.getElementById('tab-owner');   // 내가 방장인 방
+const tabPendingEl = document.getElementById('tab-pending'); // [smsong] 요청 대기중인 방
 const mainEl = document.querySelector('.rooms-main');
+
+// [B] edit by smsong - 코드 입장 미리보기 모달
+const previewModalEl = document.getElementById('preview-modal');
+const previewThumbEl = document.getElementById('preview-thumb');
+const previewNameEl = document.getElementById('preview-name');
+const previewTypeEl = document.getElementById('preview-type');
+const previewCountEl = document.getElementById('preview-count');
+const previewNoteEl = document.getElementById('preview-note');
+const previewOkBtn = document.getElementById('preview-ok');
+const previewCancelBtn = document.getElementById('preview-cancel');
+// 거절 안내 모달
+const rejectModalEl = document.getElementById('reject-modal');
+const rejectReasonEl = document.getElementById('reject-reason');
+const rejectOkBtn = document.getElementById('reject-ok');
+let previewRoom = null; // 미리보기 중인 방
+let previewCode = null; // 미리보기 중 입력한 초대 코드(요청 전송 시 사용)
+// [E] edit by smsong
 
 let modalMode = null; // 'create' | 'join' | 'rename'
 let selectedType = null; // [smsong] 방 생성 시 기본 미선택
-let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방)
+let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방) | 'pending'(요청 대기중인 방)
 let myRooms = []; // [smsong] 내가 속한 방 원본(한 번 받아 탭별로 필터링)
+let myPendingRooms = []; // [B] edit by smsong - 요청 대기중/거절된 방 목록
 let renameTarget = null; // [smsong] 이름 수정 대상 방
 let selectedImageFile = null; // [smsong] 방 생성/수정 시 첨부한 대표 이미지
 
@@ -207,26 +233,47 @@ async function loadRooms() {
         if (!res.ok) { showToast('방 목록을 불러오지 못했습니다'); myRooms = []; renderCurrentView(); return; }
         const rooms = await res.json();
         myRooms = Array.isArray(rooms) ? rooms : [];
+        await loadPendingRooms(); // [B] edit by smsong - 요청 대기중/거절 방도 함께 갱신
         renderCurrentView();
+        maybeShowRejectNotice(); // [B] edit by smsong - 거절된 방 있으면 1회 안내
     } catch (e) {
         console.error(e);
         showToast('서버에 연결하지 못했습니다');
     }
 }
 
+// [B] edit by smsong - 요청 대기중/거절된 방 목록 로드
+async function loadPendingRooms() {
+    if (!uid) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}/pending`, { headers: authHeaders(true) });
+        if (!res.ok) { myPendingRooms = []; return; }
+        const list = await res.json();
+        myPendingRooms = Array.isArray(list) ? list : [];
+    } catch (e) {
+        console.error(e);
+        myPendingRooms = [];
+    }
+}
+
 // 현재 탭에 맞춰 필터링 후 렌더
 function renderCurrentView() {
-    const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
-    renderRooms(list);
+    if (currentView === 'pending') {
+        renderPendingRooms(myPendingRooms); // [B] edit by smsong
+    } else {
+        const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
+        renderRooms(list);
+    }
     if (mainEl) mainEl.scrollTop = 0; // [smsong] 렌더 직후 항상 맨 위에서 시작 (탭 전환 시 이전 스크롤 위치 캐시 방지)
 }
 
-// ===== 탭 전환 (내가 속한 방 / 내가 방장인 방) =====
+// ===== 탭 전환 (내가 속한 방 / 내가 방장인 방 / 요청 대기중인 방) =====
 function setView(view) {
     if (currentView === view) return;
     currentView = view;
-    if (tabMemberEl) tabMemberEl.classList.toggle('active', view === 'member');
-    if (tabOwnerEl)  tabOwnerEl.classList.toggle('active', view === 'owner');
+    if (tabMemberEl)  tabMemberEl.classList.toggle('active', view === 'member');
+    if (tabOwnerEl)   tabOwnerEl.classList.toggle('active', view === 'owner');
+    if (tabPendingEl) tabPendingEl.classList.toggle('active', view === 'pending');
     renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터 (스크롤 초기화 포함)
 }
 
@@ -314,6 +361,132 @@ function renderRooms(rooms) {
     });
 }
 
+// ===== 요청 대기중/거절된 방 렌더링 =====
+// [B] edit by smsong - PENDING: 승인 대기중 배지 / REJECTED: 거절됨 배지 + 사유 + X(제거)
+function renderPendingRooms(rooms) {
+    listEl.innerHTML = '';
+    if (!rooms.length) {
+        emptyEl.innerHTML = '요청 대기중인 방이 없어요.<br>코드로 입장을 요청하면 여기에 표시돼요.';
+        emptyEl.style.display = 'block';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    rooms.forEach(r => {
+        const rejected = r.myStatus === 'REJECTED';
+        const card = document.createElement('div');
+        card.className = 'room-card' + (rejected ? ' is-rejected' : '');
+
+        const t = typeLabel(r.type);
+        const imgUrl = r.imageUrl || r.thumbnailUrl || '';
+        const thumbHtml = imgUrl
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('room-thumb-empty','${t.cls}')"></div>`
+            : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
+        const statusBadge = rejected
+            ? '<span class="room-status-badge rejected">거절됨</span>'
+            : '<span class="room-status-badge pending">승인 대기중</span>';
+        const reasonHtml = (rejected && r.rejectReason)
+            ? `<div class="room-reject-reason">거절 사유: ${esc(r.rejectReason)}</div>`
+            : '';
+        const footerLeft = rejected
+            ? '<div class="room-pending-hint">방장이 요청을 거절했어요</div>'
+            : '<div class="room-pending-hint">방장 승인을 기다리는 중…</div>';
+
+        card.innerHTML = `
+            <div class="room-card-top">
+                ${thumbHtml}
+                <div class="room-card-body">
+                    <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> <span class="room-type-badge ${t.cls}">${t.label}</span> ${statusBadge}</div>
+                    <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
+                    ${reasonHtml}
+                </div>
+            </div>
+            <div class="room-card-footer">
+                ${footerLeft}
+                <div class="room-card-actions"></div>
+            </div>
+        `;
+
+        const actions = card.querySelector('.room-card-actions');
+        actions.addEventListener('click', (e) => e.stopPropagation());
+
+        if (rejected) {
+            // 거절된 방: X 버튼으로 목록에서 제거
+            const xBtn = document.createElement('button');
+            xBtn.className = 'room-icon-btn danger';
+            xBtn.type = 'button';
+            xBtn.title = '목록에서 제거';
+            xBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            xBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissRejected(r); });
+            actions.appendChild(xBtn);
+        } else {
+            // 대기중: 요청 취소(제거) 버튼도 X 로 제공
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'room-icon-btn';
+            cancelBtn.type = 'button';
+            cancelBtn.title = '요청 취소';
+            cancelBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissRejected(r, true); });
+            actions.appendChild(cancelBtn);
+        }
+
+        listEl.appendChild(card);
+    });
+}
+
+// [B] edit by smsong - 거절된 방(또는 대기중 요청) 제거 → 서버 dismiss 후 목록 갱신
+async function dismissRejected(r, isPending) {
+    if (isPending && !confirm(`'${r.name}' 방 입장 요청을 취소할까요?`)) return;
+    showLoading('처리 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/permissions/dismiss`, {
+            method: 'POST', headers: roomHeaders(r.id)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        // 성공/실패 무관하게 목록에서 즉시 제거(낙관적) 후 재동기화
+        myPendingRooms = myPendingRooms.filter(x => x.id !== r.id);
+        renderCurrentView();
+        await loadPendingRooms();
+        renderCurrentView();
+        showToast(isPending ? '요청을 취소했어요' : '목록에서 제거했어요');
+    } catch (e) {
+        showToast('서버에 연결하지 못했습니다');
+    } finally { hideLoading(); }
+}
+
+// [B] edit by smsong - 거절된 방이 있으면 최초 1회 안내 모달 표시 (rejectSeen=false)
+function maybeShowRejectNotice() {
+    const target = (myPendingRooms || []).find(r => r.myStatus === 'REJECTED' && r.rejectSeen === false);
+    if (!target) return;
+    openRejectNotice(target);
+}
+function openRejectNotice(r) {
+    if (!rejectModalEl) return;
+    if (rejectReasonEl) {
+        if (r.rejectReason) {
+            rejectReasonEl.innerHTML = '<span class="reject-reason-label">방장이 남긴 거절 사유</span>' + esc(r.rejectReason);
+            rejectReasonEl.style.display = 'block';
+        } else {
+            rejectReasonEl.style.display = 'none';
+        }
+    }
+    const descEl = document.getElementById('reject-desc');
+    if (descEl) descEl.textContent = `'${r.name}' 방의 입장 요청이 거절되어 이 방에서 제외되었습니다.`;
+    rejectModalEl.classList.remove('hidden');
+    // 서버에 '봤음' 기록 → 다음 진입부터는 안 뜸
+    markRejectSeen(r.id);
+}
+async function markRejectSeen(roomId) {
+    try {
+        await fetch(`${API_BASE}/api/permissions/reject-seen`, { method: 'POST', headers: roomHeaders(roomId) });
+        const t = (myPendingRooms || []).find(x => x.id === roomId);
+        if (t) t.rejectSeen = true; // 로컬도 갱신(같은 세션 중복 표시 방지)
+    } catch (e) { /* 조용히 무시 */ }
+}
+function closeRejectNotice() {
+    if (rejectModalEl) rejectModalEl.classList.add('hidden');
+}
+
 // ===== 방 입장 =====
 function enterRoom(r) {
     localStorage.setItem('selectedRoomId', r.id);
@@ -356,7 +529,7 @@ function openModal(mode) {
         resetRoomImagePicker('');
     } else {
         modalTitle.textContent = '코드로 입장';
-        modalDesc.textContent = '초대 코드를 입력하면 그 방의 멤버가 됩니다.';
+        modalDesc.textContent = '초대 코드를 입력하면 방을 확인하고 입장을 요청할 수 있어요.';
         modalInput.value = '';
         modalInput.placeholder = '초대 코드 6자리';
         modalInput.classList.add('code');
@@ -447,22 +620,109 @@ async function createRoom(name) {
     finally { hideLoading(); }
 }
 
-// ===== 코드로 입장 =====
+// ===== 코드로 입장 (1단계: 미리보기) =====
+// [B] edit by smsong - 코드로 바로 입장하지 않고, 어떤 방인지 미리보기 후 '입장 요청'을 보낸다.
 async function joinRoom(code) {
-    showLoading('입장하는 중...');
+    showLoading('방을 확인하는 중...');
     try {
-        const res = await fetch(`${API_BASE}/api/rooms/join`, {
-            method: 'POST', headers: authHeaders(true),
-            body: JSON.stringify({ uid: uid, code: code.toUpperCase() })
+        const res = await fetch(`${API_BASE}/api/rooms/preview?code=${encodeURIComponent(code.toUpperCase())}`, {
+            headers: authHeaders(true)
         });
         if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
         if (res.status === 404) { showToast('유효하지 않은 초대 코드입니다'); return; }
-        if (!res.ok) { showToast('입장하지 못했습니다'); return; }
+        if (!res.ok) { showToast('방을 확인하지 못했습니다'); return; }
         const room = await res.json();
+        previewCode = code.toUpperCase(); // [B] edit by smsong - 요청 전송 시 재사용
         closeModal();
-        enterRoom(room); // 입장 의도이므로 바로 방으로 이동 (이동 로딩 유지)
+        openPreviewModal(room); // 미리보기 폼 표시
     } catch (e) { showToast('서버에 연결하지 못했습니다'); }
     finally { hideLoading(); }
+}
+
+// 미리보기 모달 열기 — 방 상태(myStatus)에 따라 안내/버튼 조정
+function openPreviewModal(room) {
+    previewRoom = room;
+    const t = typeLabel(room.type);
+    if (previewNameEl) previewNameEl.textContent = room.name || '이름 없는 방';
+    if (previewTypeEl) { previewTypeEl.textContent = t.label; previewTypeEl.className = 'room-type-badge ' + t.cls; }
+    if (previewCountEl) previewCountEl.textContent = `멤버 ${Number(room.memberCount) || 0}명`;
+    if (previewThumbEl) {
+        const imgUrl = room.imageUrl || room.thumbnailUrl || '';
+        if (imgUrl) {
+            previewThumbEl.className = 'preview-thumb';
+            previewThumbEl.style.backgroundImage = `url('${imgUrl}')`;
+        } else {
+            previewThumbEl.className = 'preview-thumb room-thumb-empty ' + t.cls;
+            previewThumbEl.style.backgroundImage = '';
+        }
+    }
+
+    let note = '', okText = '입장 요청 보내기', okDisabled = false;
+    switch (room.myStatus) {
+        case 'OWNER':
+            note = '내가 방장인 방이에요. 바로 입장할 수 있어요.'; okText = '입장하기'; break;
+        case 'MEMBER':
+            note = '이미 참여 중인 방이에요. 바로 입장할 수 있어요.'; okText = '입장하기'; break;
+        case 'PENDING':
+            note = '이미 입장 요청을 보낸 방이에요. 방장 승인을 기다리는 중이에요.'; okText = '확인'; okDisabled = false; break;
+        case 'REJECTED':
+            note = '이전에 거절된 방이에요. 다시 입장 요청을 보낼 수 있어요.'; okText = '다시 요청 보내기'; break;
+        default:
+            note = ''; okText = '입장 요청 보내기';
+    }
+    if (previewNoteEl) {
+        if (note) { previewNoteEl.textContent = note; previewNoteEl.style.display = 'block'; }
+        else previewNoteEl.style.display = 'none';
+    }
+    if (previewOkBtn) { previewOkBtn.textContent = okText; previewOkBtn.disabled = okDisabled; }
+    if (previewModalEl) previewModalEl.classList.remove('hidden');
+}
+function closePreviewModal() {
+    if (previewModalEl) previewModalEl.classList.add('hidden');
+    previewRoom = null;
+    previewCode = null;
+}
+
+// 미리보기 확인 → 상태별 동작 (멤버/방장이면 입장, 그 외엔 요청 전송)
+async function confirmPreview() {
+    const room = previewRoom;
+    if (!room) { closePreviewModal(); return; }
+    // 이미 멤버/방장이면 바로 입장
+    if (room.myStatus === 'OWNER' || room.myStatus === 'MEMBER') {
+        closePreviewModal();
+        enterRoom(room);
+        return;
+    }
+    // 이미 대기중이면 대기 탭으로 이동만
+    if (room.myStatus === 'PENDING') {
+        closePreviewModal();
+        await loadPendingRooms();
+        setView('pending');
+        renderCurrentView();
+        return;
+    }
+    // NONE / REJECTED → 입장 요청 전송
+    if (previewOkBtn) previewOkBtn.disabled = true;
+    showLoading('요청을 보내는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/join`, {
+            method: 'POST', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid, code: previewCode || room.inviteCode || '' })
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('요청을 보내지 못했습니다'); return; }
+        const result = await res.json();
+        closePreviewModal();
+        if (result && (result.myStatus === 'OWNER' || result.myStatus === 'MEMBER')) {
+            enterRoom(result); // 방장/이미 멤버였다면 바로 입장
+            return;
+        }
+        showToast('입장 요청을 보냈어요. 방장 승인을 기다려주세요');
+        await loadPendingRooms();
+        setView('pending');
+        renderCurrentView();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); if (previewOkBtn) previewOkBtn.disabled = false; }
 }
 
 // ===== 방 삭제 (방장) =====
@@ -509,6 +769,13 @@ async function leaveRoom(r) {
 // ===== 이벤트 바인딩 =====
 if (tabMemberEl) tabMemberEl.addEventListener('click', () => setView('member'));
 if (tabOwnerEl)  tabOwnerEl.addEventListener('click', () => setView('owner'));
+if (tabPendingEl) tabPendingEl.addEventListener('click', () => setView('pending'));
+// [B] edit by smsong - 미리보기/거절 모달 이벤트
+if (previewOkBtn) previewOkBtn.addEventListener('click', confirmPreview);
+if (previewCancelBtn) previewCancelBtn.addEventListener('click', closePreviewModal);
+if (previewModalEl) previewModalEl.addEventListener('click', (e) => { if (e.target === previewModalEl) closePreviewModal(); });
+if (rejectOkBtn) rejectOkBtn.addEventListener('click', closeRejectNotice);
+if (rejectModalEl) rejectModalEl.addEventListener('click', (e) => { if (e.target === rejectModalEl) closeRejectNotice(); });
 document.getElementById('btn-create-room').addEventListener('click', () => openModal('create'));
 document.getElementById('btn-join-room').addEventListener('click', () => openModal('join'));
 document.querySelectorAll('.type-chip').forEach(ch => {

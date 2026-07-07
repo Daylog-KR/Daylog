@@ -15,4 +15,8 @@ public interface PermissionRepository extends JpaRepository<PermissionEntity, Lo
     // 방 삭제 시 해당 방의 권한행 일괄 정리 (고아 행 방지)
     void deleteByRoomId(Long roomId);
     // [E] edit by smsong
+
+    // [B] edit by smsong - '요청 대기중인 방' 탭용: 내가 요청(PENDING)/거절(REJECTED)된 방 조회
+    List<PermissionEntity> findByUidAndRequestStatusInOrderByRequestedAtDesc(String uid, List<String> statuses);
+    // [E] edit by smsong
 }

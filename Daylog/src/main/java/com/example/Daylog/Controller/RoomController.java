@@ -50,13 +50,29 @@ public class RoomController {
         return ResponseEntity.ok(roomService.createRoom(uid, name, type, coupleSince));
     }
 
-    // 코드로 입장 (body: { uid, code })
+    // [B] edit by smsong - 코드로 방 미리보기 (입장 전 어떤 방인지 확인)
+    @GetMapping("/preview")
+    public ResponseEntity<RoomDTO> previewRoom(@RequestParam("code") String code,
+                                               @AuthenticationPrincipal UserDetails ud) {
+        if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
+        return ResponseEntity.ok(roomService.previewByCode(ud.getUsername(), code));
+    }
+
+    // [B] edit by smsong - 내가 요청 대기중/거절된 방 목록
+    @GetMapping("/{uid}/pending")
+    public ResponseEntity<List<RoomDTO>> pendingRooms(@PathVariable("uid") String uid,
+                                                      @AuthenticationPrincipal UserDetails ud) {
+        verify(uid, ud);
+        return ResponseEntity.ok(roomService.listPendingForUser(uid));
+    }
+
+    // 코드로 입장 요청 (body: { uid, code }) — 즉시 입장이 아니라 방장 승인 대기 요청 생성
     @PostMapping("/join")
     public ResponseEntity<RoomDTO> joinRoom(@RequestBody Map<String, String> body,
                                             @AuthenticationPrincipal UserDetails ud) {
         String uid = body.get("uid");
         verify(uid, ud);
-        return ResponseEntity.ok(roomService.joinByCode(uid, body.get("code")));
+        return ResponseEntity.ok(roomService.requestJoinByCode(uid, body.get("code")));
     }
 
     // 방 멤버 상세

@@ -37,6 +37,8 @@
     <nav class="rooms-tabs">
         <button id="tab-member" class="rooms-tab active" type="button">내가 속한 방</button>
         <button id="tab-owner" class="rooms-tab" type="button">내가 방장인 방</button>
+        <!-- [B] edit by smsong - 요청 대기중/거절된 방 -->
+        <button id="tab-pending" class="rooms-tab" type="button">요청 대기중인 방</button>
     </nav>
 
     <main class="rooms-main">
@@ -84,6 +86,44 @@
         <div class="room-modal-actions">
             <button id="room-modal-cancel" class="rm-btn" type="button">취소</button>
             <button id="room-modal-ok" class="rm-btn primary" type="button">확인</button>
+        </div>
+    </div>
+</div>
+
+<!-- [B] edit by smsong - 코드 입장 미리보기 모달: 어떤 방인지 확인 후 입장 요청 -->
+<div id="preview-modal" class="room-modal hidden">
+    <div class="room-modal-card">
+        <div class="room-modal-title">이 방에 입장 요청할까요?</div>
+        <div class="room-modal-desc">방장이 요청을 수락하면 방에 참여할 수 있어요.</div>
+        <div class="preview-room">
+            <div id="preview-thumb" class="preview-thumb room-thumb-empty"></div>
+            <div class="preview-info">
+                <div id="preview-name" class="preview-name">방 이름</div>
+                <div class="preview-meta">
+                    <span id="preview-type" class="room-type-badge couple">커플</span>
+                    <span id="preview-count" class="preview-count">멤버 0명</span>
+                </div>
+            </div>
+        </div>
+        <div id="preview-note" class="preview-note" style="display:none;"></div>
+        <div class="room-modal-actions">
+            <button id="preview-cancel" class="rm-btn" type="button">취소</button>
+            <button id="preview-ok" class="rm-btn primary" type="button">입장 요청 보내기</button>
+        </div>
+    </div>
+</div>
+
+<!-- [B] edit by smsong - 거절 안내 모달: 거절된 유저가 rooms 최초 진입 시 1회 표시 -->
+<div id="reject-modal" class="room-modal hidden">
+    <div class="room-modal-card">
+        <div class="reject-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div class="room-modal-title" id="reject-title">입장 요청이 거절되었습니다</div>
+        <div class="room-modal-desc" id="reject-desc">방장이 입장 요청을 거절하여 이 방에 참여할 수 없습니다.</div>
+        <div id="reject-reason" class="reject-reason" style="display:none;"></div>
+        <div class="room-modal-actions">
+            <button id="reject-ok" class="rm-btn primary" type="button">확인</button>
         </div>
     </div>
 </div>

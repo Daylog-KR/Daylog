@@ -46,6 +46,13 @@ public class PermissionEntity {
     // 접근 요청 상태: NONE / PENDING / APPROVED / REJECTED
     @Builder.Default private String requestStatus = "NONE";
 
+    // [B] edit by smsong - 방장이 입력한 거절 사유 + 거절 안내 1회 표시 여부
+    //  거절 시 방장이 사유를 남기고, 거절된 유저는 rooms 페이지 최초 진입 때 이 사유를 1회만 안내받는다.
+    @Column(length = 500)
+    private String rejectReason;
+    @Builder.Default private boolean rejectSeen = false; // 거절 안내를 이미 봤는지(중복 표시 방지)
+    // [E] edit by smsong
+
     private LocalDateTime requestedAt;
     private LocalDateTime decidedAt;
     private LocalDateTime createdAt;

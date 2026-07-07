@@ -70,12 +70,30 @@ public class PermissionController {
         return ResponseEntity.ok(permissionService.updatePermission(roomId, targetUid, patch, uidOf(ud)));
     }
 
-    // 방장: 접근 요청 승인/거절
+    // 방장: 접근 요청 승인/거절 (거절 시 ?reason= 로 거절 사유 전달, 선택)
     @PostMapping("/{uid}/decide")
     public ResponseEntity<PermissionDTO> decide(@PathVariable("uid") String targetUid,
                                                 @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
                                                 @RequestParam("approve") boolean approve,
+                                                @RequestParam(value = "reason", required = false) String reason,
                                                 @AuthenticationPrincipal UserDetails ud) {
-        return ResponseEntity.ok(permissionService.decideAccess(roomId, targetUid, approve, uidOf(ud)));
+        return ResponseEntity.ok(permissionService.decideAccess(roomId, targetUid, approve, uidOf(ud), reason));
     }
+
+    // [B] edit by smsong - 거절된 유저: 거절 안내를 봤음을 기록 (rooms 페이지 1회 안내 후)
+    @PostMapping("/reject-seen")
+    public ResponseEntity<Void> rejectSeen(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                           @AuthenticationPrincipal UserDetails ud) {
+        permissionService.markRejectSeen(uidOf(ud), roomId);
+        return ResponseEntity.ok().build();
+    }
+
+    // [B] edit by smsong - 거절된 유저: '요청 대기중인 방'에서 해당 방 제거(X)
+    @PostMapping("/dismiss")
+    public ResponseEntity<Void> dismiss(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                        @AuthenticationPrincipal UserDetails ud) {
+        permissionService.dismissRequest(uidOf(ud), roomId);
+        return ResponseEntity.ok().build();
+    }
+    // [E] edit by smsong
 }

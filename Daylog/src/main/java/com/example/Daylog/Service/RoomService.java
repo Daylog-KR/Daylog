@@ -134,22 +134,76 @@ public class RoomService {
         return getRoomWithMembers(roomId, ownerUid);
     }
 
-    // ===== 코드로 입장 =====
+    // ===== 코드로 방 미리보기 (입장 전, 어떤 방인지 확인용) =====
+    // [B] edit by smsong - 코드만으로 방 정보를 조회. 실제 멤버 등록/요청은 하지 않음.
+    //   myStatus 로 요청자의 현재 상태(OWNER/MEMBER/PENDING/REJECTED/NONE)를 함께 반환한다.
+    @Transactional(readOnly = true)
+    public RoomDTO previewByCode(String uid, String code) {
+        RoomEntity room = resolveByCode(code);
+        Long roomId = room.getId();
+        long cnt = roomMemberRepository.countByRoomId(roomId);
+        if (uid != null && uid.equals(room.getOwnerUid())) {
+            return RoomDTO.preview(room, uid, cnt, "OWNER", null, null);
+        }
+        if (roomMemberRepository.existsByRoomIdAndUid(roomId, uid)) {
+            return RoomDTO.preview(room, uid, cnt, "MEMBER", null, null);
+        }
+        var row = permissionService.findRow(roomId, uid);
+        String status = row.map(r -> {
+            if ("PENDING".equals(r.getRequestStatus())) return "PENDING";
+            if ("REJECTED".equals(r.getRequestStatus())) return "REJECTED";
+            return "NONE";
+        }).orElse("NONE");
+        String reason = "REJECTED".equals(status) ? row.map(r -> r.getRejectReason()).orElse(null) : null;
+        Boolean seen = "REJECTED".equals(status) ? row.map(r -> r.isRejectSeen()).orElse(null) : null;
+        return RoomDTO.preview(room, uid, cnt, status, reason, seen);
+    }
+
+    // ===== 코드로 입장 요청 (즉시 입장 아님 → 방장 승인 대기) =====
+    // [B] edit by smsong - 코드 입장은 이제 '요청'만 생성한다. 방장이 승인해야 멤버가 됨.
     @Transactional
-    public RoomDTO joinByCode(String uid, String code) {
+    public RoomDTO requestJoinByCode(String uid, String code) {
+        RoomEntity room = resolveByCode(code);
+        Long roomId = room.getId();
+        // 방장이거나 이미 멤버면 그대로 입장 가능 상태로 반환
+        if (uid != null && uid.equals(room.getOwnerUid())) {
+            return RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), "OWNER", null, null);
+        }
+        if (roomMemberRepository.existsByRoomIdAndUid(roomId, uid)) {
+            return RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), "MEMBER", null, null);
+        }
+        // 그 외: 접근 요청(PENDING) 생성 (이전 거절 흔적은 requestAccess 내부에서 초기화)
+        permissionService.requestAccess(uid, roomId);
+        return RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), "PENDING", null, null);
+    }
+
+    private RoomEntity resolveByCode(String code) {
         if (code == null || code.trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "초대 코드를 입력하세요");
         }
         String norm = code.trim().toUpperCase();
-        RoomEntity room = roomRepository.findByInviteCode(norm)
+        return roomRepository.findByInviteCode(norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "유효하지 않은 초대 코드입니다"));
-        if (!roomMemberRepository.existsByRoomIdAndUid(room.getId(), uid)) {
-            roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(uid).build());
-            // [B] edit by smsong - 새로(재)입장 시 이전 승인 이력 초기화 → 방장 승인부터 다시 (방장 제외)
-            if (!uid.equals(room.getOwnerUid())) permissionService.revokeMembership(room.getId(), uid);
-            // [E] edit by smsong
+    }
+
+    // ===== '요청 대기중인 방' 목록 (PENDING/REJECTED, 멤버 아님) =====
+    // [B] edit by smsong - 내가 요청했거나 거절된 방들. 승인되어 멤버가 된 방은 여기서 제외(내가 속한 방으로 이동).
+    @Transactional(readOnly = true)
+    public List<RoomDTO> listPendingForUser(String uid) {
+        List<RoomDTO> result = new ArrayList<>();
+        for (var row : permissionService.listMyRequestRows(uid)) {
+            Long roomId = row.getRoomId();
+            // 이미 멤버가 됐거나 방장이면 제외(정합성 방어)
+            if (roomMemberRepository.existsByRoomIdAndUid(roomId, uid)) continue;
+            roomRepository.findById(roomId).ifPresent(room -> {
+                if (uid.equals(room.getOwnerUid())) return;
+                String status = "REJECTED".equals(row.getRequestStatus()) ? "REJECTED" : "PENDING";
+                String reason = "REJECTED".equals(status) ? row.getRejectReason() : null;
+                Boolean seen = "REJECTED".equals(status) ? row.isRejectSeen() : null;
+                result.add(RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), status, reason, seen));
+            });
         }
-        return RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
+        return result;
     }
 
     // ===== 삭제 (방장만) — 멤버십 제거 + 방 삭제. 방 내부 콘텐츠는 별도 정리(오퍼레이션 문서 참고) =====

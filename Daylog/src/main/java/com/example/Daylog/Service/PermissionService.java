@@ -107,7 +107,14 @@ public class PermissionService {
         PermissionEntity e = getOrCreate(roomId, uid);
         syncSnapshot(e, user);
         boolean owner = isOwner(roomId, uid);
-        if (!owner && !e.isAdminApproved()) { e.setRequestStatus("PENDING"); e.setRequestedAt(LocalDateTime.now()); }
+        if (!owner && !e.isAdminApproved()) {
+            e.setRequestStatus("PENDING");
+            e.setRequestedAt(LocalDateTime.now());
+            // [B] edit by smsong - 재요청 시 이전 거절 흔적 초기화 (요청 대기중으로 되돌림)
+            e.setRejectReason(null);
+            e.setRejectSeen(false);
+            // [E] edit by smsong
+        }
         e = permissionRepository.save(e);
         return PermissionDTO.effective(e, owner, owner);
     }
@@ -172,18 +179,71 @@ public class PermissionService {
     }
 
     // ===== 방장: 접근 요청 승인/거절 =====
+    //  [B] edit by smsong - 승인 시 비로소 방 멤버로 등록(코드 입장은 이제 '요청'만 생성).
+    //   거절 시 거절 사유를 저장하고 멤버십을 제거(요청만 있던 유저는 멤버가 아니라 no-op).
     @Transactional
-    public PermissionDTO decideAccess(Long roomId, String targetUid, boolean approve, String requesterUid) {
+    public PermissionDTO decideAccess(Long roomId, String targetUid, boolean approve, String requesterUid, String reason) {
         requireOwner(roomId, requesterUid);
         PermissionEntity e = permissionRepository.findByRoomIdAndUid(roomId, targetUid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대상 사용자를 찾을 수 없습니다."));
         e.setAdminApproved(approve); e.setAccessAllowed(approve);
         e.setRequestStatus(approve ? "APPROVED" : "REJECTED"); e.setDecidedAt(LocalDateTime.now());
-        if (!approve) { e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false); }
+        if (approve) {
+            // 승인: 아직 멤버가 아니면 지금 멤버로 등록 → '내가 속한 방'에 노출
+            if (!roomMemberRepository.existsByRoomIdAndUid(roomId, targetUid)) {
+                roomMemberRepository.save(RoomMemberEntity.builder().roomId(roomId).uid(targetUid).build());
+            }
+            e.setRejectReason(null); e.setRejectSeen(false);
+        } else {
+            // 거절: 권한 전부 회수 + 멤버십 제거 + 거절 사유 저장(유저에게 1회 안내)
+            e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false);
+            e.setRejectReason((reason == null || reason.trim().isEmpty()) ? null : reason.trim());
+            e.setRejectSeen(false);
+            roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
+        }
         e = permissionRepository.save(e);
         boolean owner = isOwner(roomId, targetUid);
         return PermissionDTO.raw(e, owner, owner);
     }
+
+    // [B] edit by smsong - 거절 안내를 봤음을 기록 (rooms 페이지 1회 안내 후 호출)
+    @Transactional
+    public void markRejectSeen(String uid, Long roomId) {
+        requireRoom(roomId);
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            if ("REJECTED".equals(e.getRequestStatus()) && !e.isRejectSeen()) {
+                e.setRejectSeen(true);
+                permissionRepository.save(e);
+            }
+        });
+    }
+
+    // [B] edit by smsong - 거절된 방을 '요청 대기중인 방' 목록에서 제거(X). 권한행 자체를 삭제한다.
+    //  (멤버가 아니므로 안전. 다시 코드 입력하면 새로 요청 가능)
+    @Transactional
+    public void dismissRequest(String uid, Long roomId) {
+        requireRoom(roomId);
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            if (isOwner(roomId, uid)) return;                 // 방장 본인 행은 건드리지 않음(방어)
+            if (isMember(roomId, uid)) return;                // 이미 멤버면 삭제 금지(방어)
+            permissionRepository.delete(e);
+        });
+    }
+
+    // [B] edit by smsong - '요청 대기중인 방' 탭용: 내가 요청/거절된 권한행(멤버 아님 전제)
+    @Transactional(readOnly = true)
+    public List<PermissionEntity> listMyRequestRows(String uid) {
+        if (uid == null) return new ArrayList<>();
+        return permissionRepository.findByUidAndRequestStatusInOrderByRequestedAtDesc(
+                uid, List.of("PENDING", "REJECTED"));
+    }
+
+    // [B] edit by smsong - 미리보기용: 특정 방에 대한 내 권한행 조회
+    @Transactional(readOnly = true)
+    public Optional<PermissionEntity> findRow(Long roomId, String uid) {
+        return rowOf(roomId, uid);
+    }
+    // [E] edit by smsong
 
     // [B] edit by smsong - 멤버 강퇴/탈퇴 시 호출: 권한행 초기화 → 재입장해도 방장 승인부터 다시.
     //  RoomService.kickMember / leaveRoom / joinByCode(재입장) 에서 호출.
