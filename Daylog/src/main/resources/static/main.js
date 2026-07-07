@@ -5105,3 +5105,69 @@ document.addEventListener('DOMContentLoaded', () => {
     // ESC 로 리스트 모달도 닫기
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeListModal(); closeTrashModal(); } });
 });
+// [B] edit by smsong - 당겨서 새로고침 (UpFit 스타일)
+//  main 은 body:overflow hidden + 고정높이 .container 스크롤러라 네이티브 PTR이 불가.
+//  → .container 최상단(scrollTop<=0)에서 아래로 당기면 스피너를 보여주고, 임계값 이상이면 새로고침.
+//  지도 탭/모달·시트·차단화면이 떠 있을 때는 비활성(오작동 방지).
+function initPullToRefresh() {
+    var container = document.querySelector('.container');
+    var spin = document.getElementById('ptr-spin');
+    if (!container || !spin) return;
+    var svg = spin.querySelector('svg');
+
+    var THRESHOLD = 66;  // 이 이상 당기면 새로고침
+    var MAX = 120;       // 시각적 최대 당김
+    var startY = 0, dist = 0, active = false, pulling = false;
+
+    function onMapTab() { return document.body.getAttribute('data-active-tab') === 'tab-map'; }
+    function overlayOpen() {
+        return !!(document.querySelector('.modal:not(.hidden)')
+            || document.querySelector('.sheet.open, .room-modal:not(.hidden)')
+            || document.getElementById('auth-block-overlay')
+            || document.querySelector('.location-mode:not(.hidden)'));
+    }
+    function setSpin(d) {
+        var ratio = Math.min(1, d / THRESHOLD);
+        spin.classList.add('visible');
+        spin.style.transform = 'translate(-50%, ' + (d * 0.5) + 'px) scale(' + (0.5 + ratio * 0.5) + ')';
+        if (svg) svg.style.transform = 'rotate(' + (d * 3) + 'deg)';
+    }
+    function reset() {
+        spin.classList.remove('visible', 'spinning');
+        spin.style.transform = 'translate(-50%, -12px) scale(0.5)';
+        if (svg) svg.style.transform = '';
+        pulling = false; dist = 0;
+    }
+
+    container.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1 || onMapTab() || overlayOpen() || container.scrollTop > 0) { active = false; return; }
+        active = true; pulling = false; dist = 0;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    container.addEventListener('touchmove', function (e) {
+        if (!active) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy <= 0 || container.scrollTop > 0) { if (pulling) reset(); active = false; return; }
+        pulling = true;
+        dist = Math.min(MAX, dy * 0.6); // 저항감(당길수록 둔해짐)
+        setSpin(dist);
+        if (e.cancelable) e.preventDefault(); // 네이티브 오버스크롤/러버밴딩 억제
+    }, { passive: false });
+
+    function onEnd() {
+        if (!active) return;
+        active = false;
+        if (pulling && dist >= THRESHOLD) {
+            spin.classList.add('spinning', 'visible');
+            spin.style.transform = 'translate(-50%, 20px) scale(1)';
+            setTimeout(function () { location.reload(); }, 320);
+        } else {
+            reset();
+        }
+    }
+    container.addEventListener('touchend', onEnd);
+    container.addEventListener('touchcancel', reset);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPullToRefresh);
+else initPullToRefresh();
