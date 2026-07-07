@@ -50,7 +50,10 @@ public class PermissionEntity {
     //  거절 시 방장이 사유를 남기고, 거절된 유저는 rooms 페이지 최초 진입 때 이 사유를 1회만 안내받는다.
     @Column(length = 500)
     private String rejectReason;
-    @Builder.Default private boolean rejectSeen = false; // 거절 안내를 이미 봤는지(중복 표시 방지)
+    // [smsong] 기존 행이 있는 테이블에 NOT NULL 컬럼을 추가할 때 DEFAULT 가 없으면 실패하므로 명시.
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
+    private boolean rejectSeen = false; // 거절 안내를 이미 봤는지(중복 표시 방지)
     // [E] edit by smsong
 
     private LocalDateTime requestedAt;
