@@ -127,6 +127,22 @@ public class PermissionService {
         return 3;
     }
 
+    // [B] edit by smsong - 방장: 대기중(PENDING) 접근 요청만 조회 (방 진입 시 알림 폼용)
+    //  전체 멤버 목록(listAll)보다 가볍고, 아직 결정되지 않은 요청만 반환.
+    @Transactional(readOnly = true)
+    public List<PermissionDTO> listPending(Long roomId, String requesterUid) {
+        requireOwner(roomId, requesterUid);
+        List<PermissionEntity> rows = permissionRepository.findByRoomIdAndRequestStatusOrderByRequestedAtAsc(roomId, "PENDING");
+        List<PermissionDTO> result = new ArrayList<>();
+        for (PermissionEntity e : rows) {
+            if (isOwner(roomId, e.getUid())) continue; // 방장 본인은 제외(방어적)
+            if (e.isAdminApproved()) continue;          // 이미 승인된 잔여 PENDING 방어
+            result.add(PermissionDTO.raw(e, false, false));
+        }
+        return result;
+    }
+    // [E] edit by smsong
+
     // ===== 방장: 권한 변경 =====
     @Transactional
     public PermissionDTO updatePermission(Long roomId, String targetUid, PermissionDTO patch, String requesterUid) {

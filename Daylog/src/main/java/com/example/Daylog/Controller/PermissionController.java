@@ -53,6 +53,14 @@ public class PermissionController {
         return ResponseEntity.ok(permissionService.listAll(roomId, uidOf(ud)));
     }
 
+    // [B] edit by smsong - 방장: 대기중 접근 요청 목록 (방 진입 시 알림 폼용)
+    @GetMapping("/pending")
+    public ResponseEntity<List<PermissionDTO>> pending(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                       @AuthenticationPrincipal UserDetails ud) {
+        return ResponseEntity.ok(permissionService.listPending(roomId, uidOf(ud)));
+    }
+    // [E] edit by smsong
+
     // 방장: 권한 변경
     @PutMapping("/{uid}")
     public ResponseEntity<PermissionDTO> update(@PathVariable("uid") String targetUid,

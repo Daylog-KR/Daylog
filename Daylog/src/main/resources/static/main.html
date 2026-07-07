@@ -258,6 +258,19 @@
 </div>
 <!-- [E] edit by smsong -->
 
+<!-- [B] edit by smsong - 접근 요청 알림 모달 (방장 진입 시: 대기중 요청 즉시 수락/거절) -->
+<div id="access-request-modal" class="modal hidden">
+    <div class="modal-content perm-content">
+        <div class="modal-header">
+            <h2 class="modal-title">접근 요청 알림</h2>
+            <button type="button" class="close-btn" id="access-request-close">&times;</button>
+        </div>
+        <p class="perm-desc">이 방에 접근을 요청한 사용자가 있습니다. 수락하면 즉시 이용할 수 있고, 거절하면 접근이 차단됩니다.</p>
+        <div id="access-request-body" class="perm-body"><div class="perm-loading">불러오는 중...</div></div>
+    </div>
+</div>
+<!-- [E] edit by smsong -->
+
 <!-- [smsong] 방 멤버 관리 모달 (방장 전용: 멤버 목록 + 강퇴) -->
 <div id="room-members-modal" class="modal hidden">
     <div class="modal-content perm-content">

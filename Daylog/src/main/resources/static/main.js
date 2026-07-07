@@ -315,6 +315,9 @@ function loadMyPermission() {
             Daylog.myPerm = p || null;
             applyMyPermUI();
             if (p && !p.accessAllowed && !p.admin) { blockUnauthorizedUser(); } // 접근 미허용 → 차단
+            // [B] edit by smsong - 방장(관리자)이면 진입 시 대기중 접근 요청 알림 확인
+            else if ((p && p.admin) || isRoomOwner()) { try { checkPendingAccessRequests(); } catch (e) {} }
+            // [E] edit by smsong
             return p;
         })
         .catch(function () {
@@ -528,6 +531,68 @@ function putPermission(uid, patch) {
         .then(function () { openPermissionAdmin(); })
         .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
+// [E] edit by smsong
+
+// [B] edit by smsong - 방장 진입 시: 대기중(PENDING) 접근 요청 알림 폼
+//  loadMyPermission 이후 방장/관리자면 checkPendingAccessRequests() 호출 →
+//  요청이 있으면 모달을 띄우고, 각 요청을 즉시 수락/거절(기존 /decide API 재사용).
+function checkPendingAccessRequests() {
+    if (!(Daylog && Daylog.api)) return;
+    _permFetch('/api/permissions/pending', { headers: Daylog.authHeaders(true) })
+        .then(function (list) {
+            if (!list || !list.length) return;         // 대기중 요청 없으면 조용히 종료
+            renderAccessRequests(list);
+            var modal = document.getElementById('access-request-modal');
+            if (modal) modal.classList.remove('hidden');
+        })
+        .catch(function (err) { console.warn('[Daylog] 대기중 접근 요청 조회 실패:', err); });
+}
+function renderAccessRequests(list) {
+    var body = document.getElementById('access-request-body');
+    if (!body) return;
+    if (!list || !list.length) { closeAccessRequestModal(); return; }
+    var html = '';
+    list.forEach(function (p) {
+        var name = (p.nickname && String(p.nickname).trim()) ? p.nickname : (p.name || p.uid);
+        var avatar = p.profileURL
+            ? '<img src="' + escapeHtml(p.profileURL) + '" class="perm-ava" alt="">'
+            : '<div class="perm-ava perm-ava-empty">' + icon('user', 18) + '</div>';
+        var when = p.requestedAt ? fmtDateTime(p.requestedAt) : '';
+        html += '<div class="perm-row areq-row" data-uid="' + escapeHtml(p.uid) + '">' +
+            '<div class="perm-user">' + avatar +
+              '<div class="perm-user-meta">' +
+                '<div class="perm-name">' + escapeHtml(name) + '</div>' +
+                '<span class="perm-badge perm-pending">' + (when ? (when + ' 요청') : '접근 요청') + '</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="perm-access">' +
+              '<button type="button" class="perm-btn perm-approve" onclick="decideAccessRequest(\'' + p.uid + '\',true,this)">수락</button>' +
+              '<button type="button" class="perm-btn perm-revoke" onclick="decideAccessRequest(\'' + p.uid + '\',false,this)">거절</button>' +
+            '</div>' +
+        '</div>';
+    });
+    body.innerHTML = html;
+}
+function decideAccessRequest(uid, approve, btnEl) {
+    var row = btnEl ? btnEl.closest('.areq-row') : null;
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=' + approve,
+        { method: 'POST', headers: Daylog.authHeaders(true) }), approve ? '수락하는 중...' : '거절하는 중...')
+        .then(function () {
+            showToast(approve ? '접근을 수락했습니다' : '접근을 거절했습니다');
+            if (row && row.parentNode) row.parentNode.removeChild(row);
+            var body = document.getElementById('access-request-body');
+            if (body && !body.querySelector('.areq-row')) closeAccessRequestModal(); // 남은 요청 없으면 닫기
+            // 권한 관리 모달이 열려 있으면 목록 동기화
+            var permModal = document.getElementById('perm-modal');
+            if (permModal && !permModal.classList.contains('hidden') && typeof openPermissionAdmin === 'function') openPermissionAdmin();
+        })
+        .catch(function (err) { showToast('처리 실패: ' + (err && err.message ? err.message : '')); });
+}
+function closeAccessRequestModal() {
+    var modal = document.getElementById('access-request-modal');
+    if (modal) modal.classList.add('hidden');
+}
+if (Daylog) { Daylog.checkPendingAccessRequests = checkPendingAccessRequests; }
 // [E] edit by smsong
 // 마지막 수정 일시 포맷 (YYYY.MM.DD HH:mm)
 function fmtDateTime(s) {
@@ -2617,6 +2682,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (permClose) permClose.addEventListener('click', closePermissionAdmin);
     const permModal = document.getElementById('perm-modal');
     if (permModal) permModal.addEventListener('click', (e) => { if (e.target.id === 'perm-modal') closePermissionAdmin(); });
+    // 접근 요청 알림 모달 닫기 (X · 배경 클릭)
+    const areqClose = document.getElementById('access-request-close');
+    if (areqClose) areqClose.addEventListener('click', closeAccessRequestModal);
+    const areqModal = document.getElementById('access-request-modal');
+    if (areqModal) areqModal.addEventListener('click', (e) => { if (e.target.id === 'access-request-modal') closeAccessRequestModal(); });
     // [E] edit by smsong
     // 헤더의 디데이 클릭 → 디데이 폼 열기
     const headerDday = document.querySelector('.dday-counter');

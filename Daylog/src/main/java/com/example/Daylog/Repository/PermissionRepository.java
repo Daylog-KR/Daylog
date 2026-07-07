@@ -10,4 +10,7 @@ import java.util.Optional;
 public interface PermissionRepository extends JpaRepository<PermissionEntity, Long> {
     Optional<PermissionEntity> findByRoomIdAndUid(Long roomId, String uid);
     List<PermissionEntity> findByRoomIdOrderByAccessAllowedDescUpdatedAtDesc(Long roomId);
+    // [B] edit by smsong - 방 진입 알림용: 대기중(PENDING) 접근 요청만 (오래된 요청 먼저)
+    List<PermissionEntity> findByRoomIdAndRequestStatusOrderByRequestedAtAsc(Long roomId, String requestStatus);
+    // [E] edit by smsong
 }
