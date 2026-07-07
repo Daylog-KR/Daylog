@@ -77,6 +77,8 @@ const modalDesc = document.getElementById('room-modal-desc');
 const modalInput = document.getElementById('room-modal-input');
 const modalOk = document.getElementById('room-modal-ok');
 const modalCancel = document.getElementById('room-modal-cancel');
+const pasteRow = document.getElementById('room-paste-row');   // [B] edit by smsong
+const pasteBtn = document.getElementById('room-modal-paste'); // [B] edit by smsong
 const typeRow = document.getElementById('room-type-row');
 const ddayRow = document.getElementById('room-dday-row');
 const ddayInput = document.getElementById('room-dday-input');
@@ -527,6 +529,7 @@ function openModal(mode) {
         updateTypeChips();
         if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 대표 이미지 첨부
         resetRoomImagePicker('');
+        if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong - 붙여넣기는 코드 입장 전용
     } else {
         modalTitle.textContent = '코드로 입장';
         modalDesc.textContent = '초대 코드를 입력하면 방을 확인하고 입장을 요청할 수 있어요.';
@@ -537,6 +540,7 @@ function openModal(mode) {
         typeRow.style.display = 'none';
         if (ddayRow) ddayRow.style.display = 'none';
         if (imgPickerRow) imgPickerRow.style.display = 'none'; // [smsong] 입장 모드엔 이미지 없음
+        if (pasteRow) pasteRow.style.display = 'block'; // [B] edit by smsong - 코드 붙여넣기 노출
     }
     modalEl.classList.remove('hidden');
     setTimeout(() => modalInput.focus(), 50);
@@ -556,6 +560,7 @@ function openRenameModal(r) {
     if (ddayRow) ddayRow.style.display = 'none';
     if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 이름 수정 시 대표 이미지도 변경 가능
     resetRoomImagePicker(r.imageUrl || r.thumbnailUrl || '');
+    if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong
     modalEl.classList.remove('hidden');
     setTimeout(() => { modalInput.focus(); modalInput.select(); }, 50);
 }
@@ -563,6 +568,25 @@ function openRenameModal(r) {
 function closeModal() {
     modalEl.classList.add('hidden'); modalMode = null; renameTarget = null;
     resetRoomImagePicker(''); // [smsong] 닫을 때 이미지 선택 초기화
+}
+
+// [B] edit by smsong - 클립보드의 복사한 코드를 입력창에 붙여넣기
+async function pasteCodeFromClipboard() {
+    try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = await navigator.clipboard.readText();
+            const code = String(text || '').trim().toUpperCase().replace(/\s+/g, '');
+            if (!code) { showToast('클립보드가 비어 있어요'); return; }
+            const max = modalInput.maxLength && modalInput.maxLength > 0 ? modalInput.maxLength : 8;
+            modalInput.value = code.slice(0, max);
+            modalInput.focus();
+            showToast('코드를 붙여넣었어요');
+        } else {
+            showToast('이 브라우저에서는 붙여넣기를 지원하지 않아요');
+        }
+    } catch (e) {
+        showToast('붙여넣기 권한이 없어요. 길게 눌러 붙여넣어 주세요');
+    }
 }
 
 async function submitModal() {
@@ -788,6 +812,8 @@ document.getElementById('btn-logout').addEventListener('click', () => {
 });
 modalOk.addEventListener('click', submitModal);
 modalCancel.addEventListener('click', closeModal);
+// [B] edit by smsong - 복사한 코드 붙여넣기
+if (pasteBtn) pasteBtn.addEventListener('click', pasteCodeFromClipboard);
 modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
 modalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitModal(); });
 
