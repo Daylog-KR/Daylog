@@ -34,6 +34,9 @@ public class RoomService {
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final Storage storage; // [smsong] 방 대표 이미지 GCS 업로드
+    // [B] edit by smsong - 멤버십 변동 시 방 권한행 동기화(강퇴/탈퇴/삭제/재입장) 위해 주입
+    private final PermissionService permissionService;
+    // [E] edit by smsong
 
     // [smsong] GCS 설정 (MemoryService/ChecklistService 와 동일 프로퍼티)
     @Value("${google.cloud.storage.bucket}")
@@ -142,6 +145,9 @@ public class RoomService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "유효하지 않은 초대 코드입니다"));
         if (!roomMemberRepository.existsByRoomIdAndUid(room.getId(), uid)) {
             roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(uid).build());
+            // [B] edit by smsong - 새로(재)입장 시 이전 승인 이력 초기화 → 방장 승인부터 다시 (방장 제외)
+            if (!uid.equals(room.getOwnerUid())) permissionService.revokeMembership(room.getId(), uid);
+            // [E] edit by smsong
         }
         return RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
     }
@@ -156,6 +162,9 @@ public class RoomService {
         }
         String imageUrl = room.getImageUrl(); // [smsong] 삭제 전 대표 이미지 URL 확보
         roomMemberRepository.deleteByRoomId(roomId);
+        // [B] edit by smsong - 방 삭제 시 해당 방 권한행도 정리 (고아 행 방지)
+        permissionService.purgeRoom(roomId);
+        // [E] edit by smsong
         roomRepository.delete(room);
         deleteMediaQuietly(imageUrl); // [smsong] 방 삭제 시 대표 이미지(원본+썸네일) GCS 정리
     }
@@ -169,6 +178,9 @@ public class RoomService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 나갈 수 없습니다. 방을 삭제하세요");
         }
         roomMemberRepository.deleteByRoomIdAndUid(roomId, uid);
+        // [B] edit by smsong - 스스로 나간 멤버도 권한 회수 → 재입장 시 방장 승인부터 다시
+        permissionService.revokeMembership(roomId, uid);
+        // [E] edit by smsong
     }
 
     // ===== 멤버 강퇴 (방장만) =====
@@ -183,6 +195,9 @@ public class RoomService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 내보낼 수 없습니다");
         }
         roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
+        // [B] edit by smsong - 강퇴된 멤버 권한 회수 → 재입장 시 방장 승인부터 다시
+        permissionService.revokeMembership(roomId, targetUid);
+        // [E] edit by smsong
     }
 
     // ===== 커플 슬롯 지정 (방장만) — '나'/'상대방'에 방 멤버 배정 =====

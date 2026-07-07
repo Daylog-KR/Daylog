@@ -40,13 +40,21 @@ public class PermissionService {
         if (roomId == null || uid == null) return Optional.empty();
         return permissionRepository.findByRoomIdAndUid(roomId, uid);
     }
+    // [B] edit by smsong - 현재 방의 실제 구성원인지 확인 (강퇴/탈퇴 후 잔여 권한행으로 통과되는 것 차단)
+    private boolean isMember(Long roomId, String uid) {
+        if (roomId == null || uid == null) return false;
+        return roomMemberRepository.existsByRoomIdAndUid(roomId, uid);
+    }
+    // [E] edit by smsong
 
     // ===== 실효 권한 (Memory/Checklist에서 사용). 방장은 전권 =====
-    public boolean hasAccess(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isAdminApproved).orElse(false); }
-    public boolean canCreate(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanCreate).orElse(false); }
-    public boolean canEdit(String uid, Long roomId)   { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanEdit).orElse(false); }
-    public boolean canTrash(String uid, Long roomId)  { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanTrash).orElse(false); }
-    public boolean canDelete(String uid, Long roomId) { return isOwner(roomId, uid) || rowOf(roomId, uid).map(PermissionEntity::isCanDelete).orElse(false); }
+    // [B] edit by smsong - 방장이 아니면 '현재 멤버 + adminApproved' 둘 다 만족해야 통과 (강퇴자 즉시 차단)
+    public boolean hasAccess(String uid, Long roomId) { return isOwner(roomId, uid) || (isMember(roomId, uid) && rowOf(roomId, uid).map(PermissionEntity::isAdminApproved).orElse(false)); }
+    public boolean canCreate(String uid, Long roomId) { return isOwner(roomId, uid) || (isMember(roomId, uid) && rowOf(roomId, uid).map(PermissionEntity::isCanCreate).orElse(false)); }
+    public boolean canEdit(String uid, Long roomId)   { return isOwner(roomId, uid) || (isMember(roomId, uid) && rowOf(roomId, uid).map(PermissionEntity::isCanEdit).orElse(false)); }
+    public boolean canTrash(String uid, Long roomId)  { return isOwner(roomId, uid) || (isMember(roomId, uid) && rowOf(roomId, uid).map(PermissionEntity::isCanTrash).orElse(false)); }
+    public boolean canDelete(String uid, Long roomId) { return isOwner(roomId, uid) || (isMember(roomId, uid) && rowOf(roomId, uid).map(PermissionEntity::isCanDelete).orElse(false)); }
+    // [E] edit by smsong
 
     public void requireAccess(String uid, Long roomId)   { if (!hasAccess(uid, roomId)) throw forbid("이 방에 대한 접근 권한이 없습니다"); }
     public void requireCanCreate(String uid, Long roomId){ if (!canCreate(uid, roomId)) throw forbid("생성 권한이 없습니다"); }
@@ -73,7 +81,9 @@ public class PermissionService {
         PermissionEntity e = getOrCreate(roomId, uid);
         syncSnapshot(e, user);
         boolean owner = isOwner(roomId, uid);
-        boolean access = owner || e.isAdminApproved();
+        // [B] edit by smsong - 방장이 아니면 '현재 멤버'여야 접근 허용. 강퇴 후 잔여 adminApproved 로 자동 통과 방지.
+        boolean access = owner || (isMember(roomId, uid) && e.isAdminApproved());
+        // [E] edit by smsong
         e.setAccessAllowed(access);
         if (access && !"APPROVED".equals(e.getRequestStatus())) e.setRequestStatus("APPROVED");
         if (!access && "APPROVED".equals(e.getRequestStatus())) e.setRequestStatus("NONE");
@@ -174,6 +184,32 @@ public class PermissionService {
         boolean owner = isOwner(roomId, targetUid);
         return PermissionDTO.raw(e, owner, owner);
     }
+
+    // [B] edit by smsong - 멤버 강퇴/탈퇴 시 호출: 권한행 초기화 → 재입장해도 방장 승인부터 다시.
+    //  RoomService.kickMember / leaveRoom / joinByCode(재입장) 에서 호출.
+    @Transactional
+    public void revokeMembership(Long roomId, String uid) {
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            e.setAdminApproved(false);
+            e.setAccessAllowed(false);
+            e.setCanCreate(false);
+            e.setCanEdit(false);
+            e.setCanTrash(false);
+            e.setCanDelete(false);
+            e.setRequestStatus("NONE");
+            e.setRequestedAt(null);
+            e.setDecidedAt(LocalDateTime.now());
+            permissionRepository.save(e);
+        });
+    }
+
+    // 방 삭제 시: 해당 방의 모든 권한행 정리 (고아 행 방지)
+    @Transactional
+    public void purgeRoom(Long roomId) {
+        if (roomId == null) return;
+        permissionRepository.deleteByRoomId(roomId);
+    }
+    // [E] edit by smsong
 
     private void requireRoom(Long roomId) { if (roomId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방 정보(X-Room-Id)가 없습니다"); }
     private void requireOwner(Long roomId, String uid) { requireRoom(roomId); if (!isOwner(roomId, uid)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 접근할 수 있습니다."); }

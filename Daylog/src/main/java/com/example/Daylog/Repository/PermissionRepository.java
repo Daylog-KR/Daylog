@@ -12,5 +12,7 @@ public interface PermissionRepository extends JpaRepository<PermissionEntity, Lo
     List<PermissionEntity> findByRoomIdOrderByAccessAllowedDescUpdatedAtDesc(Long roomId);
     // [B] edit by smsong - 방 진입 알림용: 대기중(PENDING) 접근 요청만 (오래된 요청 먼저)
     List<PermissionEntity> findByRoomIdAndRequestStatusOrderByRequestedAtAsc(Long roomId, String requestStatus);
+    // 방 삭제 시 해당 방의 권한행 일괄 정리 (고아 행 방지)
+    void deleteByRoomId(Long roomId);
     // [E] edit by smsong
 }
