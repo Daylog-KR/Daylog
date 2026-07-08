@@ -533,42 +533,54 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .modal-header h3 { font-size: 1.15rem; color: var(--gray-800); }
 
 /* [B] edit by smsong - 승인 후 환영/이용수칙 동의 폼 */
-.welcome-content { text-align: center; }
-.welcome-logo-wrap { position: relative; display: flex; justify-content: center; margin: 6px 0 16px; }
+.welcome-content { text-align: center; position: relative; z-index: 2; } /* [smsong] 카드를 축포 위로 */
+.welcome-logo-wrap { position: relative; display: flex; justify-content: center; margin: 8px 0 18px; }
 .welcome-logo {
-    width: 84px; height: 84px; border-radius: 24px;
+    width: 104px; height: 104px; border-radius: 28px;  /* [smsong] 로고 확대 */
     background: var(--white); border: 1px solid var(--gray-200);
     display: flex; align-items: center; justify-content: center;
     box-shadow: var(--shadow-sm); position: relative; z-index: 2;
-    animation: welcomeLogoPop 0.7s var(--ease-spring) both;
+    animation: welcomeLogoPop 0.75s var(--ease-spring) both;
 }
+.welcome-logo svg { width: 56px; height: 56px; } /* [smsong] 로고 아이콘 확대 */
 @keyframes welcomeLogoPop {
     0%   { transform: scale(0) rotate(-18deg); opacity: 0; }
-    55%  { transform: scale(1.18) rotate(6deg); opacity: 1; }
+    55%  { transform: scale(1.24) rotate(6deg); opacity: 1; }
     100% { transform: scale(1) rotate(0); }
 }
-/* 축포(팡) — 로고 뒤 링 + 사방으로 튀는 입자 */
-.welcome-burst { position: absolute; top: 50%; left: 50%; width: 0; height: 0; z-index: 1; pointer-events: none; }
-.welcome-burst::before {
-    content: ''; position: absolute; top: 0; left: 0; transform: translate(-50%, -50%);
-    width: 24px; height: 24px; border-radius: 50%;
-    border: 3px solid var(--primary-light);
-    animation: welcomeRing 0.7s ease-out 0.05s both;
+
+/* [B] edit by smsong - 전체 화면 축포(팡): 화면 중앙에서 사방으로 크게 터짐 ================= */
+.welcome-fx {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden;
 }
-@keyframes welcomeRing {
-    0%   { width: 24px; height: 24px; opacity: 0.85; }
-    100% { width: 150px; height: 150px; opacity: 0; }
+/* 중앙에서 화면 끝까지 퍼지는 링 (여러 겹) */
+.welcome-fx .wfx-ring {
+    position: absolute; top: 50%; left: 50%;
+    width: 40px; height: 40px; margin: -20px 0 0 -20px;
+    border-radius: 50%; border: 6px solid var(--primary-light);
+    opacity: 0;
+    animation: wfxRing 1.15s cubic-bezier(0.15, 0.8, 0.3, 1) both;
 }
-.welcome-particle {
-    position: absolute; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%;
-    transform: translate(-50%, -50%);
-    animation: welcomeParticle 0.72s ease-out both;
+@keyframes wfxRing {
+    0%   { width: 40px; height: 40px; margin: -20px 0 0 -20px; opacity: 0.85; border-width: 8px; }
+    100% { width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; opacity: 0; border-width: 1px; }
 }
-@keyframes welcomeParticle {
+/* 사방으로 날아가 화면을 가득 채우는 입자 (JS 가 크기/거리/각도 지정) */
+.welcome-fx .wfx-particle {
+    position: absolute; top: 50%; left: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: wfxParticle 1.2s cubic-bezier(0.12, 0.75, 0.25, 1) both;
+}
+@keyframes wfxParticle {
     0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
-    25%  { opacity: 1; }
-    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1); opacity: 0; }
+    12%  { opacity: 1; }
+    72%  { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(var(--sc)) rotate(var(--rot)); opacity: 0; }
 }
+/* [E] edit by smsong ============================================================== */
 .welcome-title { font-size: 1.24rem; font-weight: 700; color: var(--gray-800); line-height: 1.45; margin: 0; }
 .welcome-title span { color: var(--primary-dark); }
 .welcome-sub { font-size: 0.9rem; color: var(--gray-500); margin-top: 8px; }
@@ -2046,8 +2058,8 @@ body.picking .bottom-nav {
 .perm-btn { border: none; border-radius: 10px; padding: 8px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; font-family: var(--font-main); }
 .perm-approve { background: #1e7d3c; color: #fff; }
 .perm-revoke { background: #fdecec; color: #c0392b; }
-.perm-kick-btn { background: #f7ece8; color: #c0563e; border: 1px solid #ecccc2; }
-.perm-kick-btn:hover { background: #f1ddd6; }
+.perm-kick-btn { background: #c0392b; color: #fff; border: none; } /* [smsong] 강퇴하기: 위험 동작 강조 */
+.perm-kick-btn:hover { background: #a5301f; }
 .perm-flags { display: flex; gap: 6px; flex: 1 1 100%; }
 .perm-chip {
     flex: 1; border: 1px solid var(--gray-200, #e2ddd6); background: var(--white, #fff);

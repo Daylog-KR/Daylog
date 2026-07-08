@@ -268,6 +268,10 @@ public class PermissionService {
             e.setRequestStatus("NONE");
             e.setRequestedAt(null);
             e.setDecidedAt(LocalDateTime.now());
+            // [B] edit by smsong - 강퇴/탈퇴 시 환영·동의 화면 표시 이력 초기화.
+            //  → 재승인되어 다시 입장하면 환영/이용수칙 동의 화면을 처음부터 다시 보게 됨.
+            e.setWelcomeSeen(false);
+            // [E] edit by smsong
             permissionRepository.save(e);
         });
     }

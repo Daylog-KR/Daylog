@@ -217,7 +217,20 @@ const Daylog = {
     partnerUid: null,
     reload: function () {},
     authHeaders: function () { return {}; },
-    handleResponse: async function (r) { return r; }
+    handleResponse: async function (r) { return r; },
+    // [B] edit by smsong - 프로필 이미지 즉시 반영용 캐시버스터.
+    //  같은 GCS 경로로 사진을 덮어쓰면 브라우저가 예전 이미지를 캐시해 새 사진이 안 보이는 문제 해결.
+    //  프로필이 바뀔 때마다 _imgVer 를 올려 src 뒤에 ?v= 를 갱신 → 강제 재다운로드.
+    _imgVer: Date.now(),
+    bustImg: function (url) {
+        if (!url) return url;
+        // 서명된 URL(GCS signed 등)에는 쿼리를 덧붙이면 서명이 깨지므로 그대로 둔다.
+        if (/[?&](x-goog-|goog-|signature=|expires=|googleaccessid=|token=)/i.test(url)) return url;
+        var sep = url.indexOf('?') >= 0 ? '&' : '?';
+        return url + sep + 'v=' + Daylog._imgVer;
+    },
+    bumpImgVer: function () { Daylog._imgVer = Date.now(); }
+    // [E] edit by smsong
 };
 
 // ==========================================
@@ -370,7 +383,7 @@ function renderRoomMembers(room) {
             : '<span class="rm-avatar-fallback">' + icon('user', 20) + '</span>';
         var badge = m.owner ? '<span class="rm-badge">방장</span>' : '';
         var action = (amOwner && !m.owner)
-            ? '<button class="rm-kick" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '">내보내기</button>'
+            ? '<button class="rm-kick" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '">강퇴하기</button>'
             : '';
         html += '<div class="rm-item">' +
                     '<span class="rm-avatar">' + avatar + '</span>' +
@@ -388,18 +401,20 @@ function renderRoomMembers(room) {
 }
 function kickRoomMember(targetUid, name) {
     var nm = name || (((Daylog._permList || []).find(function (x) { return x.uid === targetUid; }) || {}).nickname) || targetUid;
-    if (!confirm("'" + nm + "' 님을 방에서 내보낼까요?")) return;
+    // [B] edit by smsong - '강퇴' 표현으로 통일 + 재입장 시 환영/동의 화면이 다시 뜬다는 점 안내
+    if (!confirm("'" + nm + "' 님을 강퇴할까요?\n강퇴된 멤버는 다시 입장하면 환영·동의 화면을 처음부터 다시 보게 됩니다.")) return;
     var roomId = getRoomId();
     withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) + '?uid=' + encodeURIComponent(getUid()),
-        { method: 'DELETE', headers: Daylog.authHeaders(true) }), '내보내는 중...')
+        { method: 'DELETE', headers: Daylog.authHeaders(true) }), '강퇴하는 중...')
         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
         .then(function () {
-            showToast('멤버를 내보냈습니다');
+            showToast('멤버를 강퇴했습니다');
             if (typeof openPermissionAdmin === 'function') openPermissionAdmin(); // 목록 새로고침
             if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile();
             if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true);
         })
-        .catch(function (err) { showToast('내보내기 실패'); console.error(err); });
+        .catch(function (err) { showToast('강퇴 실패'); console.error(err); });
+    // [E] edit by smsong
 }
 function closeRoomMembers() {
     var modal = document.getElementById('room-members-modal');
@@ -436,24 +451,54 @@ function showWelcomeModal() {
     modal.classList.remove('hidden');
     setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
 }
+// [B] edit by smsong - 화면을 가득 채우는 대형 축포. 화면 중앙에서 사방으로 크게 팡.
 function fireWelcomeBurst() {
-    var burst = document.getElementById('welcome-burst');
-    if (!burst) return;
-    burst.innerHTML = '';
-    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1'];
-    var N = 14;
+    var fx = document.getElementById('welcome-fx');
+    if (!fx) return;
+    fx.innerHTML = '';
+    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5'];
+
+    // 화면 대각 반경(코너까지 도달) 기준으로 입자 비행거리를 정함 → 어떤 화면 크기든 가득 채움
+    var vw = window.innerWidth || 360;
+    var vh = window.innerHeight || 640;
+    var maxR = Math.sqrt(vw * vw + vh * vh) / 2;
+
+    // 여러 겹의 링
+    var RINGS = 3;
+    for (var r = 0; r < RINGS; r++) {
+        var ring = document.createElement('span');
+        ring.className = 'wfx-ring';
+        ring.style.borderColor = colors[r % colors.length];
+        ring.style.animationDelay = (r * 0.11).toFixed(2) + 's';
+        fx.appendChild(ring);
+    }
+
+    // 사방으로 튀는 입자 (많이 + 크게)
+    var N = 90;
+    var frag = document.createDocumentFragment();
     for (var i = 0; i < N; i++) {
         var p = document.createElement('span');
-        p.className = 'welcome-particle';
-        var ang = (Math.PI * 2) * (i / N) + (Math.random() * 0.4 - 0.2);
-        var dist = 46 + Math.random() * 34;
-        p.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(1) + 'px');
-        p.style.setProperty('--ty', (Math.sin(ang) * dist).toFixed(1) + 'px');
+        p.className = 'wfx-particle';
+        var ang = (Math.PI * 2) * (i / N) + (Math.random() * 0.55 - 0.275);
+        var dist = maxR * (0.5 + Math.random() * 0.75); // 일부는 화면 밖까지 오버슛
+        var size = 9 + Math.random() * 20;               // 큰 입자
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
         p.style.background = colors[i % colors.length];
-        p.style.animationDelay = (Math.random() * 0.05).toFixed(3) + 's';
-        burst.appendChild(p);
+        p.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(0) + 'px');
+        p.style.setProperty('--ty', (Math.sin(ang) * dist).toFixed(0) + 'px');
+        p.style.setProperty('--sc', (0.7 + Math.random() * 1.2).toFixed(2));
+        p.style.setProperty('--rot', ((Math.random() * 720 - 360) | 0) + 'deg');
+        p.style.animationDelay = (Math.random() * 0.12).toFixed(3) + 's';
+        if (i % 4 === 0) p.style.borderRadius = '2px'; // 사각 색종이 느낌 섞기
+        frag.appendChild(p);
     }
+    fx.appendChild(frag);
+
+    // 애니메이션 종료 후 정리
+    setTimeout(function () { if (fx) fx.innerHTML = ''; }, 1600);
 }
+// [E] edit by smsong
 function closeWelcomeModal() {
     var modal = document.getElementById('welcome-modal');
     if (modal) modal.classList.add('hidden');
@@ -546,10 +591,12 @@ function renderPermissionList(list) {
             '</div>' +
             '<div class="perm-access">' +
               (p.admin ? '' :
-                ((p.accessAllowed
-                  ? '<button type="button" class="perm-btn perm-revoke" onclick="decideAccess(\'' + p.uid + '\',false)">접근 거절</button>'
-                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')
-                  + '<button type="button" class="perm-btn perm-kick-btn" onclick="kickRoomMember(\'' + p.uid + '\')">내보내기</button>')) +
+                // [B] edit by smsong - '내보내기' 버튼 제거 + '접근 거절'을 '강퇴하기'(실제 강퇴)로 통합.
+                //  강퇴 시 방에서 제거되며, 다시 입장하면 환영/동의 화면을 다시 보게 됨.
+                (p.accessAllowed
+                  ? '<button type="button" class="perm-btn perm-kick-btn" onclick="kickRoomMember(\'' + p.uid + '\')">강퇴하기</button>'
+                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
+                // [E] edit by smsong
             '</div>' +
             '<div class="perm-flags">' +
               permToggle(p, 'canCreate', '생성', lockToggles) +
@@ -1624,7 +1671,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(() => {
                     closeMemoryModal();
                     showToast('기록 성공');
-                    loadMemoriesFromServer();
+                    // [B] edit by smsong - 생성 직후 최신 목록을 받아 지도에 바로 반영.
+                    //  현재 지도가 가볼곳 모드였어도 추억 모드로 전환해 새 추억 마커가 보이도록 함.
+                    loadMemoriesFromServer().then(function () {
+                        if (mapMode !== 'memory') setMapMode('memory');
+                        else refreshMapMarkers();
+                    });
+                    // [E] edit by smsong
                 })
                 .catch(err => {
                     console.error(err);
@@ -2170,8 +2223,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         .catch(err => console.warn('추억 자동 생성 실패', err));
                     // [E] edit by smsong
                 }
-                if (mapMode !== 'checklist') setMapMode('checklist');
-                else loadChecklistsFromServer();
+                // [B] edit by smsong - 생성 직후 서버에서 최신 목록을 받아 지도에 바로 반영
+                //  (기존: setMapMode 만 호출해 이미 로드된 '옛 목록'으로 마커를 그려 새 가볼곳이 안 보이던 문제)
+                loadChecklistsFromServer().then(function () {
+                    if (mapMode !== 'checklist') setMapMode('checklist');
+                    else refreshMapMarkers();
+                });
+                // [E] edit by smsong
             })
             .catch(err => { console.error(err); showToast('추가 실패. 다시 시도해주십시오.'); })
             .finally(() => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '추가하기'; } });
@@ -2670,7 +2728,7 @@ document.addEventListener('DOMContentLoaded', () => {
             avatar.appendChild(img);
         };
         if (user && user.profileURL) {
-            showImg(user.profileURL);
+            showImg(Daylog.bustImg(user.profileURL)); // [smsong] 변경 즉시 반영(캐시버스터)
         } else {
             showImg(DEFAULT_AVATAR);
         }
@@ -2688,7 +2746,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (user && user.profileURL) {
             wrap.classList.add('viewable');
-            wrap.onclick = () => openLightbox(user.profileURL, avatar);
+            wrap.onclick = () => openLightbox(Daylog.bustImg(user.profileURL), avatar);
         }
     }
 
@@ -2707,7 +2765,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!requireAuthOrRedirect()) return;
         showToast('프로필 사진을 올리는 중...');
         saveUser({ uid: user.uid, id: user.id }, file)
-            .then(() => {
+            .then((updated) => {
+                Daylog.bumpImgVer(); // [smsong] 같은 경로 덮어쓰기여도 새 사진 즉시 표시
+                // [smsong] 새 프로필 이미지를 미리 받아 캐시에 올려둠 → 렌더 시 빈 화면 깜빡임 없이 즉시 표시
+                if (updated && updated.profileURL) { var _pre = new Image(); _pre.src = Daylog.bustImg(updated.profileURL); }
                 showToast('프로필 사진이 변경 완료');
                 loadProfiles(true);
             })
@@ -2862,6 +2923,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (editRemovePhoto && currentUser) currentUser.profileURL = '';
                 editPendingFile = null;
                 editRemovePhoto = false;
+                Daylog.bumpImgVer(); // [smsong] 사진 변경/제거 즉시 반영
+                // [smsong] 새 프로필 이미지 미리 로드 → 즉시 표시(깜빡임 방지)
+                if (currentUser && currentUser.profileURL) { var _pre2 = new Image(); _pre2.src = Daylog.bustImg(currentUser.profileURL); }
                 showToast('프로필 저장 완료');
                 closeEditPage();
                 loadProfiles(true);
@@ -2934,7 +2998,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var card = document.createElement('div');
             card.className = 'member-card';
             var avatar = m.profileURL
-                ? `<img src="${m.profileURL}" alt="" class="member-avatar-img">`
+                ? `<img src="${Daylog.bustImg(m.profileURL)}" alt="" class="member-avatar-img">`
                 : `<span class="member-avatar-fallback">${icon('user',30)}</span>`;
             var ownerBadge = m.owner ? '<span class="member-owner-badge">방장</span>' : '';
             card.innerHTML =
