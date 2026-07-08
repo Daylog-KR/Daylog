@@ -533,7 +533,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .modal-header h3 { font-size: 1.15rem; color: var(--gray-800); }
 
 /* [B] edit by smsong - 승인 후 환영/이용수칙 동의 폼 */
-.welcome-content { text-align: center; position: relative; z-index: 2; } /* [smsong] 카드를 축포 위로 */
+.welcome-content { text-align: center; position: relative; z-index: 2; }
 .welcome-logo-wrap { position: relative; display: flex; justify-content: center; margin: 8px 0 18px; }
 .welcome-logo {
     width: 104px; height: 104px; border-radius: 28px;  /* [smsong] 로고 확대 */
@@ -549,9 +549,11 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     100% { transform: scale(1) rotate(0); }
 }
 
-/* [B] edit by smsong - 전체 화면 축포(팡): 화면 중앙에서 사방으로 크게 터짐 ================= */
+/* [B] edit by smsong - 전체 화면 축포(팡): 화면 중앙에서 사방으로 크게 터짐.
+   z-index 를 카드(.welcome-content z-index:2)보다 위(5)로 → 축포가 폼 '위'에서 터짐.
+   pointer-events:none 이라 카드 위를 덮어도 동의 체크/버튼 클릭은 그대로 통과 ========= */
 .welcome-fx {
-    position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden;
+    position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden;
 }
 /* 중앙에서 화면 끝까지 퍼지는 링 (여러 겹) */
 .welcome-fx .wfx-ring {
