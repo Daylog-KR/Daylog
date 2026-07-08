@@ -592,15 +592,6 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--rot)); opacity: 0; }
 }
 /* [E] edit by smsong ============================================================== */
-/* [B] edit by smsong - 입장 수락 안내 배지 (최초 1회 환영 폼 상단) */
-.welcome-accept-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    margin: 0 auto 10px; padding: 6px 14px; border-radius: 999px;
-    background: #eef6ec; color: #4a7c59; font-size: 0.82rem; font-weight: 700;
-    border: 1px solid #d7e9d0;
-}
-.welcome-accept-badge svg { flex-shrink: 0; }
-/* [E] edit by smsong */
 .welcome-title { font-size: 1.24rem; font-weight: 700; color: var(--gray-800); line-height: 1.45; margin: 0; }
 .welcome-title span { color: var(--primary-dark); }
 .welcome-sub { font-size: 0.9rem; color: var(--gray-500); margin-top: 8px; }
@@ -1082,9 +1073,10 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 .tl-thumb {
     flex: 0 0 84px; width: 84px; align-self: stretch; min-height: 84px;
-    background-size: cover; background-position: center; background-repeat: no-repeat;
     border-radius: 12px; background-color: var(--gray-100);
+    position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너(고정크기, object-fit) */
 }
+.tl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ---- 이미지 없음 자리표시 (썸네일과 동일 규격) ---- */
 .thumb-empty {
@@ -1122,8 +1114,10 @@ input[type="date"]::-webkit-date-and-time-value {
 .lm-row:hover { background: var(--gray-100); transform: translateX(2px); }
 .lm-thumb {
     flex: 0 0 56px; width: 56px; height: 56px; border-radius: 10px;
-    background-size: cover; background-position: center; background-color: var(--gray-100);
+    background-color: var(--gray-100);
+    position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너 */
 }
+.lm-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .lm-thumb-empty {
     display: flex; align-items: center; justify-content: center;
     font-size: 1.3rem; background: var(--primary-light);
@@ -1634,9 +1628,10 @@ input[type="date"]::-webkit-date-and-time-value {
 /* 가볼곳 썸네일 (타임라인과 동일 규격) */
 .cl-thumb {
     flex: 0 0 84px; width: 84px; align-self: stretch; min-height: 84px;
-    background-size: cover; background-position: center; background-repeat: no-repeat;
     border-radius: 12px; background-color: var(--gray-100);
+    position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너 */
 }
+.cl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ---- 타입 선택 칩 (작성/수정 폼 공용) ---- */
 .cl-type-options { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2012,11 +2007,23 @@ body.picking .bottom-nav {
 
 /* ================= 상세: 이미지 캐러셀 ================= */
 .detail-carousel { position: relative; width: 100%; margin: 0 0 4px; }
-/* [B] edit by smsong - 가로 스와이프=사진 넘김(JS), 세로 제스처=페이지 스크롤은 브라우저에 맡김.
-   touch-action:none → pan-y 로 변경해야 사진 위에 손을 올린 채 세로 스크롤이 정상 동작한다. */
-.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: pan-y; }
-.carousel-track { display: flex; height: 100%; transition: transform 0.32s cubic-bezier(.22,.61,.36,1); }
-.carousel-slide { min-width: 100%; height: 100%; }
+/* [B] edit by smsong - 네이티브 CSS scroll-snap 캐러셀 (REMS 방식). 트랙이 곳 스크롤 컨테이너.
+   overflow-y:hidden 이라 세로 제스처는 페이지로 흘러가 자연 스크롤 → touch-action 핵 불필요. */
+.carousel-track {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    border-radius: 14px;
+    background: var(--gray-100);
+    height: 260px;
+    max-height: 70vh;
+}
+.carousel-track::-webkit-scrollbar { display: none; }
+.carousel-slide { flex: 0 0 100%; height: 100%; scroll-snap-align: center; }
 .carousel-slide img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; image-orientation: from-image; }
 .carousel-arrow {
     position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
@@ -2068,7 +2075,8 @@ body.picking .bottom-nav {
 }
 @keyframes loSpin { to { transform: rotate(360deg); } }
 .lo-text { font-size: 0.86rem; color: var(--gray-600, #6b6157); font-weight: 600; }
-/* [E] edit by smsong */
+/* [E] edit by smsong */
+
 
 /* [B] edit by smsong - 권한 설정 버튼 + 관리자 권한 메뉴 + 차단화면 요청 버튼 */
 .perm-menu-btn {

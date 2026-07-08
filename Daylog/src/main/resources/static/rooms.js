@@ -237,7 +237,7 @@ async function loadRooms() {
         myRooms = Array.isArray(rooms) ? rooms : [];
         await loadPendingRooms(); // [B] edit by smsong - 요청 대기중/거절 방도 함께 갱신
         renderCurrentView();
-        maybeShowRejectNotice(); // [B] edit by smsong - 거절된 방 있으면 1회 안내
+        maybeShowEntryNotices(); // [B] edit by smsong - 거절/강퇴 안내 또는 입장 수락 안내 1회 표시
     } catch (e) {
         console.error(e);
         showToast('서버에 연결하지 못했습니다');
@@ -460,6 +460,41 @@ async function dismissRejected(r, isPending) {
     } catch (e) {
         showToast('서버에 연결하지 못했습니다');
     } finally { hideLoading(); }
+}
+
+// [B] edit by smsong - rooms 최초 진입 안내: 거절/강퇴가 우선, 없으면 '입장 수락됨' 안내.
+//  (한 화면에 모달 두 개가 겹치지 않도록 우선순위로 하나만 표시)
+function maybeShowEntryNotices() {
+    const rejected = (myPendingRooms || []).find(r => r.myStatus === 'REJECTED' && r.rejectSeen === false);
+    if (rejected) { openRejectNotice(rejected); return; }
+    const accepted = (myRooms || []).find(r => r.owner === false && r.acceptSeen === false);
+    if (accepted) openAcceptNotice(accepted);
+}
+
+// [B] edit by smsong - 방장이 입장을 수락한 방이 있으면 최초 1회 안내 (acceptSeen=false)
+let _acceptTarget = null;
+function openAcceptNotice(r) {
+    const modal = document.getElementById('accept-modal');
+    if (!modal) return;
+    _acceptTarget = r;
+    const nameEl = document.getElementById('accept-room-name');
+    if (nameEl) nameEl.textContent = r.name || '방';
+    modal.classList.remove('hidden');
+    // 서버에 '봤음' 기록 → 다음 진입부터는 안 뜸
+    markAcceptSeen(r.id);
+}
+async function markAcceptSeen(roomId) {
+    try {
+        await fetch(`${API_BASE}/api/rooms/${roomId}/accept-seen?uid=${encodeURIComponent(uid)}`,
+            { method: 'POST', headers: authHeaders(true) });
+        const t = (myRooms || []).find(x => x.id === roomId);
+        if (t) t.acceptSeen = true; // 로컬도 갱신(같은 세션 중복 표시 방지)
+    } catch (e) { /* 조용히 무시 */ }
+}
+function closeAcceptNotice() {
+    const modal = document.getElementById('accept-modal');
+    if (modal) modal.classList.add('hidden');
+    _acceptTarget = null;
 }
 
 // [B] edit by smsong - 거절된 방이 있으면 최초 1회 안내 모달 표시 (rejectSeen=false)
@@ -813,6 +848,18 @@ if (previewCancelBtn) previewCancelBtn.addEventListener('click', closePreviewMod
 if (previewModalEl) previewModalEl.addEventListener('click', (e) => { if (e.target === previewModalEl) closePreviewModal(); });
 if (rejectOkBtn) rejectOkBtn.addEventListener('click', closeRejectNotice);
 if (rejectModalEl) rejectModalEl.addEventListener('click', (e) => { if (e.target === rejectModalEl) closeRejectNotice(); });
+// [B] edit by smsong - 입장 수락 안내 모달: '지금 입장'(해당 방으로 이동) / '확인'(닫기) / 배경 탭(닫기)
+const acceptModalEl = document.getElementById('accept-modal');
+const acceptEnterBtn = document.getElementById('accept-enter');
+const acceptOkBtn = document.getElementById('accept-ok');
+if (acceptEnterBtn) acceptEnterBtn.addEventListener('click', () => {
+    const target = _acceptTarget;
+    closeAcceptNotice();
+    if (target) enterRoom(target);
+});
+if (acceptOkBtn) acceptOkBtn.addEventListener('click', closeAcceptNotice);
+if (acceptModalEl) acceptModalEl.addEventListener('click', (e) => { if (e.target === acceptModalEl) closeAcceptNotice(); });
+// [E] edit by smsong
 document.getElementById('btn-create-room').addEventListener('click', () => openModal('create'));
 document.getElementById('btn-join-room').addEventListener('click', () => openModal('join'));
 document.querySelectorAll('.type-chip').forEach(ch => {

@@ -860,13 +860,19 @@ function editedByHtml(item) {
 // [E] edit by smsong
 
 // 카드 썸네일 HTML — 이미지가 있으면 배경이미지, 없으면 같은 크기의 '이미지 없음' 자리표시
+// [B] edit by smsong - 목록 썸네일: CSS background-image(원본 풀사이즈, lazy 불가) → REMS 방식 <img>.
+//  서버 소형 썸네일(thumb_) + loading="lazy"(뷰포트 근처에서만 로드) + decoding="async"(디코딩 비동기)
+//  + onerror 폴백(구버전/HEIC는 원본으로). 목록 스크롤 시 버벅임/멈춤/깜빡임 제거.
 function thumbHtml(mediaURL, cls) {
     const c = cls || 'tl-thumb';
     if (mediaURL) {
-        return '<div class="' + c + '" style="background-image:url(\'' + mediaURL + '\')"></div>';
+        const thumb = Daylog.thumbUrlOf(mediaURL);
+        return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
+            '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
+// [E] edit by smsong
 
 // [B] edit by smsong - 원본 이미지 URL → 서버가 만든 소형 썸네일(thumb_ 접두) URL 파생.
 //  지도 마커/목록에서 원본(수 MB) 대신 썸네일을 써서 줌 인/아웃 시 재합성 부담 제거.
@@ -882,6 +888,16 @@ Daylog._thumbFallback = function (img) {
     var full = img.getAttribute('data-full');
     if (full && img.src !== full) img.src = full;
 };
+// [B] edit by smsong - 목록(내 목록/댓글 목록 등) lm-thumb 도 동일하게 <img> + 서버 썸네일 + lazy/async.
+Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
+    if (mediaURL) {
+        var thumb = Daylog.thumbUrlOf(mediaURL);
+        return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
+            '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)"></div>';
+    }
+    return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
+};
+// [E] edit by smsong
 // [E] edit by smsong
 
 // [smsong] 이미지 프리로드: 목록 로드 시 썸네일/마커/상세 첫 이미지를 미리 브라우저 캐시에 적재 → 즉시 표시
@@ -2247,7 +2263,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _memSig = sig;
                 memoryList = list;
                 Daylog.memories = memoryList;
-                preloadImages(list.map(m => m.mediaURL)); // [smsong] 썸네일/마커/상세 즉시 표시
+                preloadImages(list.map(m => Daylog.thumbUrlOf(m.mediaURL))); // [B] edit by smsong - 원본 대신 소형 썸네일만 워밍(마커/목록 즉시 표시, 프리즈 방지)
                 updateProfileStats();
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 친구/가족 멤버뷰 카운트 갱신
 
@@ -2273,7 +2289,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
                 _clSig = sig;
                 checklistList = arr;
-                preloadImages(arr.map(c => c.mediaURL)); // [smsong] 썸네일/마커/상세 즉시 표시
+                preloadImages(arr.map(c => Daylog.thumbUrlOf(c.mediaURL))); // [B] edit by smsong - 원본 대신 소형 썸네일만 워밍(마커/목록 즉시 표시, 프리즈 방지)
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
@@ -4548,9 +4564,7 @@ function renderTrash(memories, comments, checklists) {
         html += '<div class="trash-group-title">추억 ' + memories.length + '</div>';
         memories.forEach(m => {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = m.mediaURL
-                ? '<div class="lm-thumb" style="background-image:url(\'' + m.mediaURL + '\')"></div>'
-                : '<div class="lm-thumb lm-thumb-empty">' + icon('book',22,'color:#b08968;') + '</div>';
+            const thumb = Daylog.lmThumbHtml(m.mediaURL, icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             html +=
                 '<div class="trash-row">' +
                 thumb +
@@ -4673,9 +4687,7 @@ function openMemoryListModal(title, items) {
     } else {
         items.forEach(memory => {
             const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = memory.mediaURL
-                ? `<div class="lm-thumb" style="background-image:url('${memory.mediaURL}')"></div>`
-                : '<div class="lm-thumb lm-thumb-empty">' + icon('book',22,'color:#b08968;') + '</div>';
+            const thumb = Daylog.lmThumbHtml(memory.mediaURL, icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             const row = document.createElement('div');
             row.className = 'lm-row';
             row.innerHTML =
@@ -4717,9 +4729,7 @@ function openChecklistListModal(title, items) {
         items.forEach(item => {
             const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [item.placeName, item.address].filter(Boolean).join(' ');
-            const thumb = item.mediaURL
-                ? `<div class="lm-thumb" style="background-image:url('${item.mediaURL}')"></div>`
-                : '<div class="lm-thumb lm-thumb-empty">' + meta.emoji + '</div>';
+            const thumb = Daylog.lmThumbHtml(item.mediaURL, meta.emoji); // [smsong] lazy 썸네일
             const badge = item.visited
                 ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴</span>'
                 : '<span class="cl-todo-badge">가볼 예정</span>';
@@ -5171,25 +5181,45 @@ function createMediaManager(opts) {
 }
 
 // 상세 화면 캐러셀 HTML
+// [B] edit by smsong - 상세 이미지 캐러셀: JS transform → REMS식 네이티브 CSS scroll-snap.
+//  트랙 자체가 가로 스크롤(scroll-snap)로 넘어가므로 세로 페이지 스크롤은 브라우저가 자연 처리 →
+//  버벅임/포인터 캡처 이슈 없이 부드럽고, 손가락 세로 스크롤도 정상. 이미지는 decoding=async + onerror.
 function carouselHtml(urls) {
     if (!urls || !urls.length) return '';
     if (urls.length === 1) {
-        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" alt="사진" class="detail-single-img"></div>';
+        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" alt="사진" class="detail-single-img" decoding="async"></div>';
     }
+    const cid = 'car-' + Math.random().toString(36).slice(2);
     let slides = '';
-    urls.forEach(u => { slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진"></div>'; });
+    urls.forEach((u, i) => {
+        slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진" decoding="async"' +
+            (i === 0 ? ' onload="Daylog._fitCarousel(\'' + cid + '\', this)"' : '') +
+            ' onerror="this.parentElement.style.display=\'none\'"></div>';
+    });
     let dots = '';
     urls.forEach((u, i) => { dots += '<span class="carousel-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '"></span>'; });
     return '<div class="detail-carousel">' +
         '<div class="carousel-count"><span class="cc-cur">1</span>/' + urls.length + '</div>' +
-        '<div class="carousel-viewport"><div class="carousel-track">' + slides + '</div></div>' +
+        '<div class="carousel-track" id="' + cid + '">' + slides + '</div>' +
         '<button type="button" class="carousel-arrow prev" disabled>&#8249;</button>' +
         '<button type="button" class="carousel-arrow next">&#8250;</button>' +
         '<div class="carousel-dots">' + dots + '</div>' +
         '</div>';
 }
 
-// 캐러셀 동작 바인딩 (스와이프 + 화살표 + 점 + 탭→라이트박스)
+// 첫 이미지 비율로 트랙 높이 설정 → 레이아웃 시프트(깜빡임) 방지 (REMS fitGalleryHeight 방식)
+Daylog._fitCarousel = function (cid, img) {
+    const track = document.getElementById(cid);
+    if (!track || !img || !img.naturalWidth) return;
+    const w = track.clientWidth || track.offsetWidth;
+    if (!w) return;
+    let h = w * img.naturalHeight / img.naturalWidth;
+    const maxH = Math.round(window.innerHeight * 0.7);
+    if (h > maxH) h = maxH;
+    track.style.height = Math.round(h) + 'px';
+};
+
+// 캐러셀 동작 바인딩 (네이티브 스크롤 + 화살표/점 + 탭→라이트박스)
 function bindCarousel(rootEl, urls) {
     if (!rootEl) return;
     const single = rootEl.querySelector('.detail-single-img');
@@ -5202,74 +5232,42 @@ function bindCarousel(rootEl, urls) {
     const prev = car.querySelector('.carousel-arrow.prev');
     const next = car.querySelector('.carousel-arrow.next');
     const cur = car.querySelector('.cc-cur');
-    let idx = 0, startX = 0, startY = 0, dx = 0, dy = 0, dragging = false, moved = false, axis = null;
+    const total = urls.length;
+    if (!track) return;
 
-    function go(i) {
-        idx = Math.max(0, Math.min(urls.length - 1, i));
-        track.style.transition = 'transform 0.32s cubic-bezier(.22,.61,.36,1)';
-        track.style.transform = 'translateX(' + (-idx * 100) + '%)';
+    function curIdx() {
+        const w = track.clientWidth || 1;
+        return Math.max(0, Math.min(total - 1, Math.round(track.scrollLeft / w)));
+    }
+    function update() {
+        const idx = curIdx();
         dots.forEach((d, di) => d.classList.toggle('active', di === idx));
         if (prev) prev.disabled = idx === 0;
-        if (next) next.disabled = idx === urls.length - 1;
+        if (next) next.disabled = idx === total - 1;
         if (cur) cur.textContent = (idx + 1);
     }
-    if (prev) prev.addEventListener('click', () => go(idx - 1));
-    if (next) next.addEventListener('click', () => go(idx + 1));
-    dots.forEach(d => d.addEventListener('click', () => go(+d.dataset.i)));
-    slides.forEach((s, si) => s.querySelector('img').addEventListener('click', () => { if (!moved) openLightbox(urls, s.querySelector('img'), si); }));
-
-    const vp = car.querySelector('.carousel-viewport');
-    // 뷰포트 높이를 '첫 번째 사진' 비율로 맞춤 (나머지는 잘리지 않고 contain)
-    if (vp && urls[0]) {
-        const im0 = new Image();
-        im0.onload = () => { if (im0.naturalWidth && im0.naturalHeight) vp.style.aspectRatio = im0.naturalWidth + ' / ' + im0.naturalHeight; };
-        im0.src = urls[0];
+    function goTo(i) {
+        const idx = Math.max(0, Math.min(total - 1, i));
+        const w = track.clientWidth || 1;
+        track.scrollTo({ left: idx * w, behavior: 'smooth' });
     }
-    // [B] edit by smsong - 방향 잠금(directional lock): 가로 제스처면 사진만 넘기고,
-    //  세로 제스처면 손을 떼 브라우저가 페이지를 스크롤하게 둔다(뷰포트 CSS: touch-action:pan-y).
-    //  포인터 캡처는 '가로'로 확정된 뒤에만 → 세로 스크롤을 가로채지 않음.
-    let captured = false;
-    vp.addEventListener('pointerdown', (e) => {
-        dragging = true; moved = false; axis = null; captured = false;
-        startX = e.clientX; startY = e.clientY; dx = 0; dy = 0;
-        track.style.transition = 'none';
+    // 스크롤 위치 → 카운터/점 갱신 (rAF 스로틀로 부드럽게)
+    let ticking = false;
+    track.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => { update(); ticking = false; });
+    }, { passive: true });
+
+    if (prev) prev.addEventListener('click', () => goTo(curIdx() - 1));
+    if (next) next.addEventListener('click', () => goTo(curIdx() + 1));
+    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.i)));
+    // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
+    slides.forEach((s, si) => {
+        const img = s.querySelector('img');
+        if (img) img.addEventListener('click', () => openLightbox(urls, img, si));
     });
-    vp.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        dx = e.clientX - startX;
-        dy = e.clientY - startY;
-        // 첫 유의미한 이동에서 축 결정 (가로 우세 → 사진 넘김 / 세로 우세 → 페이지 스크롤에 양보)
-        if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-            axis = (Math.abs(dx) > Math.abs(dy)) ? 'x' : 'y';
-            if (axis === 'x') {
-                try { vp.setPointerCapture(e.pointerId); captured = true; } catch (_) {}
-            } else {
-                // 세로: 드래그 종료하고 브라우저 스크롤에 맡김
-                dragging = false;
-                return;
-            }
-        }
-        if (axis !== 'x') return;
-        if (Math.abs(dx) > 6) moved = true;
-        track.style.transform = 'translateX(calc(' + (-idx * 100) + '% + ' + dx + 'px))';
-    });
-    const endSwipe = (e) => {
-        if (captured && e && e.pointerId != null) { try { vp.releasePointerCapture(e.pointerId); } catch (_) {} }
-        captured = false;
-        if (!dragging) { axis = null; return; }
-        dragging = false;
-        if (axis === 'x') { // 가로 제스처일 때만 넘김 판정
-            if (dx < -50 && idx < urls.length - 1) go(idx + 1);
-            else if (dx > 50 && idx > 0) go(idx - 1);
-            else go(idx);
-        }
-        axis = null;
-        setTimeout(() => { moved = false; }, 30);
-    };
-    // [E] edit by smsong
-    vp.addEventListener('pointerup', endSwipe);
-    vp.addEventListener('pointercancel', endSwipe);
-    go(0);
+    update();
 }
 
 // ===== 라이트박스 상태 & 제어 =====

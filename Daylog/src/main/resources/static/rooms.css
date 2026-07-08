@@ -386,6 +386,12 @@ html, body {
 .reject-icon { color: var(--danger); display: flex; justify-content: center; margin-bottom: 8px; }
 #reject-modal .room-modal-title { text-align: center; }
 #reject-modal .room-modal-desc { text-align: center; }
+/* [B] edit by smsong - 입장 수락 안내 모달 (초록 계열, 중앙 정렬) */
+.accept-icon { color: #4a7c59; display: flex; justify-content: center; margin-bottom: 8px; }
+#accept-modal .room-modal-title { text-align: center; }
+#accept-modal .room-modal-desc { text-align: center; }
+#accept-modal .room-modal-desc b { color: var(--primary-dark); }
+/* [E] edit by smsong */
 .reject-reason {
     margin-top: 12px; padding: 13px 14px; border-radius: 12px;
     background: #f9ece8; border: 1px solid #ecccc2; color: var(--gray-700);

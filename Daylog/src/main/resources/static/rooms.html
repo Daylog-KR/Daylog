@@ -122,6 +122,22 @@
     </div>
 </div>
 
+<!-- [B] edit by smsong - 입장 수락 안내 모달: 방장이 입장을 허용한 방이 있으면 rooms 최초 진입 시 1회 표시 -->
+<div id="accept-modal" class="room-modal hidden">
+    <div class="room-modal-card">
+        <div class="accept-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="room-modal-title">입장이 수락되었어요!</div>
+        <div class="room-modal-desc"><b id="accept-room-name">우리</b> 방에 입장할 수 있어요.<br>지금 들어가서 함께 기록해보세요.</div>
+        <div class="room-modal-actions">
+            <button id="accept-ok" class="rm-btn" type="button">나중에</button>
+            <button id="accept-enter" class="rm-btn primary" type="button">지금 입장</button>
+        </div>
+    </div>
+</div>
+<!-- [E] edit by smsong -->
+
 <!-- [B] edit by smsong - 거절 안내 모달: 거절된 유저가 rooms 최초 진입 시 1회 표시 -->
 <div id="reject-modal" class="room-modal hidden">
     <div class="room-modal-card">

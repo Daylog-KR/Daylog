@@ -285,9 +285,16 @@ public class RoomService {
         List<RoomMemberEntity> memberships = roomMemberRepository.findByUid(uid);
         List<RoomDTO> result = new ArrayList<>();
         for (RoomMemberEntity m : memberships) {
-            roomRepository.findById(m.getRoomId()).ifPresent(room ->
-                    result.add(RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId())))
-            );
+            roomRepository.findById(m.getRoomId()).ifPresent(room -> {
+                RoomDTO dto = RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
+                // [B] edit by smsong - 방장이 아닌 멤버만 '입장 수락됨' 최초 1회 안내 대상 판단
+                if (!dto.isOwner()) {
+                    dto.setAcceptSeen(permissionService.getAcceptSeen(room.getId(), uid));
+                } else {
+                    dto.setAcceptSeen(true);
+                }
+                result.add(dto);
+            });
         }
         // 최근 생성 방이 위로
         result.sort((a, b) -> {
@@ -297,7 +304,12 @@ public class RoomService {
         return result;
     }
 
-    // ===== 방 멤버 상세 =====
+    // [B] edit by smsong - 입장 수락 안내를 봤음을 기록 (rooms 페이지 최초 1회 안내 후 호출)
+    @Transactional
+    public void markAcceptSeen(Long roomId, String uid) {
+        permissionService.markAcceptSeen(uid, roomId);
+    }
+    // [E] edit by smsong
     @Transactional(readOnly = true)
     public RoomDTO getRoomWithMembers(Long roomId, String requesterUid) {
         RoomEntity room = requireMember(requesterUid, roomId); // 멤버만 조회 가능

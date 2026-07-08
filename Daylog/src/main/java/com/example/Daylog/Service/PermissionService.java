@@ -195,6 +195,7 @@ public class PermissionService {
                 roomMemberRepository.save(RoomMemberEntity.builder().roomId(roomId).uid(targetUid).build());
             }
             e.setRejectReason(null); e.setRejectSeen(false); e.setKicked(false);
+            e.setAcceptSeen(false); // [B] edit by smsong - 수락됨: rooms 최초 진입 시 1회 안내 대상으로 표시
         } else {
             // 거절: 권한 전부 회수 + 멤버십 제거 + 거절 사유 저장(유저에게 1회 안내)
             e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false);
@@ -213,6 +214,24 @@ public class PermissionService {
         requireRoom(roomId);
         permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
             if (!e.isWelcomeSeen()) { e.setWelcomeSeen(true); permissionRepository.save(e); }
+        });
+    }
+
+    // [B] edit by smsong - 수락 안내 대상 여부: 권한행의 acceptSeen 반환(행 없으면 true=안내 없음).
+    //  rooms '내가 속한 방' 목록 DTO 에 실어 최초 1회 '입장 수락됨' 안내를 판단한다.
+    @Transactional(readOnly = true)
+    public boolean getAcceptSeen(Long roomId, String uid) {
+        return permissionRepository.findByRoomIdAndUid(roomId, uid)
+                .map(PermissionEntity::isAcceptSeen)
+                .orElse(true);
+    }
+
+    // [B] edit by smsong - 수락 안내를 봤음을 기록 (rooms 페이지 1회 안내 후 호출)
+    @Transactional
+    public void markAcceptSeen(String uid, Long roomId) {
+        requireRoom(roomId);
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            if (!e.isAcceptSeen()) { e.setAcceptSeen(true); permissionRepository.save(e); }
         });
     }
 
