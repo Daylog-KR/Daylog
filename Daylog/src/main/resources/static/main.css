@@ -592,6 +592,15 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--rot)); opacity: 0; }
 }
 /* [E] edit by smsong ============================================================== */
+/* [B] edit by smsong - 입장 수락 안내 배지 (최초 1회 환영 폼 상단) */
+.welcome-accept-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: 0 auto 10px; padding: 6px 14px; border-radius: 999px;
+    background: #eef6ec; color: #4a7c59; font-size: 0.82rem; font-weight: 700;
+    border: 1px solid #d7e9d0;
+}
+.welcome-accept-badge svg { flex-shrink: 0; }
+/* [E] edit by smsong */
 .welcome-title { font-size: 1.24rem; font-weight: 700; color: var(--gray-800); line-height: 1.45; margin: 0; }
 .welcome-title span { color: var(--primary-dark); }
 .welcome-sub { font-size: 0.9rem; color: var(--gray-500); margin-top: 8px; }

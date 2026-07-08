@@ -401,25 +401,32 @@ function renderRoomMembers(room) {
 }
 function kickRoomMember(targetUid, name) {
     var nm = name || (((Daylog._permList || []).find(function (x) { return x.uid === targetUid; }) || {}).nickname) || targetUid;
-    // [B] edit by smsong - '강퇴' 표현으로 통일 + 재입장 시 환영/동의 화면이 다시 뜬다는 점 안내
-    if (!confirm("'" + nm + "' 님을 강퇴할까요?\n강퇴된 멤버는 다시 입장하면 환영·동의 화면을 처음부터 다시 보게 됩니다.")) return;
-    // [B] edit by smsong - 강퇴 사유 입력(선택). 입력한 사유는 강퇴된 유저가 방 목록 진입 시 1회 안내로 표시됨.
-    var reason = prompt("강퇴 사유를 입력하세요 (선택).\n입력한 사유는 해당 멤버에게 안내됩니다.", "");
-    if (reason === null) return; // 취소
-    var roomId = getRoomId();
-    var kickUrl = Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) +
-        '?uid=' + encodeURIComponent(getUid());
-    if (reason && reason.trim()) kickUrl += '&reason=' + encodeURIComponent(reason.trim());
-    withLoading(fetch(kickUrl,
-        { method: 'DELETE', headers: Daylog.authHeaders(true) }), '강퇴하는 중...')
-        .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
-        .then(function () {
-            showToast('멤버를 강퇴했습니다');
-            if (typeof openPermissionAdmin === 'function') openPermissionAdmin(); // 목록 새로고침
-            if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile();
-            if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true);
-        })
-        .catch(function (err) { showToast('강퇴 실패'); console.error(err); });
+    // [B] edit by smsong - prompt()는 일부 PWA/웹뷰에서 차단(null 반환)되어 강퇴가 조용히 취소됨.
+    //  → 앱 내부 DOM 모달(promptRejectReason)을 강퇴 사유 입력에도 재사용한다.
+    //  확인=문자열(빈 문자열 허용) → 강퇴 진행, 취소=null → 아무 것도 안 함.
+    if (typeof promptRejectReason !== 'function') return;
+    promptRejectReason({
+        title: '멤버 강퇴',
+        desc: "'" + nm + "' 님을 강퇴합니다. 사유를 남기면 해당 멤버에게 전달돼요. (선택)\n강퇴된 멤버는 다시 입장하면 환영·동의 화면을 처음부터 다시 보게 됩니다.",
+        placeholder: '예: 방 성격과 맞지 않아요.',
+        confirmText: '강퇴하기'
+    }).then(function (reason) {
+        if (reason === null) return; // 취소
+        var roomId = getRoomId();
+        var kickUrl = Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) +
+            '?uid=' + encodeURIComponent(getUid());
+        if (reason && reason.trim()) kickUrl += '&reason=' + encodeURIComponent(reason.trim());
+        withLoading(fetch(kickUrl,
+            { method: 'DELETE', headers: Daylog.authHeaders(true) }), '강퇴하는 중...')
+            .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
+            .then(function () {
+                showToast('멤버를 강퇴했습니다');
+                if (typeof openPermissionAdmin === 'function') openPermissionAdmin(); // 목록 새로고침
+                if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile();
+                if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true);
+            })
+            .catch(function (err) { showToast('강퇴 실패'); console.error(err); });
+    });
     // [E] edit by smsong
 }
 function closeRoomMembers() {
@@ -651,14 +658,23 @@ function togglePerm(uid, key) {
     patch[key] = !p[key];
     putPermission(uid, patch);
 }
-// [B] edit by smsong - 거절 사유 입력 모달 (Promise 반환: 확인=문자열(빈 문자열 허용), 취소=null)
+// [B] edit by smsong - 사유 입력 모달 (Promise 반환: 확인=문자열(빈 문자열 허용), 취소=null)
+//  거절/강퇴 등 상황별로 title·desc·placeholder·확인버튼 문구를 옵션으로 바꿔 재사용. 옵션 없으면 '입장 요청 거절' 기본.
 var _rejectReasonResolver = null;
-function promptRejectReason() {
+function promptRejectReason(opts) {
+    opts = opts || {};
     return new Promise(function (resolve) {
         var modal = document.getElementById('reject-reason-modal');
         var input = document.getElementById('reject-reason-input');
         if (!modal || !input) { resolve(''); return; } // 모달 없으면 사유 없이 진행
+        var titleEl = document.getElementById('reject-reason-title');
+        var descEl = document.getElementById('reject-reason-desc');
+        var confirmEl = document.getElementById('reject-reason-confirm');
+        if (titleEl) titleEl.textContent = opts.title || '입장 요청 거절';
+        if (descEl) descEl.textContent = opts.desc || '거절 사유를 남기면 요청한 사용자에게 전달됩니다. (선택 사항)';
+        if (confirmEl) confirmEl.textContent = opts.confirmText || '거절하기';
         input.value = '';
+        input.setAttribute('placeholder', opts.placeholder || '예: 아는 사람만 참여할 수 있는 방이에요.');
         _rejectReasonResolver = resolve;
         modal.classList.remove('hidden');
         setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
