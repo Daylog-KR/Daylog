@@ -1311,8 +1311,8 @@ input[type="date"]::-webkit-date-and-time-value {
     font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
     background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
 }
-/* [B] edit by smsong - 추억/가볼곳 카운트를 왼쪽 정사각형 타일 2개로 예쁘게 배치 */
-.member-counts { display: flex; gap: 10px; justify-content: flex-start; }
+/* [B] edit by smsong - 추억/가볼곳 카운트를 멤버 카드 오른쪽 끝에 정사각형 타일 2개로 배치 */
+.member-counts { display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; margin-left: auto; }
 .member-count-btn {
     flex: 0 0 auto; width: 64px; height: 64px; box-sizing: border-box;
     background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 14px;

@@ -3260,10 +3260,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 `<div class="member-avatar">${avatar}</div>` +
                 `<div class="member-info">` +
                     `<div class="member-name">${_escHtml(name)} ${ownerBadge}</div>` +
-                    `<div class="member-counts">` +
-                        `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
-                        `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
-                    `</div>` +
+                `</div>` +
+                // [B] edit by smsong - 추억/가볼곳 타일을 멤버 카드 오른쪽 끝에 배치
+                `<div class="member-counts">` +
+                    `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
+                    `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
                 `</div>`;
             card.querySelector('[data-kind="mem"]').addEventListener('click', () => {
                 var items = memoryList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
