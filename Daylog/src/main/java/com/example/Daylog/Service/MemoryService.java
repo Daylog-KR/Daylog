@@ -192,6 +192,16 @@ public class MemoryService {
         if (memoryDTO.getContent() != null) memory.setContent(memoryDTO.getContent());
         if (memoryDTO.getCreatedAt() != null) memory.setCreatedAt(memoryDTO.getCreatedAt());
 
+        // [B] edit by smsong - 위치 수정 반영: lat/lng 이 함께 넘어온 경우에만 위치 갱신
+        //  (프론트는 위치를 '실제로 변경'했을 때만 lat/lng/placeName/address 를 전송 → 일반 수정에는 영향 없음)
+        if (memoryDTO.getLat() != null && memoryDTO.getLng() != null) {
+            memory.setLat(memoryDTO.getLat());
+            memory.setLng(memoryDTO.getLng());
+            if (memoryDTO.getPlaceName() != null) memory.setPlaceName(memoryDTO.getPlaceName());
+            if (memoryDTO.getAddress() != null)   memory.setAddress(memoryDTO.getAddress());
+        }
+        // [E] edit by smsong
+
         // 이미지: mediaOrder 가 오면 그 순서대로 재구성(기존 유지 + 새 파일 삽입), 없으면 변경하지 않음
         List<String> order = memoryDTO.getMediaOrder();
         List<String> uploaded = uploadMediaList(mediaFiles);

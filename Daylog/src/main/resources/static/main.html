@@ -413,6 +413,9 @@
                 <div class="media-grid" id="edit-media-grid"></div>
                 <input type="file" id="edit-media-input" accept="image/*" multiple style="display:none">
                 <span class="meta-item edit-loc-line" id="edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 확인 중…</span>
+                <!-- [B] edit by smsong - 수정 화면에서도 위치 변경 가능 -->
+                <button type="button" id="edit-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
+                <!-- [E] edit by smsong -->
             </div>
             <div class="form-group">
                 <label>날짜</label>
@@ -426,7 +429,6 @@
                 <label>내용</label>
                 <textarea id="edit-memory-content" rows="5" placeholder="이야기를 작성하십시오 (선택)"></textarea>
             </div>
-            <p class="detail-edit-note">※ 위치는 수정할 수 없습니다.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="detail-edit-cancel" class="cancel-edit-btn">취소</button>
                 <button type="submit" class="submit-btn">저장하기</button>
@@ -496,6 +498,9 @@
         <form id="cl-edit-form" class="hidden">
             <div class="cl-edit-loc-wrap">
                 <span class="meta-item edit-loc-line" id="cl-edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                <!-- [B] edit by smsong - 수정 화면에서도 위치 변경 가능 -->
+                <button type="button" id="cl-edit-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
+                <!-- [E] edit by smsong -->
             </div>
             <div class="form-group">
                 <label>사진 (최대 10장)</label>
@@ -526,7 +531,6 @@
                 </label>
                 <input type="date" id="cl-edit-visited-date" disabled>
             </div>
-            <p class="detail-edit-note">※ 위치는 수정할 수 없습니다.</p>
             <div class="detail-edit-actions">
                 <button type="button" id="cl-edit-cancel" class="cancel-edit-btn">취소</button>
                 <button type="submit" class="submit-btn">저장하기</button>

@@ -203,6 +203,16 @@ public class ChecklistService {
         c.setVisited(dto.isVisited());
         c.setVisitedDate(dto.isVisited() ? dto.getVisitedDate() : null);
 
+        // [B] edit by smsong - 위치 수정 반영: lat/lng 이 함께 넘어온 경우에만 위치 갱신
+        //  (프론트는 위치를 '실제로 변경'했을 때만 lat/lng/placeName/address 를 전송 → 일반 수정에는 영향 없음)
+        if (dto.getLat() != null && dto.getLng() != null) {
+            c.setLat(dto.getLat());
+            c.setLng(dto.getLng());
+            if (dto.getPlaceName() != null) c.setPlaceName(dto.getPlaceName());
+            if (dto.getAddress() != null)   c.setAddress(dto.getAddress());
+        }
+        // [E] edit by smsong
+
         // 이미지: mediaOrder 가 오면 그 순서대로 재구성, 없으면 새 파일만 뒤에 추가(없으면 변경 없음)
         List<String> order = dto.getMediaOrder();
         List<String> uploaded = uploadMediaList(mediaFiles);

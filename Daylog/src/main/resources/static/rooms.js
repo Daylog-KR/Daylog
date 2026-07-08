@@ -805,11 +805,15 @@ document.getElementById('btn-join-room').addEventListener('click', () => openMod
 document.querySelectorAll('.type-chip').forEach(ch => {
     ch.addEventListener('click', () => { selectedType = ch.dataset.type; updateTypeChips(); });
 });
-document.getElementById('btn-logout').addEventListener('click', () => {
+// [B] edit by smsong - 로그아웃은 프로필 패널 안 버튼으로 이동
+function doLogout() {
     if (!confirm('로그아웃 하시겠어요?')) return;
     AUTH_KEYS.forEach(k => localStorage.removeItem(k));
     location.replace('login.html');
-});
+}
+const _btnProfileLogout = document.getElementById('btn-profile-logout');
+if (_btnProfileLogout) _btnProfileLogout.addEventListener('click', doLogout);
+// [E] edit by smsong
 modalOk.addEventListener('click', submitModal);
 modalCancel.addEventListener('click', closeModal);
 // [B] edit by smsong - 복사한 코드 붙여넣기
@@ -817,6 +821,187 @@ if (pasteBtn) pasteBtn.addEventListener('click', pasteCodeFromClipboard);
 modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
 modalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitModal(); });
 
+// =====================================================
+// [B] edit by smsong - 내 프로필 (보기 / 수정 / 최초 닉네임 설정)
+//   프로필 수정은 방 화면(rooms.html)에서 가능하도록 이동.
+//   최초 진입(닉네임 없음) 시 main.html 이 아닌 이 화면에서 닉네임을 받는다.
+//   저장 API 는 main.html 과 동일: PUT /user (multipart: userData + mediaData)
+// =====================================================
+const DEFAULT_AVATAR_SVG =
+    '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+let me = null;                 // 현재 로그인 사용자 (GET /user/uid/{uid})
+let pePendingFile = null;      // 프로필 수정: 선택한 새 이미지
+let peRemovePhoto = false;     // 프로필 수정: 사진 제거 여부
+
+function _bustImg(url) {
+    if (!url) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_v=' + Date.now();
+}
+
+async function loadMe() {
+    try {
+        const res = await fetch(`${API_BASE}/user/uid/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) return;
+        me = await res.json();
+        maybePromptNicknameRooms();
+    } catch (e) { /* 네트워크 오류 시 조용히 무시 (방 목록은 계속 사용 가능) */ }
+}
+
+// 닉네임이 없으면 최초 설정 모달 노출 (있으면 노출하지 않음)
+function maybePromptNicknameRooms() {
+    if (!me) return;
+    const nick = me.nickname;
+    const modal = document.getElementById('nickname-modal');
+    if (!modal) return;
+    if ((!nick || !String(nick).trim()) && modal.classList.contains('hidden')) {
+        const inp = document.getElementById('nickname-input');
+        if (inp) inp.value = '';
+        modal.classList.remove('hidden');
+        setTimeout(() => { if (inp) inp.focus(); }, 120);
+    }
+}
+
+// PUT /user (main.html saveUser 와 동일 계약). file 없으면 빈 파트로 mediaData 채워 백엔드 기존 이미지 유지
+async function saveUser(userObj, file) {
+    const fd = new FormData();
+    fd.append('userData', JSON.stringify(userObj));
+    if (file) fd.append('mediaData', file);
+    else fd.append('mediaData', new Blob([], { type: 'application/octet-stream' }), 'empty');
+    const res = await fetch(`${API_BASE}/user`, { method: 'PUT', headers: authHeaders(false), body: fd });
+    if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); throw new Error('auth'); }
+    if (!res.ok) { let m = ''; try { m = await res.text(); } catch (e) {} throw new Error(m || ('저장 실패(' + res.status + ')')); }
+    try { return await res.json(); } catch (e) { return userObj; }
+}
+
+// ----- 프로필 보기 패널 -----
+function _setViewAvatar(url) {
+    const el = document.getElementById('profile-view-avatar');
+    if (!el) return;
+    if (url) { el.style.backgroundImage = "url('" + _bustImg(url) + "')"; el.innerHTML = ''; }
+    else { el.style.backgroundImage = 'none'; el.innerHTML = DEFAULT_AVATAR_SVG; }
+}
+function openProfileModal() {
+    const nameEl = document.getElementById('profile-view-name');
+    const subEl = document.getElementById('profile-view-sub');
+    const nick = (me && me.nickname && String(me.nickname).trim()) ? me.nickname : '나';
+    if (nameEl) nameEl.textContent = nick;
+    if (subEl) subEl.textContent = 'Daylog';
+    _setViewAvatar(me && me.profileURL);
+    const m = document.getElementById('profile-modal');
+    if (m) m.classList.remove('hidden');
+    // 최신 정보 반영을 위해 조용히 재조회
+    loadMe().then(() => { if (m && !m.classList.contains('hidden')) {
+        if (nameEl) nameEl.textContent = (me && me.nickname && String(me.nickname).trim()) ? me.nickname : '나';
+        _setViewAvatar(me && me.profileURL);
+    }});
+}
+function closeProfileModal() { const m = document.getElementById('profile-modal'); if (m) m.classList.add('hidden'); }
+
+// ----- 프로필 수정 폼 -----
+function _setPeAvatar(src, hasPhoto) {
+    const av = document.getElementById('pe-avatar');
+    if (av) { if (src) { av.style.backgroundImage = "url('" + src + "')"; av.innerHTML = ''; } else { av.style.backgroundImage = 'none'; av.innerHTML = DEFAULT_AVATAR_SVG; } }
+    const rm = document.getElementById('pe-remove-photo');
+    if (rm) rm.classList.toggle('hidden', !hasPhoto);
+}
+function openProfileEdit() {
+    if (!me) { showToast('사용자 정보를 불러오는 중입니다'); loadMe(); return; }
+    pePendingFile = null; peRemovePhoto = false;
+    const nick = document.getElementById('pe-nickname');
+    if (nick) nick.value = me.nickname || '';
+    _setPeAvatar(me.profileURL ? _bustImg(me.profileURL) : '', !!me.profileURL);
+    closeProfileModal();
+    const m = document.getElementById('profile-edit-modal');
+    if (m) m.classList.remove('hidden');
+}
+function closeProfileEdit() { const m = document.getElementById('profile-edit-modal'); if (m) m.classList.add('hidden'); }
+
+// 이벤트 바인딩
+const _btnProfile = document.getElementById('btn-profile');
+if (_btnProfile) _btnProfile.addEventListener('click', openProfileModal);
+const _profileCloseBtn = document.getElementById('profile-close');
+if (_profileCloseBtn) _profileCloseBtn.addEventListener('click', closeProfileModal);
+const _profileModalEl = document.getElementById('profile-modal');
+if (_profileModalEl) _profileModalEl.addEventListener('click', (e) => { if (e.target === _profileModalEl) closeProfileModal(); });
+const _btnOpenPe = document.getElementById('btn-open-profile-edit');
+if (_btnOpenPe) _btnOpenPe.addEventListener('click', openProfileEdit);
+const _peCancel = document.getElementById('pe-cancel');
+if (_peCancel) _peCancel.addEventListener('click', closeProfileEdit);
+const _peModalEl = document.getElementById('profile-edit-modal');
+if (_peModalEl) _peModalEl.addEventListener('click', (e) => { if (e.target === _peModalEl) closeProfileEdit(); });
+
+const _peWrap = document.getElementById('pe-avatar-wrap');
+const _peFile = document.getElementById('pe-file');
+if (_peWrap && _peFile) _peWrap.addEventListener('click', () => _peFile.click());
+if (_peFile) _peFile.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    _peFile.value = '';
+    if (!file) return;
+    pePendingFile = file; peRemovePhoto = false;
+    const reader = new FileReader();
+    reader.onload = (ev) => _setPeAvatar(ev.target.result, true);
+    reader.readAsDataURL(file);
+});
+const _peRemove = document.getElementById('pe-remove-photo');
+if (_peRemove) _peRemove.addEventListener('click', () => {
+    pePendingFile = null; peRemovePhoto = true;
+    _setPeAvatar('', false);
+    showToast('저장하면 사진이 제거됩니다');
+});
+
+const _peSave = document.getElementById('pe-save');
+if (_peSave) _peSave.addEventListener('click', async () => {
+    if (!me) { showToast('사용자 정보 조회 실패'); return; }
+    const nick = (document.getElementById('pe-nickname').value || '').trim();
+    if (!nick) { showToast('닉네임을 입력해주세요'); return; }
+    _peSave.disabled = true; const prev = _peSave.textContent; _peSave.textContent = '저장 중...';
+    showLoading('저장 중...');
+    try {
+        const payload = { uid: me.uid, id: me.id, nickname: nick };
+        if (!pePendingFile && peRemovePhoto) payload.profileURL = '';
+        const updated = await saveUser(payload, pePendingFile);
+        me = updated || Object.assign({}, me, payload);
+        if (peRemovePhoto) me.profileURL = '';
+        pePendingFile = null; peRemovePhoto = false;
+        showToast('프로필 저장 완료');
+        closeProfileEdit();
+    } catch (err) {
+        if (String(err && err.message) !== 'auth') showToast('저장 실패: ' + (err.message || '서버 오류'));
+    } finally {
+        _peSave.disabled = false; _peSave.textContent = prev; hideLoading();
+    }
+});
+
+// ----- 최초 닉네임 설정 -----
+async function submitNicknameFirst() {
+    const val = (document.getElementById('nickname-input').value || '').trim();
+    if (!val) { showToast('닉네임을 입력해주세요'); return; }
+    if (!me) { showToast('사용자 정보 조회 실패'); return; }
+    const btn = document.getElementById('nickname-ok');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    showLoading('설정 중...');
+    try {
+        const payload = { uid: me.uid, id: me.id, nickname: val };
+        const updated = await saveUser(payload, null);
+        me = updated || Object.assign({}, me, payload);
+        const modal = document.getElementById('nickname-modal');
+        if (modal) modal.classList.add('hidden');
+        showToast('닉네임 설정 완료');
+    } catch (err) {
+        if (String(err && err.message) !== 'auth') showToast('설정 실패: ' + (err.message || '서버 오류'));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '시작하기'; }
+        hideLoading();
+    }
+}
+const _nickOk = document.getElementById('nickname-ok');
+if (_nickOk) _nickOk.addEventListener('click', submitNicknameFirst);
+const _nickInput = document.getElementById('nickname-input');
+if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitNicknameFirst(); });
+// [E] edit by smsong
+
 // ===== 시작 =====
 // 유효한 세션일 때만 로드. (이미 gotoLoginCleared() 로 이동 중이면 실행 안 함)
-if (validSession) loadRooms();
+if (validSession) { loadRooms(); loadMe(); }

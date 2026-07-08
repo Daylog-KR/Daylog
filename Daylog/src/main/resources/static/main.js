@@ -957,6 +957,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let _mapClCat = 'ALL';         // 지도 필터: 가볼곳 카테고리 (ALL | CAFE | FOOD | SPOT | ETC)
     let _suppressDrop = false;     // 위치 클릭(focus) 시 마커 등장(markerDrop) 애니메이션 억제 → 흔들기만
     let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
+    // [B] edit by smsong - '수정' 중 위치 재설정 복귀 컨텍스트
+    let _editLocReturn = null;     // null | 'memory' | 'checklist'
+    let _editLocItem = null;       // 편집 중이던 원본 아이템(시트 닫힘으로 _detailMemory/_detailChecklist 가 비워지므로 보관)
+    let _editFormSnapshot = null;  // 편집 폼 입력값 스냅샷(복원용)
+    // [E] edit by smsong
     let checklistLoaded = false;   // 체크리스트 최초 로드 여부
     let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
     let _memSig = null, _clSig = null, _profSig = null; // 변경 감지용 시그니처(같으면 재렌더 생략)
@@ -1015,11 +1020,19 @@ document.addEventListener('DOMContentLoaded', () => {
         else refreshMapMarkers();
         setTimeout(() => {
             if (!map) return;
-            map.setZoom(16);
-            map.panTo(new naver.maps.LatLng(memory.lat, memory.lng));
-            setTimeout(() => shakeMarker(memory), 460);
+            // [B] edit by smsong - 현재 지도 위치에서 대상까지 중앙+줌을 한 번에 부드럽게 이동(morph)
+            const target = new naver.maps.LatLng(memory.lat, memory.lng);
+            if (typeof map.morph === 'function') {
+                map.morph(target, 16, { duration: 650, easing: 'easeOutCubic' });
+                setTimeout(() => shakeMarker(memory), 720);
+            } else {
+                map.setZoom(16);
+                map.panTo(target);
+                setTimeout(() => shakeMarker(memory), 460);
+            }
+            // [E] edit by smsong
         }, 120);
-        setTimeout(() => { _suppressDrop = false; }, 1400);
+        setTimeout(() => { _suppressDrop = false; }, 1600);
     };
 
     // 가볼곳 상세에서 위치 클릭 → 지도(체크리스트 모드)로 이동 + 마커 흔들기
@@ -1047,11 +1060,19 @@ document.addEventListener('DOMContentLoaded', () => {
         else refreshMapMarkers();
         setTimeout(() => {
             if (!map) return;
-            map.setZoom(16);
-            map.panTo(new naver.maps.LatLng(item.lat, item.lng));
-            setTimeout(() => shakeChecklistMarker(item), 460);
+            // [B] edit by smsong - 현재 지도 위치에서 대상까지 중앙+줌을 한 번에 부드럽게 이동(morph)
+            const target = new naver.maps.LatLng(item.lat, item.lng);
+            if (typeof map.morph === 'function') {
+                map.morph(target, 16, { duration: 650, easing: 'easeOutCubic' });
+                setTimeout(() => shakeChecklistMarker(item), 720);
+            } else {
+                map.setZoom(16);
+                map.panTo(target);
+                setTimeout(() => shakeChecklistMarker(item), 460);
+            }
+            // [E] edit by smsong
         }, 120);
-        setTimeout(() => { _suppressDrop = false; }, 1400);
+        setTimeout(() => { _suppressDrop = false; }, 1600);
     };
 
     const mapWrapper = document.getElementById('map-wrapper');
@@ -1066,6 +1087,17 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
     });
+
+    // [B] edit by smsong - main 상단 좌측 Daylog 로고 → 확인 후 방 목록으로 이동 (main 페이지 전용)
+    const navLogo = document.querySelector('.navbar .logo');
+    if (navLogo) {
+        navLogo.style.cursor = 'pointer';
+        navLogo.setAttribute('title', '방 목록으로 이동');
+        navLogo.addEventListener('click', () => {
+            if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html';
+        });
+    }
+    // [E] edit by smsong
 
     // --- 탭 전환 ---
     const navItems = document.querySelectorAll('.nav-item');
@@ -1285,11 +1317,150 @@ document.addEventListener('DOMContentLoaded', () => {
     // 좌표를 최종 확정 → 작성 폼으로 (중앙 점 / 현재 위치 공통)
     function confirmLocation(lat, lng, prefix) {
         currentLatLng = { lat: lat, lng: lng };
+        // [B] edit by smsong - '수정' 중 위치 재설정이면 편집 폼으로 복귀
+        if (_editLocReturn) { finishEditLocationPick(lat, lng); return; }
+        // [E] edit by smsong
         reverseGeocodeAndLabel(lat, lng, prefix || icon('pin',14));
         exitPickMode();
         pickReturnsToForm = false;
         if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
     }
+
+    // [B] edit by smsong - ===== '수정' 중 위치 재설정 흐름 =====
+    // 편집 폼(추억/가볼곳)에서 '위치 다시 설정하기' → 폼 상태 스냅샷 후 위치 선택 모드 진입
+    function startEditLocationPick(kind) {
+        if (kind === 'memory') {
+            if (!_detailMemory) return;
+            const mgr = window._memEditMgr;
+            _editLocItem = _detailMemory;
+            _editFormSnapshot = {
+                date: (document.getElementById('edit-memory-date') || {}).value || '',
+                title: (document.getElementById('edit-memory-title') || {}).value || '',
+                content: (document.getElementById('edit-memory-content') || {}).value || '',
+                order: mgr ? mgr.getMediaOrder() : [],
+                files: mgr ? mgr.getNewFiles() : []
+            };
+            _editLocReturn = 'memory';
+            pickTarget = 'memory';
+            closeDetailModal();
+        } else {
+            if (!_detailChecklist) return;
+            const mgr = window._clEditMgr;
+            _editLocItem = _detailChecklist;
+            _editFormSnapshot = {
+                title: (document.getElementById('cl-edit-title') || {}).value || '',
+                content: (document.getElementById('cl-edit-content') || {}).value || '',
+                type: window._clEditSelectedType || (_detailChecklist && _detailChecklist.type) || 'ETC',
+                visited: !!(document.getElementById('cl-edit-visited') || {}).checked,
+                visitedDate: (document.getElementById('cl-edit-visited-date') || {}).value || '',
+                order: mgr ? mgr.getMediaOrder() : [],
+                files: mgr ? mgr.getNewFiles() : []
+            };
+            _editLocReturn = 'checklist';
+            pickTarget = 'checklist';
+            closeChecklistDetail();
+        }
+        _editLocPicked = null;
+        // 시트가 내려가는 애니메이션이 끝난 뒤 위치 선택 모드 진입
+        setTimeout(function () { enterPickMode(); }, 260);
+    }
+
+    // 위치 확정 → 새 좌표의 주소를 역지오코딩한 뒤 편집 폼 복원
+    function finishEditLocationPick(lat, lng) {
+        exitPickMode();
+        var applyAndReopen = function (meta) {
+            _editLocPicked = {
+                lat: lat, lng: lng,
+                placeName: (meta && meta.placeName) || '',
+                address: (meta && meta.address) || ''
+            };
+            reopenEditWithSnapshot(true);
+        };
+        if (window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode) {
+            naver.maps.Service.reverseGeocode({
+                coords: new naver.maps.LatLng(lat, lng),
+                orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+            }, function (status, response) {
+                var meta = { placeName: '', address: '' };
+                if (status === naver.maps.Service.Status.OK) {
+                    var r = response.v2;
+                    var addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress) : '';
+                    meta = splitKoreanAddress(addr || '');
+                }
+                applyAndReopen(meta);
+            });
+        } else { applyAndReopen({ placeName: '', address: '' }); }
+    }
+
+    // 미디어 매니저를 저장된 순서/새 파일로 재구성(사진 편집 상태 보존)
+    function _rebuildMediaMgr(mgr, order, files) {
+        if (!mgr) return;
+        var f = (files || []).slice();
+        var items = (order || []).map(function (o) {
+            return o === '$NEW$' ? { kind: 'file', file: f.shift() } : { kind: 'url', url: o };
+        }).filter(function (it) { return it.kind === 'url' || it.file; });
+        mgr.reset(items);
+    }
+
+    // 편집 폼 위치 라벨을 새 위치로 갱신
+    function _applyEditLocLabel(elId) {
+        var el = document.getElementById(elId);
+        if (!el || !_editLocPicked) return;
+        var t = [_editLocPicked.placeName, _editLocPicked.address].filter(Boolean).join(' ') || '지정한 위치';
+        el.innerHTML = pinText(t) + ' <span class="loc-changed-tag">변경됨</span>';
+    }
+
+    // 상세 시트를 다시 열고 편집 모드로 진입 → 스냅샷 복원 (changed=true면 새 위치 라벨 적용)
+    function reopenEditWithSnapshot(changed) {
+        var kind = _editLocReturn;
+        var item = _editLocItem;
+        var snap = _editFormSnapshot;
+        _editLocReturn = null; _editLocItem = null; _editFormSnapshot = null; // 소비
+        if (!item) return;
+        window._editLocRestoring = true; // exitDetailEdit/exitChecklistEdit 가 _editLocPicked 를 지우지 않도록
+        try {
+            if (kind === 'memory') {
+                openDetailModal(item);
+                enterDetailEdit(item);
+                if (snap) {
+                    var d = document.getElementById('edit-memory-date'); if (d) d.value = snap.date;
+                    var t = document.getElementById('edit-memory-title'); if (t) t.value = snap.title;
+                    var c = document.getElementById('edit-memory-content'); if (c) c.value = snap.content;
+                    _rebuildMediaMgr(window._memEditMgr, snap.order, snap.files);
+                }
+                if (changed) _applyEditLocLabel('edit-loc');
+            } else {
+                openChecklistDetail(item);
+                enterChecklistEdit(item);
+                if (snap) {
+                    var ct = document.getElementById('cl-edit-title'); if (ct) ct.value = snap.title;
+                    var cc = document.getElementById('cl-edit-content'); if (cc) cc.value = snap.content;
+                    if (snap.type) {
+                        window._clEditSelectedType = snap.type;
+                        document.querySelectorAll('#cl-edit-type-options .cl-type-chip').forEach(function (chip) {
+                            chip.classList.toggle('selected', chip.dataset.type === snap.type);
+                        });
+                    }
+                    var chk = document.getElementById('cl-edit-visited');
+                    var dt = document.getElementById('cl-edit-visited-date');
+                    if (chk) chk.checked = !!snap.visited;
+                    if (dt) { dt.disabled = !snap.visited; dt.value = snap.visitedDate || ''; }
+                    if (chk) { var lbl = chk.closest('.cl-check-label'); if (lbl) lbl.classList.toggle('checked', !!snap.visited); }
+                    _rebuildMediaMgr(window._clEditMgr, snap.order, snap.files);
+                }
+                if (changed) _applyEditLocLabel('cl-edit-loc');
+            }
+        } finally {
+            window._editLocRestoring = false;
+        }
+    }
+
+    // 편집 폼의 '위치 다시 설정하기' 버튼 바인딩
+    var _editResetLoc = document.getElementById('edit-reset-location');
+    if (_editResetLoc) _editResetLoc.addEventListener('click', function () { startEditLocationPick('memory'); });
+    var _clEditResetLoc = document.getElementById('cl-edit-reset-location');
+    if (_clEditResetLoc) _clEditResetLoc.addEventListener('click', function () { startEditLocationPick('checklist'); });
+    // [E] edit by smsong
 
     // 좌표 → 상세 주소 (역지오코딩)로 배지 문구 채우기
     function setBadgeManual(text) {
@@ -1373,6 +1544,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('lm-cancel').addEventListener('click', () => {
+        // [B] edit by smsong - '수정' 중 위치 재설정 취소 → 위치 변경 없이 편집 폼으로 복귀
+        if (_editLocReturn) {
+            exitPickMode();
+            _editLocPicked = null;
+            reopenEditWithSnapshot(false);
+            showToast('위치 변경을 취소했습니다');
+            return;
+        }
+        // [E] edit by smsong
         exitPickMode();
         if (pickReturnsToForm) {
             // 위치 재설정 취소 → 입력하던 폼 그대로 복귀
@@ -1408,21 +1588,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const placeName = item.name || '';
         const finalize = (lat, lng) => {
             if (isNaN(lat) || isNaN(lng)) { showToast('좌표 조회 실패'); return; }
+            // [B] edit by smsong - 검색 결과는 '즉시 확정'하지 않는다.
+            //  지도를 그 위치로 부드럽게 이동시켜 사용자가 미세 조정한 뒤,
+            //  '이 위치로 설정' 버튼으로 최종 확정하도록 위치 선택 모드를 유지한다.
             currentLatLng = { lat: lat, lng: lng };
-            map.setCenter(new naver.maps.LatLng(lat, lng));
-            map.setZoom(17);
             currentLocationMeta = splitKoreanAddress(addr);
             window._pendingPlaceTitle = placeName; // 제목 자동입력용 (추억/체크리스트 공용)
-
-            const badge = document.getElementById('location-status-badge');
-            if (badge) {
-                badge.innerHTML = icon('search',14) + " '" + escapeHtml(placeName || addr || '검색 위치') + "' 위치로 설정되었습니다";
-                badge.className = "location-badge manual";
-            }
             hideSuggestions();
-            exitPickMode();
-            pickReturnsToForm = false;
-            if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
+            const si = document.getElementById('lm-search-input');
+            if (si) si.blur();
+            const target = new naver.maps.LatLng(lat, lng);
+            if (map) {
+                if (typeof map.morph === 'function') map.morph(target, 17, { duration: 550, easing: 'easeOutCubic' });
+                else { map.setCenter(target); map.setZoom(17); }
+            }
+            // 이동이 끝나면 중앙(레티클) 기준 주소 배너를 갱신
+            setTimeout(updateCenterLabel, 620);
+            showToast("검색 위치로 이동했어요. 지도를 조정한 뒤 '이 위치로 설정'을 눌러주세요.");
+            // 위치 선택 모드는 그대로 유지 (exitPickMode / 폼 열기 안 함)
+            // [E] edit by smsong
         };
         // 도로명 주소를 지오코딩해 정확한 좌표 확보, 실패 시 백엔드가 준 좌표 사용
         if (addr && window.naver && naver.maps.Service && naver.maps.Service.geocode) {
@@ -2681,17 +2865,10 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(err => console.error("본인 프로필 폴백 실패(/user/uid):", err));
     }
 
-    // 닉네임이 없으면 최초 설정 모달 노출 (있으면 노출하지 않음)
-    function maybePromptNickname() {
-        if (!currentUser) return;
-        const nick = currentUser.nickname;
-        const modal = document.getElementById('nickname-modal');
-        if ((!nick || !String(nick).trim()) && modal.classList.contains('hidden')) {
-            document.getElementById('nickname-input').value = '';
-            modal.classList.remove('hidden');
-            setTimeout(() => { const i = document.getElementById('nickname-input'); if (i) i.focus(); }, 120);
-        }
-    }
+    // [B] edit by smsong - 닉네임 최초 설정은 방 목록(rooms.html)에서 진행하도록 이동.
+    //  main.html 에서는 더 이상 닉네임 설정 모달을 띄우지 않는다.
+    function maybePromptNickname() { /* no-op: rooms.html 에서 최초 닉네임 설정 */ }
+    // [E] edit by smsong
 
     // 공통 사용자 저장 (PUT /user). mediaData 파트는 항상 포함해
     // 'Required part mediaData is not present' 오류를 방지 (빈 파일이면 백엔드가 기존 프로필 유지)
@@ -3003,10 +3180,12 @@ document.addEventListener('DOMContentLoaded', () => {
             var ownerBadge = m.owner ? '<span class="member-owner-badge">방장</span>' : '';
             card.innerHTML =
                 `<div class="member-avatar">${avatar}</div>` +
-                `<div class="member-name">${_escHtml(name)} ${ownerBadge}</div>` +
-                `<div class="member-counts">` +
-                    `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
-                    `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
+                `<div class="member-info">` +
+                    `<div class="member-name">${_escHtml(name)} ${ownerBadge}</div>` +
+                    `<div class="member-counts">` +
+                        `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
+                        `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
+                    `</div>` +
                 `</div>`;
             card.querySelector('[data-kind="mem"]').addEventListener('click', () => {
                 var items = memoryList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
@@ -3560,6 +3739,8 @@ function enterChecklistEdit(item) {
 }
 
 function exitChecklistEdit() {
+    // [smsong] 위치 재설정 복귀 중에는 초기화하지 않음(복귀 시 새 위치 유지)
+    if (!window._editLocRestoring) _editLocPicked = null;
     const view = document.getElementById('cl-detail-view');
     const editForm = document.getElementById('cl-edit-form');
     if (editForm) editForm.classList.add('hidden');
@@ -3631,6 +3812,14 @@ function saveChecklistEdit() {
         visitedDate: (visited && visitedDate) ? visitedDate : null,
         mediaOrder: order
     };
+    // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
+    if (_editLocPicked) {
+        dto.lat = _editLocPicked.lat;
+        dto.lng = _editLocPicked.lng;
+        dto.placeName = _editLocPicked.placeName || '';
+        dto.address = _editLocPicked.address || '';
+    }
+    // [E] edit by smsong
     const fd = new FormData();
     fd.append('checklistData', JSON.stringify(dto));
     newFiles.forEach(f => fd.append('mediaData', f));
@@ -3645,6 +3834,7 @@ function saveChecklistEdit() {
     }), '수정 중...')
         .then(Daylog.handleResponse)
         .then((updated) => {
+            _editLocPicked = null; // [smsong] 수정 위치 소비
             showToast('수정 완료');
             closeChecklistDetail();
             Daylog.reloadChecklists();
@@ -3674,6 +3864,9 @@ function closeChecklistDetail() {
 }
 
 let _detailMemory = null;
+// [B] edit by smsong - 추억/가볼곳 '수정' 중 새로 고른 위치(없으면 원본 유지). 저장 함수(최상위)와 위치선택(클로저)이 공유하므로 최상위에 선언
+let _editLocPicked = null; // { lat, lng, placeName, address } | null
+// [E] edit by smsong
 
 // =====================================================
 // [smsong] 상세보기 바텀시트 (REMS 방식 이식)
@@ -3955,6 +4148,8 @@ function enterDetailEdit(memory) {
 }
 
 function exitDetailEdit() {
+    // [smsong] 위치 재설정 복귀 중에는 초기화하지 않음(복귀 시 새 위치 유지)
+    if (!window._editLocRestoring) _editLocPicked = null;
     const view = document.getElementById('detail-view');
     const editForm = document.getElementById('detail-edit-form');
     if (editForm) editForm.classList.add('hidden');
@@ -3981,6 +4176,14 @@ function saveDetailEdit() {
     else if (memory.createdAt) createdAt = (String(memory.createdAt).length === 10) ? (memory.createdAt + 'T00:00:00') : memory.createdAt;
 
     const memoryData = { title: title, content: content, createdAt: createdAt, mediaOrder: order };
+    // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
+    if (_editLocPicked) {
+        memoryData.lat = _editLocPicked.lat;
+        memoryData.lng = _editLocPicked.lng;
+        memoryData.placeName = _editLocPicked.placeName || '';
+        memoryData.address = _editLocPicked.address || '';
+    }
+    // [E] edit by smsong
     const fd = new FormData();
     fd.append('memoryData', JSON.stringify(memoryData));
     newFiles.forEach(f => fd.append('mediaData', f));
@@ -3995,6 +4198,7 @@ function saveDetailEdit() {
     }), '수정 중...')
         .then(Daylog.handleResponse)
         .then(() => {
+            _editLocPicked = null; // [smsong] 수정 위치 소비
             showToast('수정 완료');
             closeDetailModal();
             Daylog.reload();

@@ -276,18 +276,72 @@ html, body {
 .room-cap-input:focus { border-color: var(--primary); background: var(--white); }
 .room-cap-unit { font-size: 0.9rem; color: var(--gray-500); }
 
-/* [B] edit by smsong - 방 만들기/코드 입장/미리보기/거절 창 모두 화면 정중앙 팝업 */
-#room-modal, #preview-modal, #reject-modal {
+/* [B] edit by smsong - 방 만들기/코드 입장/미리보기/거절/프로필 창 모두 화면 정중앙 팝업 */
+#room-modal, #preview-modal, #reject-modal,
+#profile-modal, #profile-edit-modal, #nickname-modal {
     align-items: center;              /* 하단(flex-end) → 정중앙 */
     padding: 20px;                    /* 좌우로 화면 끝에 붙지 않게 */
 }
-#room-modal .room-modal-card, #preview-modal .room-modal-card, #reject-modal .room-modal-card {
+#room-modal .room-modal-card, #preview-modal .room-modal-card, #reject-modal .room-modal-card,
+#profile-modal .room-modal-card, #profile-edit-modal .room-modal-card, #nickname-modal .room-modal-card {
     max-width: 420px;
     border-radius: 20px;              /* 상단만 둥근 시트 → 사방 둥근 카드 */
     padding: 24px 22px;               /* 하단 safe-area 여백 제거 */
     max-height: 88dvh; overflow-y: auto; /* 내용이 길면(방 만들기) 카드 내부 스크롤 */
+    overscroll-behavior: contain;     /* 폼을 벗어나는 오버스크롤 차단 */
     animation: popIn 0.24s cubic-bezier(0.34, 1.2, 0.64, 1); /* 슬라이드업 → 중앙 팝인 */
 }
+
+/* [B] edit by smsong - 헤더 프로필(사람 아이콘) 버튼 : 기존 로그아웃 버튼과 동일 크기 */
+.rooms-icon-btn {
+    flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; cursor: pointer;
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-600);
+    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+    transition: all 0.15s ease;
+}
+.rooms-icon-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
+.rooms-icon-btn:active { transform: scale(0.96); }
+
+/* [B] edit by smsong - 내 프로필 보기 패널 */
+.profile-view { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 4px 0 6px; }
+.profile-view-avatar {
+    width: 92px; height: 92px; border-radius: 50%; overflow: hidden;
+    background: var(--gray-100); border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center; color: var(--gray-400);
+    background-size: cover; background-position: center;
+}
+.profile-view-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-view-name { margin-top: 14px; font-size: 1.28rem; font-weight: 700; color: var(--gray-800); }
+.profile-view-sub { margin-top: 4px; font-size: 0.85rem; color: var(--gray-500); }
+.profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.profile-actions .rm-btn { width: 100%; }
+
+/* [B] edit by smsong - 프로필 수정 폼 (아바타 + 닉네임) */
+.pe-avatar-wrap {
+    position: relative; width: 104px; height: 104px; margin: 6px auto 0; cursor: pointer;
+}
+.pe-avatar {
+    width: 104px; height: 104px; border-radius: 50%; overflow: hidden;
+    background: var(--gray-100); border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: center; color: var(--gray-400);
+    background-size: cover; background-position: center;
+}
+.pe-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pe-avatar-edit {
+    position: absolute; right: 2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--white);
+    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
+}
+.pe-avatar-hint { text-align: center; font-size: 0.8rem; color: var(--gray-500); margin: 10px 0 6px; }
+.pe-remove-photo {
+    display: block; margin: 0 auto 8px; font-size: 0.8rem; font-weight: 600; color: var(--danger);
+    background: none; border: none; cursor: pointer; font-family: var(--font-main);
+}
+#profile-edit-modal .room-modal-input { margin-top: 6px; }
+
+/* [B] edit by smsong - 최초 닉네임 설정 */
+.nickname-logo { display: flex; justify-content: center; margin-bottom: 6px; }
+#nickname-modal .room-modal-input { margin-top: 4px; }
 @keyframes popIn {
     from { opacity: 0; transform: scale(0.94) translateY(8px); }
     to   { opacity: 1; transform: scale(1) translateY(0); }

@@ -517,7 +517,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     max-height: 80dvh;       /* 80dvh로 줄여 화면 아래 '기록하기' 버튼 여백 확보 */
     overflow-y: auto;
     overflow-x: hidden;      /* [추가] 폼 내부 가로 스크롤 및 드래그 완전 차단 */
-    overscroll-behavior-x: none; /* [추가] 모바일 가로 스와이프 시 튕김(바운스) 현상 방지 */
+    overscroll-behavior: contain; /* [B] edit by smsong - 폼(추억/가볼곳) 최상/최하단에서 위아래 오버스크롤(배경 스크롤·바운스) 차단 [E] */
     touch-action: pan-y;     /* [smsong] 세로 스크롤만 허용 */
     padding: 24px; box-shadow: var(--shadow-md);
     /* [B] edit by smsong - 안드로이드 모달 콘텐츠 깜빡임 방지: 독립 합성 레이어로 격리 */
@@ -976,6 +976,13 @@ input[type="date"]::-webkit-date-and-time-value {
     align-self: flex-start; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* [B] edit by smsong - 수정 화면에서 새로 지정한 위치 표시 태그 */
+.loc-changed-tag {
+    display: inline-block; margin-left: 6px; font-size: 0.66rem; font-weight: 700;
+    color: var(--primary-dark); background: var(--primary-light);
+    border-radius: 6px; padding: 1px 6px; vertical-align: middle;
+}
+/* [E] edit by smsong */
 
 /* ---- 상세보기 위치(클릭 시 지도로 이동) ---- */
 .meta-loc-clickable { cursor: pointer; transition: background 0.18s ease, color 0.18s ease; }
@@ -1250,36 +1257,42 @@ input[type="date"]::-webkit-date-and-time-value {
 
 /* [smsong] 친구/가족 방 — 구성원 프로필 그리드 */
 .member-view-head { font-size: 0.95rem; font-weight: 700; color: var(--gray-700); margin: 4px 2px 14px; }
-.member-grid-inner { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+/* [B] edit by smsong - 친구/가족 구성원을 한 줄에 한 명씩(가로 일자) 배치 */
+.member-grid-inner { display: flex; flex-direction: column; gap: 10px; }
 .member-card {
-    background: var(--white); border: 1px solid var(--gray-200); border-radius: 18px;
-    padding: 18px 14px; text-align: center; box-shadow: 0 1px 3px rgba(139,115,85,0.06);
+    background: var(--white); border: 1px solid var(--gray-200); border-radius: 16px;
+    padding: 12px 14px; text-align: left; box-shadow: 0 1px 3px rgba(139,115,85,0.06);
+    display: flex; align-items: center; gap: 14px;
 }
 .member-card .member-avatar {
-    width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%;
+    width: 52px; height: 52px; margin: 0; flex-shrink: 0; border-radius: 50%;
     overflow: hidden; background: var(--gray-100); border: 1px solid var(--gray-200);
     display: flex; align-items: center; justify-content: center; color: var(--gray-400);
 }
 .member-card .member-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.member-card .member-info {
+    flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px;
+}
 .member-name {
-    font-size: 0.98rem; font-weight: 700; color: var(--gray-800); margin-bottom: 12px;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 0.98rem; font-weight: 700; color: var(--gray-800); margin-bottom: 0;
+    display: flex; align-items: center; justify-content: flex-start; gap: 6px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .member-owner-badge {
     font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
-    background: var(--primary-light); border-radius: 6px; padding: 2px 6px;
+    background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
 }
 .member-counts { display: flex; gap: 8px; }
 .member-count-btn {
-    flex: 1 1 0; background: var(--gray-50); border: 1px solid var(--gray-200);
-    border-radius: 12px; padding: 8px 4px; cursor: pointer; font-family: var(--font-main);
-    display: flex; flex-direction: column; gap: 2px; align-items: center; transition: all 0.15s ease;
+    flex: 0 0 auto; min-width: 74px; background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 12px; padding: 6px 12px; cursor: pointer; font-family: var(--font-main);
+    display: flex; flex-direction: row; gap: 6px; align-items: baseline; transition: all 0.15s ease;
 }
 .member-count-btn:hover { background: var(--primary-light); }
 .member-count-btn:active { transform: scale(0.97); }
 .member-count-btn b { font-size: 1.05rem; color: var(--primary-dark); }
 .member-count-btn span { font-size: 0.72rem; color: var(--gray-500); }
+/* [E] edit by smsong */
 
 /* [smsong] 멤버 관리(강퇴) 모달 */
 .rm-head { font-size: 0.85rem; color: var(--gray-500); padding: 0 4px 10px; }
