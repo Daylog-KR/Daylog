@@ -68,6 +68,13 @@ public class PermissionEntity {
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean kicked = false;
     // [E] edit by smsong
+
+    // [B] edit by smsong - 방장이 입장을 '수락'했을 때, 수락된 유저가 rooms 페이지에서 안내를 받았는지 여부.
+    //  기본값 true(기존 멤버/일반 행은 안내 안 뜸). decideAccess(승인) 시에만 false 로 내려 최초 1회 안내.
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean not null default true")
+    private boolean acceptSeen = true;
+    // [E] edit by smsong
     // [E] edit by smsong
 
     private LocalDateTime requestedAt;

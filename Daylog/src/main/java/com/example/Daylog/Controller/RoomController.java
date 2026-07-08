@@ -143,6 +143,17 @@ public class RoomController {
         return ResponseEntity.ok(roomService.setDday(roomId, uid, body.get("since")));
     }
 
+    // [B] edit by smsong - 입장 수락 안내를 봤음을 기록 (rooms 페이지 최초 1회 안내 후 호출) — ?uid=
+    @PostMapping("/{roomId}/accept-seen")
+    public ResponseEntity<Void> markAcceptSeen(@PathVariable("roomId") Long roomId,
+                                               @RequestParam("uid") String uid,
+                                               @AuthenticationPrincipal UserDetails ud) {
+        verify(uid, ud);
+        roomService.markAcceptSeen(roomId, uid);
+        return ResponseEntity.ok().build();
+    }
+    // [E] edit by smsong
+
     // 멤버 강퇴 (방장만) — ?uid=방장uid&reason=강퇴사유(선택), path=대상 uid
     // [B] edit by smsong - 강퇴 사유(reason)를 함께 받아 강퇴된 유저에게 rooms 진입 시 안내
     @DeleteMapping("/{roomId}/members/{targetUid}")

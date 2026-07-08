@@ -28,6 +28,7 @@ public class RoomDTO {
     private String rejectReason;  // 거절됨(REJECTED)일 때 방장이 남긴 사유(강퇴 사유 포함)
     private Boolean rejectSeen;   // 거절/강퇴 안내를 이미 봤는지(rooms 페이지 1회 안내용)
     private Boolean kicked;       // 강퇴로 인한 REJECTED 인지(=true) 아니면 입장요청 거절(=false)
+    private Boolean acceptSeen;   // [smsong] 입장 수락 안내를 이미 봤는지(false=수락됨 최초 안내 대상). '내가 속한 방' 목록용
     // [E] edit by smsong
     private LocalDateTime createdAt;
     private List<Member> members; // 선택(멤버 목록 조회 시)
