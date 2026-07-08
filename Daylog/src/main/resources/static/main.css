@@ -116,11 +116,16 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
     0%, 70%, 100% { transform: scale(1); }
     35% { transform: scale(1.18); }
 }
+/* [B] edit by smsong - 상단 로그아웃 버튼: 텍스트 → 아이콘 버튼(rooms.css .rooms-icon-btn 와 동일 톤) */
 .logout-btn {
-    background: none; border: none; color: var(--gray-400);
-    font-size: 0.85rem; cursor: pointer; transition: color 0.2s;
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; cursor: pointer;
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
+    display: flex; align-items: center; justify-content: center; padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.logout-btn:hover { color: var(--gray-600); }
+.logout-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
+.logout-btn:active { transform: scale(0.96); }
+/* [E] edit by smsong */
 
 /* ================= 바텀 네비 ================= */
 .bottom-nav {
@@ -555,32 +560,36 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .welcome-fx {
     position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden;
 }
-/* 중앙에서 화면 끝까지 퍼지는 링 (여러 겹) */
-.welcome-fx .wfx-ring {
-    position: absolute; top: 50%; left: 50%;
-    width: 40px; height: 40px; margin: -20px 0 0 -20px;
-    border-radius: 50%; border: 6px solid var(--primary-light);
-    opacity: 0;
-    animation: wfxRing 1.15s cubic-bezier(0.15, 0.8, 0.3, 1) both;
-}
-@keyframes wfxRing {
-    0%   { width: 40px; height: 40px; margin: -20px 0 0 -20px; opacity: 0.85; border-width: 8px; }
-    100% { width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; opacity: 0; border-width: 1px; }
-}
-/* 사방으로 날아가 화면을 가득 채우는 입자 (JS 가 크기/거리/각도 지정) */
-.welcome-fx .wfx-particle {
-    position: absolute; top: 50%; left: 50%;
+/* [B] edit by smsong - 커다란 링 제거. 여러 지점에서 터지는 '폭죽' 스파크 + 떨어지는 색종이.
+   원점(터지는 위치)은 JS 가 left/top(px)로 지정 → 화면 곳곳에서 파바박 터짐. */
+.welcome-fx .wfx-spark {
+    position: absolute;
     border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0.2);
+    transform: translate(-50%, -50%) scale(0.3);
     opacity: 0;
     will-change: transform, opacity;
-    animation: wfxParticle 1.2s cubic-bezier(0.12, 0.75, 0.25, 1) both;
+    box-shadow: 0 0 6px rgba(255,255,255,0.35);
+    animation: wfxSpark var(--dur, 1.8s) cubic-bezier(0.12, 0.7, 0.2, 1) var(--delay, 0s) both;
 }
-@keyframes wfxParticle {
-    0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
-    12%  { opacity: 1; }
-    72%  { opacity: 1; }
+@keyframes wfxSpark {
+    0%   { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+    8%   { opacity: 1; }
+    70%  { opacity: 1; }
     100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(var(--sc)) rotate(var(--rot)); opacity: 0; }
+}
+/* 위에서 떨어지는 색종이(사각/직사각) — 회전하며 낙하 */
+.welcome-fx .wfx-confetti {
+    position: absolute;
+    border-radius: 2px;
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: wfxConfetti var(--dur, 2.4s) linear var(--delay, 0s) both;
+}
+@keyframes wfxConfetti {
+    0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 0; }
+    10%  { opacity: 1; }
+    85%  { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--rot)); opacity: 0; }
 }
 /* [E] edit by smsong ============================================================== */
 .welcome-title { font-size: 1.24rem; font-weight: 700; color: var(--gray-800); line-height: 1.45; margin: 0; }
@@ -652,10 +661,14 @@ input[type="date"]::-webkit-date-and-time-value {
     margin-bottom: 14px; border: 1px solid var(--gray-100); background: var(--gray-50);
     cursor: pointer; animation: modalPop 0.4s var(--ease-spring);
 }
+/* [B] edit by smsong - 위치 배지와 '위치 다시 설정하기' 버튼 사이 간격 확보 + 배지 자체를 눌러 바로 수정 */
 .location-badge {
     padding: 10px; font-size: 0.85rem; border-radius: 10px; text-align: center;
-    margin-bottom: 10px; font-weight: 600;
+    margin-bottom: 16px; font-weight: 600; cursor: pointer;
+    transition: filter 0.15s ease, transform 0.12s ease;
 }
+.location-badge:hover { filter: brightness(0.97); }
+.location-badge:active { transform: scale(0.985); }
 .location-badge.success { background-color: #f1f8ec; color: #4a7c59; }
 .location-badge.manual { background-color: #e6f0fa; color: #4a82af; }
 
@@ -977,7 +990,12 @@ input[type="date"]::-webkit-date-and-time-value {
 .edit-loc-line {
     align-self: flex-start; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    /* [B] edit by smsong - 수정 화면에서도 위치 텍스트를 눌러 바로 변경 + 아래 버튼과 간격 */
+    cursor: pointer; margin-bottom: 12px;
+    transition: background 0.15s ease, color 0.15s ease;
 }
+.edit-loc-line:hover { color: var(--primary-dark); }
+.edit-loc-line:active { transform: scale(0.98); }
 /* [B] edit by smsong - 수정 화면에서 새로 지정한 위치 표시 태그 */
 .loc-changed-tag {
     display: inline-block; margin-left: 6px; font-size: 0.66rem; font-weight: 700;
@@ -1284,16 +1302,19 @@ input[type="date"]::-webkit-date-and-time-value {
     font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
     background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
 }
-.member-counts { display: flex; gap: 8px; }
+/* [B] edit by smsong - 추억/가볼곳 카운트를 왼쪽 정사각형 타일 2개로 예쁘게 배치 */
+.member-counts { display: flex; gap: 10px; justify-content: flex-start; }
 .member-count-btn {
-    flex: 0 0 auto; min-width: 74px; background: var(--gray-50); border: 1px solid var(--gray-200);
-    border-radius: 12px; padding: 6px 12px; cursor: pointer; font-family: var(--font-main);
-    display: flex; flex-direction: row; gap: 6px; align-items: baseline; transition: all 0.15s ease;
+    flex: 0 0 auto; width: 64px; height: 64px; box-sizing: border-box;
+    background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 14px;
+    padding: 6px 4px; cursor: pointer; font-family: var(--font-main);
+    display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center;
+    transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(139,115,85,0.05);
 }
-.member-count-btn:hover { background: var(--primary-light); }
-.member-count-btn:active { transform: scale(0.97); }
-.member-count-btn b { font-size: 1.05rem; color: var(--primary-dark); }
-.member-count-btn span { font-size: 0.72rem; color: var(--gray-500); }
+.member-count-btn:hover { background: var(--primary-light); border-color: var(--primary-light); transform: translateY(-1px); }
+.member-count-btn:active { transform: scale(0.96); }
+.member-count-btn b { font-size: 1.25rem; line-height: 1.1; color: var(--primary-dark); font-weight: 700; }
+.member-count-btn span { font-size: 0.68rem; color: var(--gray-500); font-weight: 500; }
 /* [E] edit by smsong */
 
 /* [smsong] 멤버 관리(강퇴) 모달 */
@@ -1982,8 +2003,9 @@ body.picking .bottom-nav {
 
 /* ================= 상세: 이미지 캐러셀 ================= */
 .detail-carousel { position: relative; width: 100%; margin: 0 0 4px; }
-/* [smsong] touch-action: none → 사진 영역에서는 가로=사진넘김만, 세로 스크롤은 고정(넘길 때 스크롤 방지). JS 방향잠금과 함께 동작 */
-.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: none; }
+/* [B] edit by smsong - 가로 스와이프=사진 넘김(JS), 세로 제스처=페이지 스크롤은 브라우저에 맡김.
+   touch-action:none → pan-y 로 변경해야 사진 위에 손을 올린 채 세로 스크롤이 정상 동작한다. */
+.carousel-viewport { overflow: hidden; border-radius: 14px; background: var(--gray-100); aspect-ratio: 4 / 3; max-height: 70vh; touch-action: pan-y; }
 .carousel-track { display: flex; height: 100%; transition: transform 0.32s cubic-bezier(.22,.61,.36,1); }
 .carousel-slide { min-width: 100%; height: 100%; }
 .carousel-slide img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; image-orientation: from-image; }

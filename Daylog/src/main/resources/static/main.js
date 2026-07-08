@@ -403,8 +403,14 @@ function kickRoomMember(targetUid, name) {
     var nm = name || (((Daylog._permList || []).find(function (x) { return x.uid === targetUid; }) || {}).nickname) || targetUid;
     // [B] edit by smsong - '강퇴' 표현으로 통일 + 재입장 시 환영/동의 화면이 다시 뜬다는 점 안내
     if (!confirm("'" + nm + "' 님을 강퇴할까요?\n강퇴된 멤버는 다시 입장하면 환영·동의 화면을 처음부터 다시 보게 됩니다.")) return;
+    // [B] edit by smsong - 강퇴 사유 입력(선택). 입력한 사유는 강퇴된 유저가 방 목록 진입 시 1회 안내로 표시됨.
+    var reason = prompt("강퇴 사유를 입력하세요 (선택).\n입력한 사유는 해당 멤버에게 안내됩니다.", "");
+    if (reason === null) return; // 취소
     var roomId = getRoomId();
-    withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) + '?uid=' + encodeURIComponent(getUid()),
+    var kickUrl = Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) +
+        '?uid=' + encodeURIComponent(getUid());
+    if (reason && reason.trim()) kickUrl += '&reason=' + encodeURIComponent(reason.trim());
+    withLoading(fetch(kickUrl,
         { method: 'DELETE', headers: Daylog.authHeaders(true) }), '강퇴하는 중...')
         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
         .then(function () {
@@ -451,52 +457,81 @@ function showWelcomeModal() {
     modal.classList.remove('hidden');
     setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
 }
-// [B] edit by smsong - 화면을 가득 채우는 대형 축포. 화면 중앙에서 사방으로 크게 팡.
+// [B] edit by smsong - 폭죽(축포) 연출: 화면 곳곳에서 여러 번 '파바박' 터지는 스파크 + 위에서 떨어지는 색종이.
+//  커다란 원(링)은 제거. 스파크 수를 크게 늘리고, 전체 지속을 약 2.6초로 길게.
 function fireWelcomeBurst() {
     var fx = document.getElementById('welcome-fx');
     if (!fx) return;
     fx.innerHTML = '';
-    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5'];
+    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a'];
 
-    // 화면 대각 반경(코너까지 도달) 기준으로 입자 비행거리를 정함 → 어떤 화면 크기든 가득 채움
     var vw = window.innerWidth || 360;
     var vh = window.innerHeight || 640;
-    var maxR = Math.sqrt(vw * vw + vh * vh) / 2;
-
-    // 여러 겹의 링
-    var RINGS = 3;
-    for (var r = 0; r < RINGS; r++) {
-        var ring = document.createElement('span');
-        ring.className = 'wfx-ring';
-        ring.style.borderColor = colors[r % colors.length];
-        ring.style.animationDelay = (r * 0.11).toFixed(2) + 's';
-        fx.appendChild(ring);
-    }
-
-    // 사방으로 튀는 입자 (많이 + 크게)
-    var N = 90;
     var frag = document.createDocumentFragment();
-    for (var i = 0; i < N; i++) {
-        var p = document.createElement('span');
-        p.className = 'wfx-particle';
-        var ang = (Math.PI * 2) * (i / N) + (Math.random() * 0.55 - 0.275);
-        var dist = maxR * (0.5 + Math.random() * 0.75); // 일부는 화면 밖까지 오버슛
-        var size = 9 + Math.random() * 20;               // 큰 입자
-        p.style.width = size + 'px';
-        p.style.height = size + 'px';
-        p.style.background = colors[i % colors.length];
-        p.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(0) + 'px');
-        p.style.setProperty('--ty', (Math.sin(ang) * dist).toFixed(0) + 'px');
-        p.style.setProperty('--sc', (0.7 + Math.random() * 1.2).toFixed(2));
-        p.style.setProperty('--rot', ((Math.random() * 720 - 360) | 0) + 'deg');
-        p.style.animationDelay = (Math.random() * 0.12).toFixed(3) + 's';
-        if (i % 4 === 0) p.style.borderRadius = '2px'; // 사각 색종이 느낌 섞기
-        frag.appendChild(p);
+
+    // ===== 1) 폭죽 터짐: 여러 지점에서 스태거드로 파바박 =====
+    var BURSTS = 9;                       // 터지는 지점 수(여러 번 터짐)
+    var SPARKS_PER_BURST = 34;            // 지점마다 사방으로 튀는 스파크 수
+    for (var b = 0; b < BURSTS; b++) {
+        // 터지는 위치: 화면 상단~중앙(가로 전체, 세로 10~65%)
+        var cx = vw * (0.1 + Math.random() * 0.8);
+        var cy = vh * (0.1 + Math.random() * 0.55);
+        var burstDelay = Math.random() * 1.1;                 // 0~1.1s 사이 스태거 → 연속으로 터짐
+        var reach = Math.min(vw, vh) * (0.22 + Math.random() * 0.18); // 터짐 반경
+        var hue = colors[b % colors.length];
+        for (var s = 0; s < SPARKS_PER_BURST; s++) {
+            var p = document.createElement('span');
+            p.className = 'wfx-spark';
+            var ang = (Math.PI * 2) * (s / SPARKS_PER_BURST) + (Math.random() * 0.4 - 0.2);
+            var dist = reach * (0.55 + Math.random() * 0.6);
+            var size = 5 + Math.random() * 8;
+            var tx = Math.cos(ang) * dist;
+            var ty = Math.sin(ang) * dist + dist * 0.35;      // 중력 느낌(아래로 살짝 처짐)
+            p.style.left = cx + 'px';
+            p.style.top = cy + 'px';
+            p.style.width = size + 'px';
+            p.style.height = size + 'px';
+            // 같은 폭죽은 비슷한 색 계열 + 가끔 다른 색 섞기
+            p.style.background = (s % 5 === 0) ? colors[(b + s) % colors.length] : hue;
+            p.style.setProperty('--tx', tx.toFixed(0) + 'px');
+            p.style.setProperty('--ty', ty.toFixed(0) + 'px');
+            p.style.setProperty('--sc', (0.5 + Math.random() * 0.8).toFixed(2));
+            p.style.setProperty('--rot', ((Math.random() * 360 - 180) | 0) + 'deg');
+            p.style.setProperty('--dur', (1.5 + Math.random() * 0.7).toFixed(2) + 's');
+            p.style.setProperty('--delay', burstDelay.toFixed(2) + 's');
+            if (s % 6 === 0) p.style.borderRadius = '1px'; // 일부는 각진 불꽃
+            frag.appendChild(p);
+        }
     }
+
+    // ===== 2) 위에서 떨어지는 색종이(축포 리본 느낌) =====
+    var CONFETTI = 70;
+    for (var i = 0; i < CONFETTI; i++) {
+        var c = document.createElement('span');
+        c.className = 'wfx-confetti';
+        var startX = vw * Math.random();
+        var startY = -20 - Math.random() * 60;
+        var w = 6 + Math.random() * 7;
+        var h = 9 + Math.random() * 12;
+        var driftX = (Math.random() * 120 - 60);
+        var fallY = vh * (0.85 + Math.random() * 0.4);
+        c.style.left = startX + 'px';
+        c.style.top = startY + 'px';
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        c.style.background = colors[i % colors.length];
+        c.style.setProperty('--tx', driftX.toFixed(0) + 'px');
+        c.style.setProperty('--ty', fallY.toFixed(0) + 'px');
+        c.style.setProperty('--rot', ((Math.random() * 900 - 450) | 0) + 'deg');
+        c.style.setProperty('--dur', (2.0 + Math.random() * 0.7).toFixed(2) + 's');
+        c.style.setProperty('--delay', (Math.random() * 0.9).toFixed(2) + 's');
+        frag.appendChild(c);
+    }
+
     fx.appendChild(frag);
 
-    // 애니메이션 종료 후 정리
-    setTimeout(function () { if (fx) fx.innerHTML = ''; }, 1600);
+    // 애니메이션 종료 후 정리 (스태거 최대 ~1.1s + 지속 ~2.7s 여유)
+    setTimeout(function () { if (fx) fx.innerHTML = ''; }, 3200);
 }
 // [E] edit by smsong
 function closeWelcomeModal() {
@@ -1460,6 +1495,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (_editResetLoc) _editResetLoc.addEventListener('click', function () { startEditLocationPick('memory'); });
     var _clEditResetLoc = document.getElementById('cl-edit-reset-location');
     if (_clEditResetLoc) _clEditResetLoc.addEventListener('click', function () { startEditLocationPick('checklist'); });
+    // [B] edit by smsong - 위치 텍스트(배지)를 눌러도 바로 위치 변경 열리게
+    var _editLocLine = document.getElementById('edit-loc');
+    if (_editLocLine) {
+        _editLocLine.setAttribute('title', '눌러서 위치 변경');
+        _editLocLine.addEventListener('click', function () { startEditLocationPick('memory'); });
+    }
+    var _clEditLocLine = document.getElementById('cl-edit-loc');
+    if (_clEditLocLine) {
+        _clEditLocLine.setAttribute('title', '눌러서 위치 변경');
+        _clEditLocLine.addEventListener('click', function () { startEditLocationPick('checklist'); });
+    }
     // [E] edit by smsong
 
     // 좌표 → 상세 주소 (역지오코딩)로 배지 문구 채우기
@@ -1493,13 +1539,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 위치 다시 설정하기 (작성 폼 내용은 유지) ---
     const resetLocBtn = document.getElementById('btn-reset-location');
-    if (resetLocBtn) {
-        resetLocBtn.addEventListener('click', () => {
-            pickReturnsToForm = true; // 위치만 다시 고르고 폼으로 복귀
-            document.getElementById('memory-modal').classList.add('hidden'); // reset() 호출 안 함 → 입력 유지
-            enterPickMode();
-        });
+    function _startMemoryLocationPick() {
+        pickReturnsToForm = true; // 위치만 다시 고르고 폼으로 복귀
+        document.getElementById('memory-modal').classList.add('hidden'); // reset() 호출 안 함 → 입력 유지
+        enterPickMode();
     }
+    if (resetLocBtn) {
+        resetLocBtn.addEventListener('click', _startMemoryLocationPick);
+    }
+    // [B] edit by smsong - 위치 배지를 눌러도 바로 위치 변경
+    const _memLocBadge = document.getElementById('location-status-badge');
+    if (_memLocBadge) {
+        _memLocBadge.setAttribute('title', '눌러서 위치 변경');
+        _memLocBadge.addEventListener('click', _startMemoryLocationPick);
+    }
+    // [E] edit by smsong
 
     function exitPickMode() {
         isWaitingForMapClick = false;
@@ -2506,12 +2560,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     // 가볼곳 위치 다시 설정
     const clResetLoc = document.getElementById('cl-reset-location');
-    if (clResetLoc) clResetLoc.addEventListener('click', () => {
+    function _startChecklistLocationPick() {
         pickReturnsToForm = true;
         pickTarget = 'checklist';
         document.getElementById('checklist-modal').classList.add('hidden');
         enterPickMode();
-    });
+    }
+    if (clResetLoc) clResetLoc.addEventListener('click', _startChecklistLocationPick);
+    // [B] edit by smsong - 위치 배지를 눌러도 바로 위치 변경
+    const _clLocBadge = document.getElementById('cl-location-badge');
+    if (_clLocBadge) {
+        _clLocBadge.setAttribute('title', '눌러서 위치 변경');
+        _clLocBadge.addEventListener('click', _startChecklistLocationPick);
+    }
+    // [E] edit by smsong
     updateMapButtons();
 
     // ---- 가볼곳 폼 상호작용 (타입 칩 / 방문 체크 / 제출) ----
@@ -5146,31 +5208,40 @@ function bindCarousel(rootEl, urls) {
         im0.onload = () => { if (im0.naturalWidth && im0.naturalHeight) vp.style.aspectRatio = im0.naturalWidth + ' / ' + im0.naturalHeight; };
         im0.src = urls[0];
     }
-    // [B] edit by smsong - 방향 잠금(directional lock): 가로 제스처면 사진만 넘기고 페이지 스크롤은 고정,
-    //  세로 제스처면 사진을 움직이지 않음(오넘김 방지). 뷰포트는 CSS touch-action:none 이라 세로 드리프트로
-    //  인한 스크롤이 발생하지 않음.
+    // [B] edit by smsong - 방향 잠금(directional lock): 가로 제스처면 사진만 넘기고,
+    //  세로 제스처면 손을 떼 브라우저가 페이지를 스크롤하게 둔다(뷰포트 CSS: touch-action:pan-y).
+    //  포인터 캡처는 '가로'로 확정된 뒤에만 → 세로 스크롤을 가로채지 않음.
+    let captured = false;
     vp.addEventListener('pointerdown', (e) => {
-        dragging = true; moved = false; axis = null;
+        dragging = true; moved = false; axis = null; captured = false;
         startX = e.clientX; startY = e.clientY; dx = 0; dy = 0;
         track.style.transition = 'none';
-        try { vp.setPointerCapture(e.pointerId); } catch (_) {}
     });
     vp.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
         dy = e.clientY - startY;
-        // 첫 유의미한 이동에서 축 결정 (가로 우세 → 사진 넘김 / 세로 우세 → 무시)
-        if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-            axis = (Math.abs(dx) >= Math.abs(dy)) ? 'x' : 'y';
+        // 첫 유의미한 이동에서 축 결정 (가로 우세 → 사진 넘김 / 세로 우세 → 페이지 스크롤에 양보)
+        if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+            axis = (Math.abs(dx) > Math.abs(dy)) ? 'x' : 'y';
+            if (axis === 'x') {
+                try { vp.setPointerCapture(e.pointerId); captured = true; } catch (_) {}
+            } else {
+                // 세로: 드래그 종료하고 브라우저 스크롤에 맡김
+                dragging = false;
+                return;
+            }
         }
-        if (axis === 'y') return; // 세로 제스처: 사진 이동 안 함(스크롤도 CSS로 고정)
+        if (axis !== 'x') return;
         if (Math.abs(dx) > 6) moved = true;
         track.style.transform = 'translateX(calc(' + (-idx * 100) + '% + ' + dx + 'px))';
     });
-    const endSwipe = () => {
-        if (!dragging) return;
+    const endSwipe = (e) => {
+        if (captured && e && e.pointerId != null) { try { vp.releasePointerCapture(e.pointerId); } catch (_) {} }
+        captured = false;
+        if (!dragging) { axis = null; return; }
         dragging = false;
-        if (axis !== 'y') { // 가로 제스처일 때만 넘김 판정
+        if (axis === 'x') { // 가로 제스처일 때만 넘김 판정
             if (dx < -50 && idx < urls.length - 1) go(idx + 1);
             else if (dx > 50 && idx > 0) go(idx - 1);
             else go(idx);

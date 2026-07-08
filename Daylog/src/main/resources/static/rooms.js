@@ -376,6 +376,8 @@ function renderPendingRooms(rooms) {
 
     rooms.forEach(r => {
         const rejected = r.myStatus === 'REJECTED';
+        // [B] edit by smsong - 강퇴(kicked)로 인한 REJECTED 는 '내보내짐' 문구로 구분
+        const kicked = rejected && r.kicked === true;
         const card = document.createElement('div');
         card.className = 'room-card' + (rejected ? ' is-rejected' : '');
 
@@ -385,13 +387,17 @@ function renderPendingRooms(rooms) {
             ? `<div class="room-thumb"><img src="${esc(imgUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('room-thumb-empty','${t.cls}')"></div>`
             : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
         const statusBadge = rejected
-            ? '<span class="room-status-badge rejected">거절됨</span>'
+            ? (kicked
+                ? '<span class="room-status-badge rejected">내보내짐</span>'
+                : '<span class="room-status-badge rejected">거절됨</span>')
             : '<span class="room-status-badge pending">승인 대기중</span>';
         const reasonHtml = (rejected && r.rejectReason)
-            ? `<div class="room-reject-reason">거절 사유: ${esc(r.rejectReason)}</div>`
+            ? `<div class="room-reject-reason">${kicked ? '강퇴 사유' : '거절 사유'}: ${esc(r.rejectReason)}</div>`
             : '';
         const footerLeft = rejected
-            ? '<div class="room-pending-hint">방장이 요청을 거절했어요</div>'
+            ? (kicked
+                ? '<div class="room-pending-hint">방장이 회원님을 내보냈어요</div>'
+                : '<div class="room-pending-hint">방장이 요청을 거절했어요</div>')
             : '<div class="room-pending-hint">방장 승인을 기다리는 중…</div>';
 
         card.innerHTML = `
@@ -464,16 +470,23 @@ function maybeShowRejectNotice() {
 }
 function openRejectNotice(r) {
     if (!rejectModalEl) return;
+    // [B] edit by smsong - 강퇴(kicked)면 '내보내짐' 문구로, 아니면 기존 '거절' 문구로 표시
+    const kicked = r.kicked === true;
+    const titleEl = document.getElementById('reject-title');
+    if (titleEl) titleEl.textContent = kicked ? '방에서 내보내졌습니다' : '입장 요청이 거절되었습니다';
     if (rejectReasonEl) {
         if (r.rejectReason) {
-            rejectReasonEl.innerHTML = '<span class="reject-reason-label">방장이 남긴 거절 사유</span>' + esc(r.rejectReason);
+            rejectReasonEl.innerHTML = '<span class="reject-reason-label">' +
+                (kicked ? '방장이 남긴 사유' : '방장이 남긴 거절 사유') + '</span>' + esc(r.rejectReason);
             rejectReasonEl.style.display = 'block';
         } else {
             rejectReasonEl.style.display = 'none';
         }
     }
     const descEl = document.getElementById('reject-desc');
-    if (descEl) descEl.textContent = `'${r.name}' 방의 입장 요청이 거절되어 이 방에서 제외되었습니다.`;
+    if (descEl) descEl.textContent = kicked
+        ? `'${r.name}' 방에서 방장에 의해 내보내져 더 이상 참여할 수 없습니다.`
+        : `'${r.name}' 방의 입장 요청이 거절되어 이 방에서 제외되었습니다.`;
     rejectModalEl.classList.remove('hidden');
     // 서버에 '봤음' 기록 → 다음 진입부터는 안 뜸
     markRejectSeen(r.id);
@@ -884,10 +897,9 @@ function _setViewAvatar(url) {
 }
 function openProfileModal() {
     const nameEl = document.getElementById('profile-view-name');
-    const subEl = document.getElementById('profile-view-sub');
     const nick = (me && me.nickname && String(me.nickname).trim()) ? me.nickname : '나';
     if (nameEl) nameEl.textContent = nick;
-    if (subEl) subEl.textContent = 'Daylog';
+    // [B] edit by smsong - 닉네임 밑 'Daylog' 서브텍스트 제거
     _setViewAvatar(me && me.profileURL);
     const m = document.getElementById('profile-modal');
     if (m) m.classList.remove('hidden');

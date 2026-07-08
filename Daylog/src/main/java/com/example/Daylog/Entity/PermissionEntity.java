@@ -60,6 +60,14 @@ public class PermissionEntity {
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean welcomeSeen = false;
     // [E] edit by smsong
+
+    // [B] edit by smsong - 방장에게 '강퇴' 당한 상태인지 구분.
+    //  거절(입장 요청 거절)과 동일하게 rooms 진입 시 사유 폼을 띄우되, 문구를 '내보내짐'으로 구분한다.
+    //  강퇴 시 requestStatus 를 REJECTED 로 두고 kicked=true + rejectReason 을 함께 저장 → 기존 거절 안내 흐름 재사용.
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
+    private boolean kicked = false;
+    // [E] edit by smsong
     // [E] edit by smsong
 
     private LocalDateTime requestedAt;

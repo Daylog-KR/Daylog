@@ -143,14 +143,17 @@ public class RoomController {
         return ResponseEntity.ok(roomService.setDday(roomId, uid, body.get("since")));
     }
 
-    // 멤버 강퇴 (방장만) — ?uid=방장uid, path=대상 uid
+    // 멤버 강퇴 (방장만) — ?uid=방장uid&reason=강퇴사유(선택), path=대상 uid
+    // [B] edit by smsong - 강퇴 사유(reason)를 함께 받아 강퇴된 유저에게 rooms 진입 시 안내
     @DeleteMapping("/{roomId}/members/{targetUid}")
     public ResponseEntity<Void> kickMember(@PathVariable("roomId") Long roomId,
                                            @PathVariable("targetUid") String targetUid,
                                            @RequestParam("uid") String uid,
+                                           @RequestParam(value = "reason", required = false) String reason,
                                            @AuthenticationPrincipal UserDetails ud) {
         verify(uid, ud);
-        roomService.kickMember(roomId, uid, targetUid);
+        roomService.kickMember(roomId, uid, targetUid, reason);
         return ResponseEntity.ok().build();
     }
+    // [E] edit by smsong
 }

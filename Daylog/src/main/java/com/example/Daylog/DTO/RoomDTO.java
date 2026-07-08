@@ -25,8 +25,9 @@ public class RoomDTO {
     private boolean owner;        // 요청자가 방장인지
     // [B] edit by smsong - 요청자의 이 방에 대한 상태: OWNER / MEMBER / PENDING / REJECTED / NONE
     private String myStatus;
-    private String rejectReason;  // 거절됨(REJECTED)일 때 방장이 남긴 사유
-    private Boolean rejectSeen;   // 거절 안내를 이미 봤는지(rooms 페이지 1회 안내용)
+    private String rejectReason;  // 거절됨(REJECTED)일 때 방장이 남긴 사유(강퇴 사유 포함)
+    private Boolean rejectSeen;   // 거절/강퇴 안내를 이미 봤는지(rooms 페이지 1회 안내용)
+    private Boolean kicked;       // 강퇴로 인한 REJECTED 인지(=true) 아니면 입장요청 거절(=false)
     // [E] edit by smsong
     private LocalDateTime createdAt;
     private List<Member> members; // 선택(멤버 목록 조회 시)
@@ -67,6 +68,12 @@ public class RoomDTO {
     //  초대 코드는 노출하지 않는다(아직 이 방의 멤버가 아니므로).
     public static RoomDTO preview(RoomEntity r, String requesterUid, long memberCount,
                                   String myStatus, String rejectReason, Boolean rejectSeen) {
+        return preview(r, requesterUid, memberCount, myStatus, rejectReason, rejectSeen, null);
+    }
+
+    // [smsong] kicked 포함 오버로드 — 강퇴로 인한 REJECTED 를 구분(rooms 안내 문구용)
+    public static RoomDTO preview(RoomEntity r, String requesterUid, long memberCount,
+                                  String myStatus, String rejectReason, Boolean rejectSeen, Boolean kicked) {
         boolean isOwner = r.getOwnerUid() != null && r.getOwnerUid().equals(requesterUid);
         return RoomDTO.builder()
                 .id(r.getId())
@@ -79,6 +86,7 @@ public class RoomDTO {
                 .myStatus(myStatus)
                 .rejectReason(rejectReason)
                 .rejectSeen(rejectSeen)
+                .kicked(kicked)
                 .createdAt(r.getCreatedAt())
                 .build();
     }

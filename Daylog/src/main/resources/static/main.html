@@ -86,7 +86,9 @@
     <div class="dday-counter">
         <!-- [B] edit by smsong - 디데이 하트 제거 --><span class="dday-prefix">D +</span><span id="dday-count">0</span><!-- [E] edit by smsong -->
     </div>
-    <button class="logout-btn" id="btn-logout">로그아웃</button>
+    <!-- [B] edit by smsong - 상단 로그아웃 버튼을 텍스트 → 아이콘(로그아웃)으로 변경 (rooms 아이콘 버튼과 동일 스타일) -->
+    <button class="logout-btn" id="btn-logout" type="button" title="로그아웃" aria-label="로그아웃"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    <!-- [E] edit by smsong -->
     <input type="file" id="memory-file" accept="image/*" multiple style="display: none;">
 </header>
 
@@ -236,7 +238,7 @@
     </a>
     <a href="#" class="nav-item" data-tab="tab-profile">
         <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-        <span class="nav-text">내 정보</span>
+        <span class="nav-text">설정</span>
     </a>
 </nav>
 

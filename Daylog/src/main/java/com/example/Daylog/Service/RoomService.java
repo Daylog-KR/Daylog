@@ -156,7 +156,8 @@ public class RoomService {
         }).orElse("NONE");
         String reason = "REJECTED".equals(status) ? row.map(r -> r.getRejectReason()).orElse(null) : null;
         Boolean seen = "REJECTED".equals(status) ? row.map(r -> r.isRejectSeen()).orElse(null) : null;
-        return RoomDTO.preview(room, uid, cnt, status, reason, seen);
+        Boolean kicked = "REJECTED".equals(status) ? row.map(r -> r.isKicked()).orElse(null) : null;
+        return RoomDTO.preview(room, uid, cnt, status, reason, seen, kicked);
     }
 
     // ===== 코드로 입장 요청 (즉시 입장 아님 → 방장 승인 대기) =====
@@ -200,7 +201,8 @@ public class RoomService {
                 String status = "REJECTED".equals(row.getRequestStatus()) ? "REJECTED" : "PENDING";
                 String reason = "REJECTED".equals(status) ? row.getRejectReason() : null;
                 Boolean seen = "REJECTED".equals(status) ? row.isRejectSeen() : null;
-                result.add(RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), status, reason, seen));
+                Boolean kicked = "REJECTED".equals(status) ? row.isKicked() : null;
+                result.add(RoomDTO.preview(room, uid, roomMemberRepository.countByRoomId(roomId), status, reason, seen, kicked));
             });
         }
         return result;
@@ -238,8 +240,9 @@ public class RoomService {
     }
 
     // ===== 멤버 강퇴 (방장만) =====
+    // [B] edit by smsong - 강퇴 사유(reason)를 함께 받아, 강퇴된 유저가 rooms 진입 시 사유 폼을 보게 한다(거절과 동일 흐름).
     @Transactional
-    public void kickMember(Long roomId, String ownerUid, String targetUid) {
+    public void kickMember(Long roomId, String ownerUid, String targetUid, String reason) {
         RoomEntity room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
         if (!room.getOwnerUid().equals(ownerUid)) {
@@ -249,10 +252,10 @@ public class RoomService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 내보낼 수 없습니다");
         }
         roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
-        // [B] edit by smsong - 강퇴된 멤버 권한 회수 → 재입장 시 방장 승인부터 다시
-        permissionService.revokeMembership(roomId, targetUid);
-        // [E] edit by smsong
+        // 강퇴된 멤버 권한 회수 + 강퇴 사유 저장 → 재입장 시 방장 승인부터 다시, rooms 진입 시 사유 안내 1회
+        permissionService.kickMembership(roomId, targetUid, reason);
     }
+    // [E] edit by smsong
 
     // ===== 커플 슬롯 지정 (방장만) — '나'/'상대방'에 방 멤버 배정 =====
     @Transactional

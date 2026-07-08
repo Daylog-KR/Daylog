@@ -110,9 +110,10 @@ public class PermissionService {
         if (!owner && !e.isAdminApproved()) {
             e.setRequestStatus("PENDING");
             e.setRequestedAt(LocalDateTime.now());
-            // [B] edit by smsong - 재요청 시 이전 거절 흔적 초기화 (요청 대기중으로 되돌림)
+            // [B] edit by smsong - 재요청 시 이전 거절/강퇴 흔적 초기화 (요청 대기중으로 되돌림)
             e.setRejectReason(null);
             e.setRejectSeen(false);
+            e.setKicked(false);
             // [E] edit by smsong
         }
         e = permissionRepository.save(e);
@@ -193,7 +194,7 @@ public class PermissionService {
             if (!roomMemberRepository.existsByRoomIdAndUid(roomId, targetUid)) {
                 roomMemberRepository.save(RoomMemberEntity.builder().roomId(roomId).uid(targetUid).build());
             }
-            e.setRejectReason(null); e.setRejectSeen(false);
+            e.setRejectReason(null); e.setRejectSeen(false); e.setKicked(false);
         } else {
             // 거절: 권한 전부 회수 + 멤버십 제거 + 거절 사유 저장(유저에게 1회 안내)
             e.setCanCreate(false); e.setCanEdit(false); e.setCanTrash(false); e.setCanDelete(false);
@@ -254,8 +255,33 @@ public class PermissionService {
     }
     // [E] edit by smsong
 
-    // [B] edit by smsong - 멤버 강퇴/탈퇴 시 호출: 권한행 초기화 → 재입장해도 방장 승인부터 다시.
-    //  RoomService.kickMember / leaveRoom / joinByCode(재입장) 에서 호출.
+    // [B] edit by smsong - 멤버 강퇴 시 호출: 권한 회수 + 거절 사유(=강퇴 사유) 저장.
+    //  거절(decideAccess reject)과 동일하게 requestStatus=REJECTED + rejectReason + rejectSeen=false 로 두되,
+    //  kicked=true 로 표시해 rooms 진입 시 '내보내짐' 문구의 안내 폼을 1회 띄운다.
+    //  → RoomService.kickMember 에서 호출(자발적 탈퇴 leaveRoom 은 revokeMembership 를 그대로 사용).
+    @Transactional
+    public void kickMembership(Long roomId, String uid, String reason) {
+        permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
+            e.setAdminApproved(false);
+            e.setAccessAllowed(false);
+            e.setCanCreate(false);
+            e.setCanEdit(false);
+            e.setCanTrash(false);
+            e.setCanDelete(false);
+            e.setRequestStatus("REJECTED");
+            e.setDecidedAt(LocalDateTime.now());
+            e.setRejectReason((reason == null || reason.trim().isEmpty()) ? null : reason.trim());
+            e.setRejectSeen(false);
+            e.setKicked(true);
+            // 재승인되어 다시 입장하면 환영/이용수칙 동의 화면을 처음부터 다시 보게 됨.
+            e.setWelcomeSeen(false);
+            permissionRepository.save(e);
+        });
+    }
+    // [E] edit by smsong
+
+    // [B] edit by smsong - 멤버 자발적 탈퇴 시 호출: 권한행 초기화 → 재입장해도 방장 승인부터 다시.
+    //  RoomService.leaveRoom 에서 호출.
     @Transactional
     public void revokeMembership(Long roomId, String uid) {
         permissionRepository.findByRoomIdAndUid(roomId, uid).ifPresent(e -> {
