@@ -2263,7 +2263,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 _memSig = sig;
                 memoryList = list;
                 Daylog.memories = memoryList;
-                preloadImages(list.map(m => Daylog.thumbUrlOf(m.mediaURL))); // [B] edit by smsong - 원본 대신 소형 썸네일만 워밍(마커/목록 즉시 표시, 프리즈 방지)
+                // [B] edit by smsong - 목록 전체 이미지 사전 로드 제거: <img loading="lazy"> 가 화면에 보이는 것만
+                //  로드하도록 위임 → 목록 진입 프리즈/스크롤 버벅임 해소. (마커 <img> 는 자체 로드)
                 updateProfileStats();
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 친구/가족 멤버뷰 카운트 갱신
 
@@ -2289,7 +2290,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
                 _clSig = sig;
                 checklistList = arr;
-                preloadImages(arr.map(c => Daylog.thumbUrlOf(c.mediaURL))); // [B] edit by smsong - 원본 대신 소형 썸네일만 워밍(마커/목록 즉시 표시, 프리즈 방지)
+                // [B] edit by smsong - 목록 전체 이미지 사전 로드 제거 → lazy 로 위임 (스크롤/전환 성능)
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
@@ -2404,7 +2405,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 (loc ? '<div class="cl-card-loc">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</div>' : '') +
                 commentBadgeHtml('checklist', item.id) +
                 '</div>' +
-                thumbHtml(item.mediaURL, 'cl-thumb');
+                thumbHtml(coverUrlOf(item), 'cl-thumb');
             card.addEventListener('click', () => openChecklistDetail(item));
             feed.appendChild(card);
         });
@@ -2785,13 +2786,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!(memory.lat && memory.lng)) return;
             let markerHtml;
             const nd = _suppressDrop ? ' nodrop' : '';
-            if (memory.mediaURL) {
-                // [B] edit by smsong - 지도 마커는 소형 썸네일(<img>)로 그림 → 줌 시 대용량 원본 재합성 제거(성능).
-                //  썸네일이 없으면(구버전 기록/HEIC) onerror 로 원본 폴백.
-                const _full = memory.mediaURL;
-                const _thumb = Daylog.thumbUrlOf(_full);
-                new Image().src = _thumb; // 썸네일 사전 캐싱
-                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _full + '" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+            // [B] edit by smsong - 다중 이미지(mediaUrls) 기록도 대표(첫) 이미지로 마커 썸네일 표시.
+            //  기존엔 단일 필드 memory.mediaURL 만 봐서 여러 장 기록의 마커가 비어 보였음.
+            const _cover = coverUrlOf(memory);
+            if (_cover) {
+                // 지도 마커는 소형 썸네일(<img>)로 그림. 썸네일이 없으면(구버전/HEIC) onerror 로 원본 폴백.
+                const _thumb = Daylog.thumbUrlOf(_cover);
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
                 // [E] edit by smsong
             } else {
                 markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
@@ -2799,7 +2800,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // [B] edit by smsong - 마커 앵커를 '말풍선 아래 세모(꼬리) 끝'에 맞춰 실제 위치가 정확히 찍히도록 보정
             //  사진 마커: 56x56(사진46+패딩3*2+테두리2*2) 박스, 아래 세모 끝 ≈ (28, 62)
             //  하트 마커: 26px 아이콘, 하트 아래 끝 ≈ (13, 24)
-            const _mkAnchor = memory.mediaURL ? new naver.maps.Point(28, 62) : new naver.maps.Point(13, 24);
+            const _mkAnchor = _cover ? new naver.maps.Point(28, 62) : new naver.maps.Point(13, 24);
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(memory.lat, memory.lng),
                 map: map,
@@ -2842,7 +2843,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const card = document.createElement('div');
                 card.className = 'tl-card';
 
-                const thumb = thumbHtml(memory.mediaURL, 'tl-thumb');
+                const thumb = thumbHtml(coverUrlOf(memory), 'tl-thumb');
 
                 card.innerHTML =
                     '<div class="tl-main">' +
@@ -4564,7 +4565,7 @@ function renderTrash(memories, comments, checklists) {
         html += '<div class="trash-group-title">추억 ' + memories.length + '</div>';
         memories.forEach(m => {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = Daylog.lmThumbHtml(m.mediaURL, icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(m), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             html +=
                 '<div class="trash-row">' +
                 thumb +
@@ -4687,7 +4688,7 @@ function openMemoryListModal(title, items) {
     } else {
         items.forEach(memory => {
             const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = Daylog.lmThumbHtml(memory.mediaURL, icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(memory), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             const row = document.createElement('div');
             row.className = 'lm-row';
             row.innerHTML =
@@ -4729,7 +4730,7 @@ function openChecklistListModal(title, items) {
         items.forEach(item => {
             const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [item.placeName, item.address].filter(Boolean).join(' ');
-            const thumb = Daylog.lmThumbHtml(item.mediaURL, meta.emoji); // [smsong] lazy 썸네일
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(item), meta.emoji); // [smsong] lazy 썸네일
             const badge = item.visited
                 ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴</span>'
                 : '<span class="cl-todo-badge">가볼 예정</span>';
@@ -5068,6 +5069,13 @@ function mediaUrlsOf(obj) {
     if (Array.isArray(obj.mediaUrls) && obj.mediaUrls.length) return obj.mediaUrls.filter(Boolean);
     if (obj.mediaURL) return [obj.mediaURL];
     return [];
+}
+
+// [B] edit by smsong - 목록/마커 썸네일용 대표(첫) 이미지 URL.
+//  다중 이미지(mediaUrls) 기록이면 첫 장, 단일이면 mediaURL. → 여러 장 기록의 썸네일 누락 해결.
+function coverUrlOf(obj) {
+    var arr = mediaUrlsOf(obj);
+    return arr.length ? arr[0] : null;
 }
 
 function createMediaManager(opts) {

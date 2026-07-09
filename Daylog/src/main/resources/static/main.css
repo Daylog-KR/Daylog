@@ -750,7 +750,7 @@ input[type="date"]::-webkit-date-and-time-value {
     -webkit-backface-visibility: hidden; backface-visibility: hidden;
 }
 .custom-marker:hover { transform: translateY(-3px) scale(1.06); z-index: 10; }
-.custom-marker img { width: 46px; height: 46px; border-radius: 5px; object-fit: cover; display: block; }
+.custom-marker img { width: 46px; height: 46px; border-radius: 5px; object-fit: cover; display: block; image-orientation: from-image; }
 .custom-marker::after {
     content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
     border-width: 6px 6px 0; border-style: solid;
@@ -1076,7 +1076,7 @@ input[type="date"]::-webkit-date-and-time-value {
     border-radius: 12px; background-color: var(--gray-100);
     position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너(고정크기, object-fit) */
 }
-.tl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.tl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; image-orientation: from-image; }
 
 /* ---- 이미지 없음 자리표시 (썸네일과 동일 규격) ---- */
 .thumb-empty {
@@ -1117,7 +1117,7 @@ input[type="date"]::-webkit-date-and-time-value {
     background-color: var(--gray-100);
     position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너 */
 }
-.lm-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.lm-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; image-orientation: from-image; }
 .lm-thumb-empty {
     display: flex; align-items: center; justify-content: center;
     font-size: 1.3rem; background: var(--primary-light);
@@ -1631,7 +1631,7 @@ input[type="date"]::-webkit-date-and-time-value {
     border-radius: 12px; background-color: var(--gray-100);
     position: relative; overflow: hidden; /* [smsong] 배경이미지 → <img> 컨테이너 */
 }
-.cl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.cl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; image-orientation: from-image; }
 
 /* ---- 타입 선택 칩 (작성/수정 폼 공용) ---- */
 .cl-type-options { display: flex; flex-wrap: wrap; gap: 8px; }
