@@ -395,6 +395,31 @@ public class RoomService {
         }
     }
 
+    // [B] edit by smsong - 방 대표 이미지 썸네일 일괄 재생성 (옛 방 이미지 thumb_ 생성 + 방향 교정). 관리자용 일회성.
+    public int regenerateThumbnails() {
+        int ok = 0;
+        for (RoomEntity r : roomRepository.findAll()) {
+            String url = r.getImageUrl();
+            if (url == null || url.isEmpty()) continue;
+            if (googleCloudHeader != null && !url.startsWith(googleCloudHeader)) continue;
+            String fileName = (googleCloudHeader != null) ? url.substring(googleCloudHeader.length()) : url;
+            if (fileName.isEmpty() || fileName.startsWith("thumb_")) continue;
+            try {
+                byte[] original = storage.readAllBytes(BlobId.of(bucket, fileName));
+                byte[] thumb = com.example.Daylog.Util.ImageUtil.buildThumbnailJpeg(original, THUMB_MAX);
+                if (thumb == null) continue;
+                BlobId thumbId = BlobId.of(bucket, "thumb_" + fileName);
+                BlobInfo thumbInfo = BlobInfo.newBuilder(thumbId).setContentType("image/jpeg").build();
+                storage.create(thumbInfo, thumb);
+                ok++;
+            } catch (Exception e) {
+                // 개별 실패 무시
+            }
+        }
+        return ok;
+    }
+    // [E] edit by smsong
+
     // 이전 대표 이미지(원본+썸네일)를 GCS 에서 제거 (실패해도 무시)
     private void deleteMediaQuietly(String url) {
         try {

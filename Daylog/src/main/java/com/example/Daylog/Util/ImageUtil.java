@@ -18,6 +18,31 @@ public final class ImageUtil {
 
     private ImageUtil() {}
 
+    // [B] edit by smsong - 원본 바이트 → EXIF 방향 반영 + 리사이즈한 소형 JPEG 썸네일 바이트.
+    //  업로드/일괄 재생성 공용. 디코드 불가(HEIC 등) 시 null.
+    public static byte[] buildThumbnailJpeg(byte[] original, int maxEdge) {
+        BufferedImage src = decodeOriented(original);
+        if (src == null) return null;
+        int w = src.getWidth(), h = src.getHeight();
+        if (w <= 0 || h <= 0) return null;
+        double scale = Math.min(1.0, (double) maxEdge / Math.max(w, h));
+        int tw = Math.max(1, (int) Math.round(w * scale));
+        int th = Math.max(1, (int) Math.round(h * scale));
+        BufferedImage dst = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = dst.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.drawImage(src, 0, 0, tw, th, null);
+        g.dispose();
+        try {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ImageIO.write(dst, "jpg", baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     // 업로드 바이트 → EXIF 방향이 반영된 BufferedImage (디코드 불가 시 null)
     public static BufferedImage decodeOriented(byte[] data) {
         if (data == null || data.length == 0) return null;

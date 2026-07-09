@@ -107,6 +107,42 @@ public class MemoryService {
     }
     // [E] edit by smsong
 
+    // [B] edit by smsong - 기존 기록 썸네일 일괄 재생성.
+    //  옛 기록은 thumb_ 가 없어 원본으로 폴백(느림/빈 마커) → 원본을 다시 읽어 EXIF 방향 반영 썸네일 생성/덮어쓰기.
+    //  (옛 사진의 눕는 방향도 함께 교정됨) 관리자용 일회성 유지보수.
+    public int regenerateThumbnails() {
+        java.util.Set<String> urls = new java.util.LinkedHashSet<>();
+        for (MemoryEntity m : memoryRepository.findAll()) {
+            if (m.getMediaUrls() != null) urls.addAll(m.getMediaUrls());
+            if (m.getMediaURL() != null) urls.add(m.getMediaURL());
+        }
+        return regenThumbsForUrls(urls);
+    }
+
+    // URL 집합의 thumb_ 를 원본에서 재생성 → 성공 개수 반환 (개별 실패는 건너뜀)
+    private int regenThumbsForUrls(java.util.Collection<String> urls) {
+        int ok = 0;
+        for (String url : urls) {
+            if (url == null || url.isEmpty()) continue;
+            if (googleCloudHeader != null && !url.startsWith(googleCloudHeader)) continue;
+            String fileName = (googleCloudHeader != null) ? url.substring(googleCloudHeader.length()) : url;
+            if (fileName.isEmpty() || fileName.startsWith("thumb_")) continue;
+            try {
+                byte[] original = storage.readAllBytes(BlobId.of(bucket, fileName));
+                byte[] thumb = com.example.Daylog.Util.ImageUtil.buildThumbnailJpeg(original, THUMB_MAX);
+                if (thumb == null) continue; // 디코드 불가(HEIC 등)
+                BlobId thumbId = BlobId.of(bucket, "thumb_" + fileName);
+                BlobInfo thumbInfo = BlobInfo.newBuilder(thumbId).setContentType("image/jpeg").build();
+                storage.create(thumbInfo, thumb);
+                ok++;
+            } catch (Exception e) {
+                // 개별 실패 무시
+            }
+        }
+        return ok;
+    }
+    // [E] edit by smsong
+
     private static final int MAX_IMAGES = 10;
 
     // 여러 파일 업로드 → URL 리스트(순서 유지)

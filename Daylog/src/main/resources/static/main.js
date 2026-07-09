@@ -3731,7 +3731,7 @@ function openChecklistDetail(item, overModal) {
         ? '<span class="meta-item cl-meta-visited">' + icon('check',13) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
         : '<span class="meta-item cl-meta-todo">아직 안 가봤습니다</span>';
     const _clUrls = mediaUrlsOf(item);
-    preloadImages(_clUrls); // [smsong] 상세 이미지 즉시 표시/스와이프
+    // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거: 캐러셀이 첫 장만 즉시, 나머지는 lazy → 개수 무관 즉시 표시
     const imageHtml = carouselHtml(_clUrls);
 
     view.innerHTML =
@@ -4108,7 +4108,7 @@ function openDetailModal(memory, overModal) {
 
     const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
     const _memUrls = mediaUrlsOf(memory);
-    preloadImages(_memUrls); // [smsong] 상세 이미지 즉시 표시/스와이프
+    // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거 → 캐러셀 lazy 로 위임 (이미지 많아도 즉시 열림)
     const imageHtml = carouselHtml(_memUrls);
     const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
     const canManage = canManageObject(memory); // [smsong] 소유자 또는 커플(송성민/강미르)
@@ -5200,8 +5200,10 @@ function carouselHtml(urls) {
     const cid = 'car-' + Math.random().toString(36).slice(2);
     let slides = '';
     urls.forEach((u, i) => {
+        // [B] edit by smsong - 첫 장만 즉시 로드, 나머지는 loading="lazy" → 이미지 개수와 무관하게 상세가 즉시 열림.
+        //  (네이티브 scroll-snap 이라 넘길 때 해당 슬라이드만 로드됨)
         slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진" decoding="async"' +
-            (i === 0 ? ' onload="Daylog._fitCarousel(\'' + cid + '\', this)"' : '') +
+            (i === 0 ? ' onload="Daylog._fitCarousel(\'' + cid + '\', this)"' : ' loading="lazy"') +
             ' onerror="this.parentElement.style.display=\'none\'"></div>';
     });
     let dots = '';
