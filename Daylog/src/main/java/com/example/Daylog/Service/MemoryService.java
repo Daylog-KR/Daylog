@@ -82,7 +82,8 @@ public class MemoryService {
     private static final int THUMB_MAX = 400; // 썸네일 최대 변(px)
     private void uploadThumbnailQuietly(MultipartFile file, String baseFileName) {
         try {
-            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(file.getInputStream());
+            // [B] edit by smsong - ImageIO.read 는 EXIF 방향을 무시 → EXIF 반영 디코드로 세로사진 눕힘 방지
+            java.awt.image.BufferedImage src = com.example.Daylog.Util.ImageUtil.decodeOriented(file.getBytes());
             if (src == null) return;
             int w = src.getWidth(), h = src.getHeight();
             if (w <= 0 || h <= 0) return;
