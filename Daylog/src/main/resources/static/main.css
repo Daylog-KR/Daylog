@@ -751,6 +751,11 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 .custom-marker:hover { transform: translateY(-3px) scale(1.06); z-index: 10; }
 .custom-marker img { width: 46px; height: 46px; border-radius: 5px; object-fit: cover; display: block; image-orientation: from-image; }
+/* [B] edit by smsong - 이미지 로드/폴백 재로드 시 '팟' 튀는 깜빡임 완화: 로드된 순간에만 부드러운 페이드.
+   기본 opacity:1 이라 onload 가 안 불려도 이미지는 항상 보임(사라짐 위험 없음). */
+.tl-thumb img, .lm-thumb img, .cl-thumb img, .custom-marker img.cm-photo { opacity: 1; }
+.tl-thumb img.is-loaded, .lm-thumb img.is-loaded, .cl-thumb img.is-loaded, .custom-marker img.cm-photo.is-loaded { animation: imgFadeIn 0.25s ease-out; }
+@keyframes imgFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .custom-marker::after {
     content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
     border-width: 6px 6px 0; border-style: solid;

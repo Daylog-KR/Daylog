@@ -868,7 +868,7 @@ function thumbHtml(mediaURL, cls) {
     if (mediaURL) {
         const thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)"></div>';
+            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
@@ -893,7 +893,7 @@ Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
     if (mediaURL) {
         var thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)"></div>';
+            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
 };
@@ -2792,7 +2792,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (_cover) {
                 // 지도 마커는 소형 썸네일(<img>)로 그림. 썸네일이 없으면(구버전/HEIC) onerror 로 원본 폴백.
                 const _thumb = Daylog.thumbUrlOf(_cover);
-                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
                 // [E] edit by smsong
             } else {
                 markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
