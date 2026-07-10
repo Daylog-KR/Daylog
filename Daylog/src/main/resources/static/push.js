@@ -85,19 +85,8 @@
         });
     }
 
-    // 위치 권한 요청(프롬프트 유도). 성공/실패와 무관하게 resolve.
-    function requestLocation() {
-        return new Promise(function (resolve) {
-            if (!('geolocation' in navigator)) return resolve(false);
-            navigator.geolocation.getCurrentPosition(
-                function () { resolve(true); },
-                function () { resolve(false); },
-                { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
-            );
-        });
-    }
 
-    // ===== 로그인 후 최초 1회: 알림·위치 동의 안내 모달 (A안) =====
+    // ===== 로그인 후 최초 1회: 알림 동의 안내 모달 (A안) =====
     var CONSENT_KEY = 'daylog_perm_prompt_seen';
 
     function anyModalOpen() {
@@ -136,18 +125,16 @@
     function showConsentModal() {
         injectConsentStyle();
         var bell = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-        var pin = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
         var bellBig = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
         var ov = document.createElement('div');
         ov.id = 'pc-overlay';
         ov.innerHTML =
             '<div class="pc-card" role="dialog" aria-modal="true">' +
                 '<div class="pc-ic">' + bellBig + '</div>' +
-                '<h3 class="pc-title">알림과 위치를 켜볼까요?</h3>' +
-                '<p class="pc-desc">소식을 놓치지 않고, 추억·가볼곳을 지도에 자동으로 담을 수 있어요.</p>' +
+                '<h3 class="pc-title">알림을 켜볼까요?</h3>' +
+                '<p class="pc-desc">새 소식을 놓치지 않고 바로 받아보세요.</p>' +
                 '<ul class="pc-list">' +
                     '<li>' + bell + ' 새 댓글·답글, 방 입장 요청/수락 알림</li>' +
-                    '<li>' + pin + ' 현재 위치로 추억·가볼곳 자동 표시</li>' +
                 '</ul>' +
                 '<button id="pc-allow" class="pc-btn primary" type="button">허용하기</button>' +
                 '<button id="pc-later" class="pc-btn ghost" type="button">다음에</button>' +
@@ -159,18 +146,9 @@
         document.getElementById('pc-later').addEventListener('click', closeConsent);
         document.getElementById('pc-allow').addEventListener('click', function () {
             var btn = this; btn.disabled = true; btn.textContent = '설정 중…';
-            // iOS 정책: 알림 권한요청은 이 클릭(제스처) 안에서 먼저 실행
-            enablePush().then(function () {
-                return requestLocation();
-            }).then(function () {
-                // 위치 허용됐고 위치추적 함수가 있으면 시작(있을 때만)
-                try {
-                    if (window.Daylog && typeof window.Daylog.startLocationTracking === 'function') {
-                        window.Daylog.startLocationTracking();
-                    }
-                } catch (e) {}
-                closeConsent();
-            }).catch(function () { closeConsent(); });
+            // iOS 정책: 알림 권한요청은 이 클릭(제스처) 안에서 실행
+            enablePush().then(function () { closeConsent(); })
+                        .catch(function () { closeConsent(); });
         });
     }
 
@@ -180,7 +158,7 @@
             if (localStorage.getItem(CONSENT_KEY)) return;             // 이미 1회 노출
             // 이미 알림을 허용한 사용자에겐 안내하지 않음
             if (('Notification' in window) && Notification.permission === 'granted') return;
-            // 알림이 차단(denied)된 경우: 버튼으로 다시 못 켜므로 굳이 안 띄움(위치만이면 스킵)
+            // 알림이 차단(denied)된 경우: 버튼으로 다시 못 켜므로 굳이 안 띄움
             if (('Notification' in window) && Notification.permission === 'denied') return;
         } catch (e) { return; }
 
@@ -203,7 +181,7 @@
         var btn = document.getElementById('btn-enable-push');
         if (btn) btn.addEventListener('click', enablePush);
 
-        // [A안] 로그인 후 최초 1회 알림·위치 동의 안내 (약간의 지연 후, 다른 모달과 겹치지 않게)
+        // [A안] 로그인 후 최초 1회 알림 동의 안내 (약간의 지연 후, 다른 모달과 겹치지 않게)
         setTimeout(maybeShowConsent, 1200);
     }
 
