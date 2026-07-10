@@ -85,6 +85,114 @@
         });
     }
 
+    // 위치 권한 요청(프롬프트 유도). 성공/실패와 무관하게 resolve.
+    function requestLocation() {
+        return new Promise(function (resolve) {
+            if (!('geolocation' in navigator)) return resolve(false);
+            navigator.geolocation.getCurrentPosition(
+                function () { resolve(true); },
+                function () { resolve(false); },
+                { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+            );
+        });
+    }
+
+    // ===== 로그인 후 최초 1회: 알림·위치 동의 안내 모달 (A안) =====
+    var CONSENT_KEY = 'daylog_perm_prompt_seen';
+
+    function anyModalOpen() {
+        return !!document.querySelector('.modal:not(.hidden), .room-modal:not(.hidden), #nickname-modal:not(.hidden)');
+    }
+
+    function injectConsentStyle() {
+        if (document.getElementById('pc-style')) return;
+        var css =
+            '#pc-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(45,38,32,0.5);animation:pcFade .2s ease;}' +
+            '#pc-overlay .pc-card{width:100%;max-width:360px;background:#fffdf9;border-radius:20px;padding:26px 22px 20px;box-shadow:0 18px 50px rgba(0,0,0,0.25);text-align:center;font-family:inherit;animation:pcPop .32s cubic-bezier(.2,.8,.3,1);}' +
+            '#pc-overlay .pc-ic{width:56px;height:56px;border-radius:16px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;background:#f3e9dd;color:#9c6644;}' +
+            '#pc-overlay .pc-title{font-size:1.18rem;font-weight:700;color:#3a3128;margin:0 0 8px;}' +
+            '#pc-overlay .pc-desc{font-size:0.9rem;line-height:1.5;color:#7a6f63;margin:0 0 16px;}' +
+            '#pc-overlay .pc-list{list-style:none;padding:0;margin:0 0 20px;text-align:left;display:flex;flex-direction:column;gap:10px;}' +
+            '#pc-overlay .pc-list li{display:flex;align-items:center;gap:10px;font-size:0.9rem;color:#4a4038;background:#f7f1e8;border-radius:12px;padding:11px 13px;}' +
+            '#pc-overlay .pc-list svg{flex-shrink:0;color:#b08968;}' +
+            '#pc-overlay .pc-btn{width:100%;border:none;border-radius:13px;padding:14px;font-size:0.98rem;font-weight:700;font-family:inherit;cursor:pointer;transition:filter .15s,transform .1s;}' +
+            '#pc-overlay .pc-btn:active{transform:scale(.98);}' +
+            '#pc-overlay .pc-btn.primary{background:#b08968;color:#fff;margin-bottom:8px;}' +
+            '#pc-overlay .pc-btn.primary:hover{filter:brightness(.96);}' +
+            '#pc-overlay .pc-btn.ghost{background:transparent;color:#9a8f82;}' +
+            '@keyframes pcFade{from{opacity:0}to{opacity:1}}' +
+            '@keyframes pcPop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}';
+        var st = document.createElement('style');
+        st.id = 'pc-style';
+        st.textContent = css;
+        document.head.appendChild(st);
+    }
+
+    function closeConsent() {
+        var ov = document.getElementById('pc-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+
+    function showConsentModal() {
+        injectConsentStyle();
+        var bell = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        var pin = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+        var bellBig = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        var ov = document.createElement('div');
+        ov.id = 'pc-overlay';
+        ov.innerHTML =
+            '<div class="pc-card" role="dialog" aria-modal="true">' +
+                '<div class="pc-ic">' + bellBig + '</div>' +
+                '<h3 class="pc-title">알림과 위치를 켜볼까요?</h3>' +
+                '<p class="pc-desc">소식을 놓치지 않고, 추억·가볼곳을 지도에 자동으로 담을 수 있어요.</p>' +
+                '<ul class="pc-list">' +
+                    '<li>' + bell + ' 새 댓글·답글, 방 입장 요청/수락 알림</li>' +
+                    '<li>' + pin + ' 현재 위치로 추억·가볼곳 자동 표시</li>' +
+                '</ul>' +
+                '<button id="pc-allow" class="pc-btn primary" type="button">허용하기</button>' +
+                '<button id="pc-later" class="pc-btn ghost" type="button">다음에</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        try { localStorage.setItem(CONSENT_KEY, '1'); } catch (e) {} // 노출 시점에 1회 기록
+
+        document.getElementById('pc-later').addEventListener('click', closeConsent);
+        document.getElementById('pc-allow').addEventListener('click', function () {
+            var btn = this; btn.disabled = true; btn.textContent = '설정 중…';
+            // iOS 정책: 알림 권한요청은 이 클릭(제스처) 안에서 먼저 실행
+            enablePush().then(function () {
+                return requestLocation();
+            }).then(function () {
+                // 위치 허용됐고 위치추적 함수가 있으면 시작(있을 때만)
+                try {
+                    if (window.Daylog && typeof window.Daylog.startLocationTracking === 'function') {
+                        window.Daylog.startLocationTracking();
+                    }
+                } catch (e) {}
+                closeConsent();
+            }).catch(function () { closeConsent(); });
+        });
+    }
+
+    function maybeShowConsent() {
+        try {
+            if (!localStorage.getItem('accessToken')) return;          // 로그인 상태만
+            if (localStorage.getItem(CONSENT_KEY)) return;             // 이미 1회 노출
+            // 이미 알림을 허용한 사용자에겐 안내하지 않음
+            if (('Notification' in window) && Notification.permission === 'granted') return;
+            // 알림이 차단(denied)된 경우: 버튼으로 다시 못 켜므로 굳이 안 띄움(위치만이면 스킵)
+            if (('Notification' in window) && Notification.permission === 'denied') return;
+        } catch (e) { return; }
+
+        // 다른 모달(닉네임/환영 등)이 떠 있으면 이번엔 양보하고 다음 기회에
+        var tries = 0;
+        (function waitClear() {
+            if (!anyModalOpen()) { showConsentModal(); return; }
+            if (tries++ > 8) return; // 약 4초간 대기 후 포기(다음 진입 때 재시도 위해 flag 미기록)
+            setTimeout(waitClear, 500);
+        })();
+    }
+
     function autoInit() {
         registerSW();
         try {
@@ -94,6 +202,9 @@
         } catch (e) {}
         var btn = document.getElementById('btn-enable-push');
         if (btn) btn.addEventListener('click', enablePush);
+
+        // [A안] 로그인 후 최초 1회 알림·위치 동의 안내 (약간의 지연 후, 다른 모달과 겹치지 않게)
+        setTimeout(maybeShowConsent, 1200);
     }
 
     window.Daylog = window.Daylog || {};
