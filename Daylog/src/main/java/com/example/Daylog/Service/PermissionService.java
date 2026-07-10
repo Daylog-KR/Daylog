@@ -30,6 +30,7 @@ public class PermissionService {
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
+    private final WebPushService webPushService; // [B] edit by smsong - 입장요청/입장수락 푸시알림
 
     // ===== 관리자(=방장) 판별 =====
     public boolean isOwner(Long roomId, String uid) {
@@ -117,6 +118,10 @@ public class PermissionService {
             // [E] edit by smsong
         }
         e = permissionRepository.save(e);
+        // [B] edit by smsong - 입장 요청이 대기(PENDING)로 생성되면 방장에게 푸시알림
+        if (!owner && "PENDING".equals(e.getRequestStatus())) {
+            try { notifyJoinRequest(roomId, uid); } catch (Exception ignore) {}
+        }
         return PermissionDTO.effective(e, owner, owner);
     }
 
@@ -204,9 +209,49 @@ public class PermissionService {
             roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
         }
         e = permissionRepository.save(e);
+        // [B] edit by smsong - 입장 수락 시 방의 모든 멤버(새 멤버 포함)에게 푸시알림
+        if (approve) {
+            try { notifyRoomAccepted(roomId, targetUid); } catch (Exception ignore) {}
+        }
         boolean owner = isOwner(roomId, targetUid);
         return PermissionDTO.raw(e, owner, owner);
     }
+
+    // [B] edit by smsong - 입장 요청 시 방장에게 알림
+    private void notifyJoinRequest(Long roomId, String requesterUid) {
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        if (room == null || room.getOwnerUid() == null || room.getOwnerUid().equals(requesterUid)) return;
+        String name = pushName(requesterUid);
+        webPushService.sendToUid(room.getOwnerUid(),
+                name + "님이 입장을 요청했어요",
+                "'" + safeName(room.getName()) + "' 방 · 요청을 확인해보세요", "/rooms.html");
+    }
+
+    // [B] edit by smsong - 입장 수락 시 방 전체 멤버에게 알림
+    private void notifyRoomAccepted(Long roomId, String newUid) {
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        if (room == null) return;
+        List<String> uids = new ArrayList<>();
+        for (RoomMemberEntity m : roomMemberRepository.findByRoomId(roomId)) {
+            if (m.getUid() != null) uids.add(m.getUid());
+        }
+        if (uids.isEmpty()) return;
+        String name = pushName(newUid);
+        webPushService.sendToUids(uids,
+                name + "님이 방에 입장했어요",
+                "'" + safeName(room.getName()) + "' 방에 새 멤버가 합류했어요", "/rooms.html");
+    }
+
+    private String pushName(String uid) {
+        UserEntity u = (uid == null) ? null : userRepository.findByUid(uid).orElse(null);
+        if (u != null) {
+            if (u.getNickname() != null && !u.getNickname().isBlank()) return u.getNickname();
+            if (u.getName() != null && !u.getName().isBlank()) return u.getName();
+        }
+        return "누군가";
+    }
+
+    private String safeName(String s) { return (s == null || s.isBlank()) ? "우리" : s; }
 
     // [B] edit by smsong - 승인된 멤버: 환영/이용수칙 폼을 봤음을 기록 (최초 1회 표시 후 호출)
     @Transactional

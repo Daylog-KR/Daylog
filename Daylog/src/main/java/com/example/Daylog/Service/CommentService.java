@@ -27,6 +27,7 @@ public class CommentService {
     private final MemoryRepository memoryRepository;
     private final ChecklistRepository checklistRepository;
     private final UserRepository userRepository;
+    private final WebPushService webPushService; // [B] edit by smsong - 댓글/답글 푸시알림
 
     private UserEntity getLoginUser(UserDetails userDetails) {
         if (userDetails == null) {
@@ -83,7 +84,39 @@ public class CommentService {
         }
 
         CommentEntity saved = commentRepository.save(builder.build());
+        // [B] edit by smsong - 푸시알림: (답글) 부모 댓글 작성자에게 / (댓글) 추억·가볼곳 생성자에게
+        try { notifyOnComment(saved, owner, memoryId, checklistId, parentId); } catch (Exception ignore) {}
         return CommentDTO.entityToDto(saved);
+    }
+
+    // [B] edit by smsong - 댓글/답글 푸시알림 대상 결정 후 발송 (본인에겐 발송 안 함)
+    private void notifyOnComment(CommentEntity saved, UserEntity commenter, Long memoryId, Long checklistId, Long parentId) {
+        String commenterName = displayName(commenter);
+        String content = saved.getContent();
+        String targetUid;
+        String title;
+        if (parentId != null) {
+            CommentEntity parent = saved.getParent(); // 최상위 부모로 평탄화되어 저장됨
+            targetUid = (parent != null && parent.getOwner() != null) ? parent.getOwner().getUid() : null;
+            title = commenterName + "님이 답글을 남겼어요";
+        } else if (memoryId != null) {
+            targetUid = (saved.getMemory() != null && saved.getMemory().getOwner() != null)
+                    ? saved.getMemory().getOwner().getUid() : null;
+            title = commenterName + "님이 추억에 댓글을 남겼어요";
+        } else {
+            targetUid = (saved.getChecklist() != null && saved.getChecklist().getOwner() != null)
+                    ? saved.getChecklist().getOwner().getUid() : null;
+            title = commenterName + "님이 가볼곳에 댓글을 남겼어요";
+        }
+        if (targetUid == null || targetUid.equals(commenter.getUid())) return; // 본인에겐 알림 안 보냄
+        webPushService.sendToUid(targetUid, title, content, "/");
+    }
+
+    private String displayName(UserEntity u) {
+        if (u == null) return "누군가";
+        if (u.getNickname() != null && !u.getNickname().isBlank()) return u.getNickname();
+        if (u.getName() != null && !u.getName().isBlank()) return u.getName();
+        return "누군가";
     }
 
     // 특정 추억의 댓글 목록 (최상위 + 대댓글 트리)
