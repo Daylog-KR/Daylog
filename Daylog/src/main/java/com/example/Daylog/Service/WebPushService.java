@@ -92,7 +92,8 @@ public class WebPushService {
             for (PushSubscriptionEntity s : subs) {
                 try {
                     Notification n = new Notification(s.getEndpoint(), s.getP256dh(), s.getAuth(), payload);
-                    int code = pushService.send(n).getCode(); // Apache HttpClient5 (web-push 5.x)
+                    Object res = pushService.send(n);      // 반환 타입이 web-push/HttpClient 버전마다 다름
+                    int code = statusCodeOf(res);          // getCode()(HC5) / getStatusLine().getStatusCode()(HC4) 모두 대응
                     if (code == 404 || code == 410) {
                         // 만료/해지된 구독 정리
                         try { subscriptionRepository.deleteByEndpoint(s.getEndpoint()); } catch (Exception ignore) {}
@@ -102,6 +103,30 @@ public class WebPushService {
                 }
             }
         });
+    }
+
+    // web-push 버전(HttpClient4/5)에 따라 응답 타입이 달라 리플렉션으로 상태코드를 얻는다.
+    //  · HttpClient5: HttpResponse.getCode()
+    //  · HttpClient4: HttpResponse.getStatusLine().getStatusCode()
+    private int statusCodeOf(Object res) {
+        if (res == null) return 0;
+        // 1) getCode()
+        try {
+            java.lang.reflect.Method m = res.getClass().getMethod("getCode");
+            Object v = m.invoke(res);
+            if (v instanceof Integer) return (Integer) v;
+        } catch (Exception ignore) { }
+        // 2) getStatusLine().getStatusCode()
+        try {
+            java.lang.reflect.Method sl = res.getClass().getMethod("getStatusLine");
+            Object statusLine = sl.invoke(res);
+            if (statusLine != null) {
+                java.lang.reflect.Method sc = statusLine.getClass().getMethod("getStatusCode");
+                Object v = sc.invoke(statusLine);
+                if (v instanceof Integer) return (Integer) v;
+            }
+        } catch (Exception ignore) { }
+        return 0; // 코드 확인 불가 → 정리 로직만 건너뜀(발송에는 영향 없음)
     }
 
     private String buildPayload(String title, String body, String url) {
