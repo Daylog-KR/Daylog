@@ -1059,6 +1059,52 @@ document.addEventListener('DOMContentLoaded', () => {
         const c = checklistList.find(x => x.id === id);
         if (c) openChecklistDetail(c);
     };
+    // [B] edit by smsong - 푸시 딥링크: 게시글 상세 열고 해당 댓글로 스크롤 (데이터 로드까지 폴링)
+    Daylog.openMemoryDetailById = (id) => {
+        const m = memoryList.find(x => String(x.id) === String(id));
+        if (m) { openDetailModal(m); return true; }
+        return false;
+    };
+    Daylog._openByDeepLink = function (type, id) {
+        if (type === 'memory') {
+            const m = memoryList.find(x => String(x.id) === String(id));
+            if (m) { openDetailModal(m); return true; }
+        } else if (type === 'checklist') {
+            const c = checklistList.find(x => String(x.id) === String(id));
+            if (c) { openChecklistDetail(c); return true; }
+        }
+        return false;
+    };
+    Daylog.handleDeepLink = function () {
+        try {
+            const p = new URLSearchParams(location.search);
+            const type = p.get('type'), id = p.get('id'), comment = p.get('comment');
+            if (!type || !id) return;
+            let tries = 0;
+            (function attempt() {
+                if (Daylog._openByDeepLink(type, id)) {
+                    if (comment) _scrollToComment(comment);
+                    try { history.replaceState(null, '', 'main.html'); } catch (e) {}
+                    return;
+                }
+                if (tries++ < 40) setTimeout(attempt, 250); // 최대 ~10초 데이터 대기
+            })();
+        } catch (e) {}
+    };
+    function _scrollToComment(commentId) {
+        let tries = 0;
+        (function attempt() {
+            const el = document.querySelector('.comment-item[data-id="' + commentId + '"]');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('comment-highlight');
+                setTimeout(function () { el.classList.remove('comment-highlight'); }, 2600);
+                return;
+            }
+            if (tries++ < 30) setTimeout(attempt, 200); // 댓글 로드 대기
+        })();
+    }
+    setTimeout(function () { try { Daylog.handleDeepLink(); } catch (e) {} }, 400);
 
     // 해당 마커를 잠깐 빠르게 흔들어 "여기입니다" 표시
     function shakeMarker(memory) {

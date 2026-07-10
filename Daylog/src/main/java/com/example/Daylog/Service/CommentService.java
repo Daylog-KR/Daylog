@@ -27,7 +27,7 @@ public class CommentService {
     private final MemoryRepository memoryRepository;
     private final ChecklistRepository checklistRepository;
     private final UserRepository userRepository;
-    private final WebPushService webPushService; // [B] edit by smsong - 댓글/답글 푸시알림
+    private final NotificationService notificationService; // [B] edit by smsong - 알림함 저장 + 웹푸시
 
     private UserEntity getLoginUser(UserDetails userDetails) {
         if (userDetails == null) {
@@ -95,21 +95,58 @@ public class CommentService {
         String content = saved.getContent();
         String targetUid;
         String title;
+        String body;
+
+        // 딥링크: 해당 게시글 상세를 열고 이 댓글(답글)로 스크롤
+        String kind = (memoryId != null) ? "memory" : "checklist";
+        Long itemId;
+        Long roomId;
+        if (memoryId != null) {
+            itemId = (saved.getMemory() != null) ? saved.getMemory().getId() : memoryId;
+            roomId = (saved.getMemory() != null) ? saved.getMemory().getRoomId() : null;
+        } else {
+            itemId = (saved.getChecklist() != null) ? saved.getChecklist().getId() : checklistId;
+            roomId = (saved.getChecklist() != null) ? saved.getChecklist().getRoomId() : null;
+        }
+        String url = deepLink(roomId, kind, itemId, saved.getId());
+
         if (parentId != null) {
+            // 답글 → 부모 댓글 작성자에게. "~님이 '{댓글}'에 답글을 달았습니다 '{답글}'"
             CommentEntity parent = saved.getParent(); // 최상위 부모로 평탄화되어 저장됨
             targetUid = (parent != null && parent.getOwner() != null) ? parent.getOwner().getUid() : null;
-            title = commenterName + "님이 답글을 남겼어요";
-        } else if (memoryId != null) {
-            targetUid = (saved.getMemory() != null && saved.getMemory().getOwner() != null)
-                    ? saved.getMemory().getOwner().getUid() : null;
-            title = commenterName + "님이 추억에 댓글을 남겼어요";
+            String parentSnippet = trunc((parent != null) ? parent.getContent() : null, 18);
+            title = commenterName + "님이 답글을 달았습니다";
+            body = "'" + parentSnippet + "'에 답글 · " + quote(content);
         } else {
-            targetUid = (saved.getChecklist() != null && saved.getChecklist().getOwner() != null)
-                    ? saved.getChecklist().getOwner().getUid() : null;
-            title = commenterName + "님이 가볼곳에 댓글을 남겼어요";
+            // 댓글 → 추억/가볼곳 생성자에게. "~님이 댓글을 달았습니다 '{댓글}'"
+            targetUid = (memoryId != null)
+                    ? ((saved.getMemory() != null && saved.getMemory().getOwner() != null) ? saved.getMemory().getOwner().getUid() : null)
+                    : ((saved.getChecklist() != null && saved.getChecklist().getOwner() != null) ? saved.getChecklist().getOwner().getUid() : null);
+            title = commenterName + "님이 댓글을 달았습니다";
+            body = quote(content);
         }
         if (targetUid == null || targetUid.equals(commenter.getUid())) return; // 본인에겐 알림 안 보냄
-        webPushService.sendToUid(targetUid, title, content, "/");
+        notificationService.notify(targetUid, parentId != null ? "REPLY" : "COMMENT", title, body, url);
+    }
+
+    // 프론트 딥링크 (상대경로). 상세를 열고 특정 댓글로 이동.
+    private String deepLink(Long roomId, String kind, Long itemId, Long commentId) {
+        StringBuilder sb = new StringBuilder("/main.html?");
+        if (roomId != null) sb.append("room=").append(roomId).append("&");
+        sb.append("type=").append(kind).append("&id=").append(itemId);
+        if (commentId != null) sb.append("&comment=").append(commentId);
+        return sb.toString();
+    }
+
+    private String quote(String s) {
+        String t = (s == null) ? "" : s.trim();
+        if (t.length() > 40) t = t.substring(0, 40) + "…";
+        return "\"" + t + "\"";
+    }
+
+    private String trunc(String s, int n) {
+        String t = (s == null) ? "" : s.trim();
+        return (t.length() > n) ? t.substring(0, n) + "…" : t;
     }
 
     private String displayName(UserEntity u) {

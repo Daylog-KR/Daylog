@@ -1204,6 +1204,9 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 
 .comment-item { display: flex; gap: 10px; align-items: flex-start; }
+/* [B] edit by smsong - 푸시 딥링크로 이동한 댓글/답글 잠깐 강조 */
+.comment-item.comment-highlight { animation: commentHl 2.6s ease; border-radius: 10px; }
+@keyframes commentHl { 0%,100% { background: transparent; } 12%,55% { background: #f6e9d6; } }
 .comment-item.is-reply { margin-top: 12px; }
 .c-avatar {
     flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;

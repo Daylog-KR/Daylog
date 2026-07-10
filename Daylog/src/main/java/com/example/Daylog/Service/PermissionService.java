@@ -30,7 +30,7 @@ public class PermissionService {
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
-    private final WebPushService webPushService; // [B] edit by smsong - 입장요청/입장수락 푸시알림
+    private final NotificationService notificationService; // [B] edit by smsong - 알림함 저장 + 웹푸시
 
     // ===== 관리자(=방장) 판별 =====
     public boolean isOwner(Long roomId, String uid) {
@@ -217,29 +217,48 @@ public class PermissionService {
         return PermissionDTO.raw(e, owner, owner);
     }
 
-    // [B] edit by smsong - 입장 요청 시 방장에게 알림
+    // [B] edit by smsong - 입장 요청 시 방장에게 알림 (클릭 → rooms 요청 목록)
     private void notifyJoinRequest(Long roomId, String requesterUid) {
         RoomEntity room = roomRepository.findById(roomId).orElse(null);
         if (room == null || room.getOwnerUid() == null || room.getOwnerUid().equals(requesterUid)) return;
         String name = pushName(requesterUid);
-        webPushService.sendToUid(room.getOwnerUid(),
-                name + "님이 입장을 요청했어요",
+        notificationService.notify(room.getOwnerUid(), "JOIN_REQUEST",
+                name + "님이 입장을 요청했습니다",
                 "'" + safeName(room.getName()) + "' 방 · 요청을 확인해보세요", "/rooms.html");
     }
 
-    // [B] edit by smsong - 입장 수락 시 방 전체 멤버에게 알림
+    // [B] edit by smsong - 입장 수락 시: (1) 새 멤버에겐 '입장(초대) 완료' (2) 기존 멤버에겐 '새 멤버 합류'
     private void notifyRoomAccepted(Long roomId, String newUid) {
         RoomEntity room = roomRepository.findById(roomId).orElse(null);
         if (room == null) return;
+        String roomName = safeName(room.getName());
+        String enterUrl = "/main.html?room=" + roomId;
+
+        // (1) 새로 입장한 멤버 = '방에 초대(입장)되었을 때'
+        notificationService.notify(newUid, "JOINED",
+                "'" + roomName + "' 방에 입장했어요",
+                "지금 바로 함께 기록해보세요", enterUrl);
+
+        // (2) 기존 멤버들에게 새 멤버 합류 알림 (본인=새 멤버 제외)
         List<String> uids = new ArrayList<>();
         for (RoomMemberEntity m : roomMemberRepository.findByRoomId(roomId)) {
             if (m.getUid() != null) uids.add(m.getUid());
         }
-        if (uids.isEmpty()) return;
         String name = pushName(newUid);
-        webPushService.sendToUids(uids,
-                name + "님이 방에 입장했어요",
-                "'" + safeName(room.getName()) + "' 방에 새 멤버가 합류했어요", "/rooms.html");
+        notificationService.notifyAll(uids, newUid, "ACCEPTED",
+                name + "님이 '" + roomName + "' 방에 입장했어요",
+                "새 멤버가 합류했어요", enterUrl);
+    }
+
+    // [B] edit by smsong - 강퇴 시 대상자에게 알림 (클릭 → rooms)
+    private void notifyKicked(Long roomId, String targetUid, String reason) {
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        String roomName = safeName(room != null ? room.getName() : null);
+        String body = (reason != null && !reason.trim().isEmpty())
+                ? ("사유: " + reason.trim())
+                : "방장에 의해 내보내졌습니다";
+        notificationService.notify(targetUid, "KICKED",
+                "'" + roomName + "' 방에서 내보내졌어요", body, "/rooms.html");
     }
 
     private String pushName(String uid) {
@@ -341,6 +360,8 @@ public class PermissionService {
             e.setWelcomeSeen(false);
             permissionRepository.save(e);
         });
+        // [B] edit by smsong - 강퇴된 사용자에게 알림
+        try { notifyKicked(roomId, uid, reason); } catch (Exception ignore) {}
     }
     // [E] edit by smsong
 

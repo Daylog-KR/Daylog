@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="Daylog">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="rooms.css?v=1.0.3">
+    <link rel="stylesheet" href="rooms.css?v=1.0.6">
 </head>
 <body>
 <div class="rooms-page">
@@ -28,6 +28,11 @@
                 <div class="brand-sub">함께할 방을 선택하세요</div>
             </div>
         </div>
+        <!-- [B] edit by smsong - 알림함(인스타 하트) 버튼 -->
+        <button id="btn-notif" class="rooms-icon-btn notif-btn" type="button" title="알림" aria-label="알림">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <span class="notif-badge hidden" id="notif-badge"></span>
+        </button>
         <!-- [B] edit by smsong - 로그아웃 버튼을 프로필 보기 버튼으로 교체 (로그아웃은 프로필 패널 안으로 이동) -->
         <button id="btn-profile" class="rooms-icon-btn" type="button" title="내 프로필" aria-label="내 프로필">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -220,8 +225,9 @@
 
 <div id="toast"></div>
 
-<script src="config.js?v=1.0.3"></script>
-<script src="rooms.js?v=1.0.3"></script>
-<script src="push.js?v=1.0.5"></script>
+<script src="config.js?v=1.0.6"></script>
+<script src="rooms.js?v=1.0.6"></script>
+<script src="push.js?v=1.0.6"></script>
+<script src="notifications.js?v=1.0.6"></script>
 </body>
 </html>
