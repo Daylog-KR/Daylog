@@ -45,6 +45,8 @@ html, body {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     background: var(--bg-color);
 }
+/* [B] edit by smsong - 알림/프로필 버튼을 오른쪽에 나란히 붙임(간격 축소) */
+.rooms-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* 상단 탭 (내 방 보기 / 전체 방 보기) — 헤더 아래 고정 */
 .rooms-tabs {

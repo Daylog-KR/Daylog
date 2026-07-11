@@ -319,7 +319,7 @@ function applyMyPermUI() {
 //  관리자 = 방장. 미승인 멤버는 차단 화면(권한 요청 폼) 표시.
 function loadMyPermission() {
     if (!(Daylog && Daylog.api)) return Promise.resolve(null);
-    return fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
+    return withLoading(fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
         .then(function (res) {
             if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status); throw new Error('HTTP ' + res.status); }
             return res.json();
@@ -348,7 +348,7 @@ function loadMyPermission() {
                 blockUnauthorizedUser();
             }
             return null;
-        });
+        }), '방 정보를 불러오는 중...'); // [smsong] 로딩
 }
 if (Daylog) Daylog.loadMyPermission = loadMyPermission;
 
@@ -2300,7 +2300,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadMemoriesFromServer() {
         if (!requireAuthOrRedirect()) return Promise.resolve();
 
-        return fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
+        return withLoading(fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(memories => {
                 const list = memories || [];
@@ -2319,7 +2319,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 buildTimelinePlaceOptions();
                 applyTimelineFilter();
             })
-            .catch(err => console.error("데이터 로드 실패:", err));
+            .catch(err => console.error("데이터 로드 실패:", err)), '추억을 불러오는 중...'); // [smsong] 로딩
     }
 
     // ==========================================
@@ -2327,7 +2327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     function loadChecklistsFromServer() {
         if (!requireAuthOrRedirect()) return Promise.resolve();
-        return fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
+        return withLoading(fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(list => {
                 const arr = list || [];
@@ -2342,7 +2342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
                 if (mapMode === 'checklist') renderActiveMapMarkers();
             })
-            .catch(err => console.error("가볼곳 로드 실패:", err));
+            .catch(err => console.error("가볼곳 로드 실패:", err)), '가볼곳을 불러오는 중...'); // [smsong] 로딩
     }
 
     // 가볼곳 마커 — 사진 대신 제목 말풍선, 타입별 색상, 방문 표시
@@ -2939,7 +2939,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadProfiles(force) {
         if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
         if (!requireAuthOrRedirect()) return;
-        fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
+        withLoading(fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(users => {
                 const list = users || [];
@@ -2988,7 +2988,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("프로필 로드 실패(/user/all):", err);
                 showToast('프로필 조회 실패: ' + (err.message || '서버 오류'));
                 loadSelfProfileFallback();
-            });
+            }), '프로필을 불러오는 중...'); // [smsong] 로딩
     }
 
     // /user/all 이 막혔을 때 최소한 본인 정보만이라도 채우는 폴백
@@ -3299,10 +3299,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function fetchMembersThenPaint() {
         var roomId = getRoomId();
         if (!roomId) return;
-        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { _memberCache = (room && room.members) || []; paintMemberGrid(_memberCache); })
-            .catch(err => console.error('[Daylog] 멤버 뷰 로드 실패:', err));
+            .catch(err => console.error('[Daylog] 멤버 뷰 로드 실패:', err)), '멤버를 불러오는 중...'); // [smsong] 로딩
     }
     function paintMemberGrid(members) {
         var container = document.getElementById('member-view');
@@ -3358,10 +3358,10 @@ document.addEventListener('DOMContentLoaded', () => {
         var roomId = getRoomId();
         if (!roomId) return;
         if (!force && Daylog.roomInfo) { afterRoomInfo(); return; }
-        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { Daylog.roomInfo = room; _memberCache = (room && room.members) || null; afterRoomInfo(); })
-            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err));
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err)), '방 정보를 불러오는 중...'); // [smsong] 로딩
     }
     function afterRoomInfo() {
         if (isCoupleRoom()) { loadProfiles(true); applyCoupleEditButtons(); }
@@ -3391,10 +3391,10 @@ document.addEventListener('DOMContentLoaded', () => {
         body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
         // 최신 멤버 확보 후 렌더
         var roomId = getRoomId();
-        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { Daylog.roomInfo = room; renderCouplePicker((room && room.members) || []); })
-            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); });
+            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); }), '멤버를 불러오는 중...'); // [smsong] 로딩
     }
     function renderCouplePicker(members) {
         var body = document.getElementById('couple-pick-body');
@@ -4472,7 +4472,7 @@ function loadComments(kind, targetId) {
     const list = document.getElementById(listId);
     if (!list) return;
     const path = (kind === 'checklist') ? `/comment/checklist/${targetId}` : `/comment/memory/${targetId}`;
-    fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
+    withLoading(fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
         .then(comments => {
             comments = comments || [];
@@ -4490,7 +4490,7 @@ function loadComments(kind, targetId) {
         .catch(err => {
             console.error(err);
             list.innerHTML = '<div class="comments-empty">댓글을 조회 실패</div>';
-        });
+        }), '댓글을 불러오는 중...'); // [smsong] 로딩
 }
 
 function submitComment(kind, targetId, parentId, inputId) {
@@ -4592,13 +4592,13 @@ function openTrashModal() {
     modal.classList.remove('hidden');
 
     const uid = Daylog.currentUid;
-    Promise.all([
+    withLoading(Promise.all([
         fetch(`${Daylog.api}/api/memories/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
         fetch(`${Daylog.api}/comment/trash`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
         fetch(`${Daylog.api}/api/checklists/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
     ]).then(([memories, comments, checklists]) => {
         renderTrash(memories || [], comments || [], checklists || []);
-    });
+    }), '휴지통을 불러오는 중...'); // [smsong] 로딩
 }
 
 function closeTrashModal() {

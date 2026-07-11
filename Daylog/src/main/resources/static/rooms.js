@@ -228,6 +228,7 @@ async function uploadRoomImage(roomId, file) {
 //   - 내가 방장인 방: owner === true 만
 async function loadRooms() {
     if (!uid) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+    showLoading('방 목록을 불러오는 중...'); // [smsong] 로딩
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
         // 서버가 토큰을 거부(401/403)하면 → 토큰 정리 후 로그인으로 (여기서 안 지우면 login 이 되튕김)
@@ -241,6 +242,8 @@ async function loadRooms() {
     } catch (e) {
         console.error(e);
         showToast('서버에 연결하지 못했습니다');
+    } finally {
+        hideLoading(); // [smsong] 로딩 해제
     }
 }
 
