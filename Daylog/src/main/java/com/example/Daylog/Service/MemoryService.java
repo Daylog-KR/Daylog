@@ -54,6 +54,15 @@ public class MemoryService {
         return ud != null && ownerUid != null && ownerUid.equals(ud.getUsername());
     }
 
+    // [B] edit by smsong - #2 작성자(본인) 또는 방장(관리자)만 수정/휴지통/삭제 허용
+    private void requireOwnerOrAdmin(MemoryEntity m, UserDetails ud, String action) {
+        boolean admin = ud != null && m.getRoomId() != null
+                && permissionService.isOwner(m.getRoomId(), ud.getUsername());
+        if (!isOwner(m, ud) && !admin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 게시글만 " + action + "할 수 있습니다");
+        }
+    }
+
     // GCS 업로드 로직 (BuildingService와 동일)
     private String uploadMedia(MultipartFile mediaFile) {
         if (mediaFile == null || mediaFile.isEmpty()) return null;
@@ -223,6 +232,7 @@ public class MemoryService {
 
         // [smsong] 이 방의 멤버 + 수정 권한
         roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        requireOwnerOrAdmin(memory, userDetails, "수정"); // [B] #2
         permissionService.requireCanEdit(userDetails.getUsername(), memory.getRoomId());
 
         if (memoryDTO.getTitle() != null)   memory.setTitle(memoryDTO.getTitle());
@@ -278,6 +288,7 @@ public class MemoryService {
     public void moveToTrash(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
         roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        requireOwnerOrAdmin(memory, userDetails, "휴지통으로 이동"); // [B] #2
         permissionService.requireCanTrash(userDetails.getUsername(), memory.getRoomId()); // [smsong] 휴지통 권한
         memory.setDeleted(true);
         memory.setTrashedAt(java.time.LocalDateTime.now()); // [smsong] 30일 자동삭제 기준 시각
@@ -289,6 +300,7 @@ public class MemoryService {
     public MemoryDTO restoreMemory(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
         roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        requireOwnerOrAdmin(memory, userDetails, "복원"); // [B] #2
         permissionService.requireCanTrash(userDetails.getUsername(), memory.getRoomId()); // [smsong] 휴지통 권한
         memory.setDeleted(false);
         memory.setTrashedAt(null); // [smsong] 복원 시 자동삭제 타이머 해제
@@ -300,6 +312,7 @@ public class MemoryService {
     public void permanentDelete(Long id, UserDetails userDetails) {
         MemoryEntity memory = findMemory(id);
         roomService.requireMember(userDetails.getUsername(), memory.getRoomId());
+        requireOwnerOrAdmin(memory, userDetails, "삭제"); // [B] #2
         permissionService.requireCanDelete(userDetails.getUsername(), memory.getRoomId()); // [smsong] 삭제 권한
         commentService.deleteAllByMemory(id);
         memoryRepository.delete(memory);

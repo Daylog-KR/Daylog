@@ -212,6 +212,9 @@ public class PermissionService {
         // [B] edit by smsong - 입장 수락 시 방의 모든 멤버(새 멤버 포함)에게 푸시알림
         if (approve) {
             try { notifyRoomAccepted(roomId, targetUid); } catch (Exception ignore) {}
+        } else {
+            // [B] edit by smsong - 입장 요청 거부 시 거부된 유저에게 알림
+            try { notifyRejected(roomId, targetUid, reason); } catch (Exception ignore) {}
         }
         boolean owner = isOwner(roomId, targetUid);
         return PermissionDTO.raw(e, owner, owner);
@@ -248,6 +251,17 @@ public class PermissionService {
         notificationService.notifyAll(uids, newUid, "ACCEPTED",
                 name + "님이 '" + roomName + "' 방에 입장했어요",
                 "새 멤버가 합류했어요", enterUrl);
+    }
+
+    // [B] edit by smsong - 입장 요청 거부 시 대상자에게 알림 (클릭 → rooms)
+    private void notifyRejected(Long roomId, String targetUid, String reason) {
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        String roomName = safeName(room != null ? room.getName() : null);
+        String body = (reason != null && !reason.trim().isEmpty())
+                ? ("사유: " + reason.trim())
+                : "방장이 입장 요청을 거부했어요";
+        notificationService.notify(targetUid, "REJECTED",
+                "'" + roomName + "' 방 입장이 거부되었어요", body, "/rooms.html");
     }
 
     // [B] edit by smsong - 강퇴 시 대상자에게 알림 (클릭 → rooms)

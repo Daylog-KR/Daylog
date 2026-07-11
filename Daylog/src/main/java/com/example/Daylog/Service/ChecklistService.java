@@ -55,6 +55,15 @@ public class ChecklistService {
         return ud != null && ownerUid != null && ownerUid.equals(ud.getUsername());
     }
 
+    // [B] edit by smsong - #2 작성자(본인) 또는 방장(관리자)만 수정/휴지통/삭제 허용
+    private void requireOwnerOrAdmin(ChecklistEntity c, UserDetails ud, String action) {
+        boolean admin = ud != null && c.getRoomId() != null
+                && permissionService.isOwner(c.getRoomId(), ud.getUsername());
+        if (!isOwner(c, ud) && !admin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 게시글만 " + action + "할 수 있습니다");
+        }
+    }
+
     private ChecklistEntity findChecklist(Long id) {
         return checklistRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("가볼곳을 찾을 수 없습니다"));
@@ -63,6 +72,7 @@ public class ChecklistService {
     private ChecklistEntity getEditableChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
         roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "수정"); // [B] #2
         permissionService.requireCanEdit(userDetails.getUsername(), c.getRoomId()); // [smsong] 수정 권한
         return c;
     }
@@ -279,6 +289,7 @@ public class ChecklistService {
     public void moveToTrash(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
         roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "휴지통으로 이동"); // [B] #2
         permissionService.requireCanTrash(userDetails.getUsername(), c.getRoomId()); // [smsong] 휴지통 권한
         c.setDeleted(true);
         c.setTrashedAt(java.time.LocalDateTime.now()); // [smsong] 30일 자동삭제 기준 시각
@@ -290,6 +301,7 @@ public class ChecklistService {
     public ChecklistDTO restoreChecklist(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
         roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "복원"); // [B] #2
         permissionService.requireCanTrash(userDetails.getUsername(), c.getRoomId()); // [smsong] 휴지통 권한
         c.setDeleted(false);
         c.setTrashedAt(null); // [smsong] 복원 시 자동삭제 타이머 해제
@@ -301,6 +313,7 @@ public class ChecklistService {
     public void permanentDelete(Long id, UserDetails userDetails) {
         ChecklistEntity c = findChecklist(id);
         roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "삭제"); // [B] #2
         permissionService.requireCanDelete(userDetails.getUsername(), c.getRoomId()); // [smsong] 삭제 권한
         commentService.deleteAllByChecklist(id); // [smsong] 연관 댓글 정리
         checklistRepository.delete(c);

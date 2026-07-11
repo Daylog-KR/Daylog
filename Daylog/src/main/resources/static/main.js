@@ -293,10 +293,13 @@ function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') :
 function _myPerm() { return (Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
 function isAdminUser() { var p = _myPerm(); return !!(p && p.admin); }
 function canCreateObject() { var p = _myPerm(); return !!(p && (p.admin || p.canCreate)); } // 생성 권한
-function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // 수정 권한
-function canManageObject(item) { return isPrivilegedUser(); }                                  // 수정 버튼 표시
-function canTrashObject(item) { var p = _myPerm(); return !!(p && (p.admin || p.canTrash)); }  // 휴지통 버튼
-function canDeleteObject() { var p = _myPerm(); return !!(p && (p.admin || p.canDelete)); }    // 영구삭제 버튼
+function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // (구) 수정 권한
+// [B] edit by smsong - #2 작성자(본인) 또는 관리자(방장)만 수정/휴지통/삭제 가능
+function _isAdminPerm() { var p = _myPerm(); return !!(p && p.admin); }
+function isOwnerOf(item) { return !!(item && item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid); }
+function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canEdit)); }   // 수정 버튼
+function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
+function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
 // 생성 FAB 표시/차단 (권한 없으면 숨김)
 function applyPermButtons() {
     var show = canCreateObject();
@@ -640,15 +643,38 @@ function renderPermissionList(list) {
                   : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
                 // [E] edit by smsong
             '</div>' +
-            '<div class="perm-flags">' +
-              permToggle(p, 'canCreate', '생성', lockToggles) +
-              permToggle(p, 'canEdit', '수정', lockToggles) +
-              permToggle(p, 'canTrash', '휴지통', lockToggles) +
-              permToggle(p, 'canDelete', '삭제', lockToggles) +
-            '</div>' +
+            // [B] edit by smsong - #3 4개 토글 → 역할(일반/멤버) 선택. 관리자는 라벨만.
+            permRoleSelector(p, lockToggles) +
         '</div>';
     });
     body.innerHTML = html;
+    // [B] edit by smsong - #4 저장 후 스크롤 위치 복원
+    if (Daylog._permScrollKeep != null) {
+        var _kp = Daylog._permScrollKeep; Daylog._permScrollKeep = null;
+        body.scrollTop = _kp;
+        requestAnimationFrame(function () { body.scrollTop = _kp; }); // 레이아웃 확정 후 한 번 더
+    }
+}
+
+// [B] edit by smsong - #3 역할 선택 UI (일반 유저 / 멤버). 관리자(방장)는 잠금 라벨.
+function permRoleSelector(p, lock) {
+    if (p.admin) return '<div class="perm-role-label">관리자</div>';
+    if (!p.accessAllowed) return ''; // 접근 허용 전에는 역할 선택 없음
+    var isMember = !!p.canCreate;    // 멤버 = 생성권한 보유(생성/수정/삭제 가능)
+    var dis = lock ? ' disabled' : '';
+    return '<div class="perm-role">' +
+        '<button type="button" class="perm-role-btn' + (!isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'general\')">일반</button>' +
+        '<button type="button" class="perm-role-btn' + (isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'member\')">멤버</button>' +
+    '</div>';
+}
+function setPermRole(uid, role) {
+    var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
+    if (!p || p.admin) return;
+    if (!p.accessAllowed) { showToast('먼저 접근을 허용해 주십시오'); return; }
+    var member = (role === 'member');
+    if (member === !!p.canCreate) return; // 변화 없으면 무시
+    // 멤버: 생성/수정/삭제 가능(단, 수정·삭제는 본인 게시글만) · 일반: 조회+댓글만
+    putPermission(uid, { accessAllowed: true, canCreate: member, canEdit: member, canTrash: member, canDelete: member });
 }
 function togglePerm(uid, key) {
     var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
@@ -712,6 +738,9 @@ function decideAccess(uid, approve) {
         .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
 function putPermission(uid, patch) {
+    // [B] edit by smsong - #4 권한 변경 후 목록 재렌더 시 스크롤 위치 유지
+    var _pb = document.getElementById('perm-modal-body');
+    Daylog._permScrollKeep = _pb ? _pb.scrollTop : 0;
     withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid),
         { method: 'PUT', headers: Daylog.authHeaders(true), body: JSON.stringify(patch) }), '저장하는 중...')
         .then(function () { openPermissionAdmin(); })
@@ -1124,6 +1153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.focusOnMap = function (memory) {
         if (!memory || memory.lat == null || memory.lng == null) return;
         closeDetailModal();
+        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click(); // 탭 전환 + map resize 트리거
         _suppressDrop = true;       // 등장 애니메이션 끄고 '흔들기'만
@@ -1164,6 +1194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.focusChecklistOnMap = function (item) {
         if (!item || item.lat == null || item.lng == null) return;
         closeChecklistDetail();
+        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click();
         _suppressDrop = true;        // 등장 애니메이션 끄고 '흔들기'만
@@ -4636,8 +4667,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(m) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
-                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
+                (canTrashObject(m) ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
+                (canDeleteObject(m) ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });
@@ -4677,8 +4708,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(c) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
-                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
+                (canTrashObject(c) ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
+                (canDeleteObject(c) ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });
@@ -4817,7 +4848,7 @@ function showDDayInfo() {
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
     var since = getDdayStart();
-    var canEdit = isCoupleRoom() && isRoomOwner();
+    var canEdit = false; // [B] edit by smsong - 디데이 수정 불가(요청): 편집 입력/저장 UI 비활성화
     titleEl.innerHTML = 'D-Day';
     var html = '<div class="dday-info">';
     if (since) {

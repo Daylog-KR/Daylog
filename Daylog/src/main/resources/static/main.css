@@ -2123,6 +2123,12 @@ body.picking .bottom-nav {
 .perm-kick-btn { background: #c0392b; color: #fff; border: none; } /* [smsong] 강퇴하기: 위험 동작 강조 */
 .perm-kick-btn:hover { background: #a5301f; }
 .perm-flags { display: flex; gap: 6px; flex: 1 1 100%; }
+/* [B] edit by smsong - #3 역할(일반/멤버) 선택 UI */
+.perm-role { display: flex; gap: 4px; background: #f1e9dd; border-radius: 9px; padding: 3px; flex: 0 0 auto; }
+.perm-role-btn { border: none; background: transparent; color: #8a7d6d; font-size: 0.8rem; font-weight: 600; padding: 5px 14px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
+.perm-role-btn.active { background: #b08968; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+.perm-role-btn:disabled { opacity: 0.5; cursor: default; }
+.perm-role-label { font-size: 0.82rem; font-weight: 700; color: #9c6644; padding: 5px 10px; }
 .perm-chip {
     flex: 1; border: 1px solid var(--gray-200, #e2ddd6); background: var(--white, #fff);
     color: var(--gray-500, #8a8178); border-radius: 10px; padding: 8px 6px;
