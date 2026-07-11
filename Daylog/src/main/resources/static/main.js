@@ -2530,22 +2530,26 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(handleResponse)
             .then((created) => {
                 closeChecklistModal();
-                showToast('가볼곳을 추가했습니다');
                 pickTarget = 'memory';
-                // 다녀온 곳으로 추가하면 동일 위치에 추억도 자동 생성
+                // [B] edit by smsong - '다녀왔습니다'로 추가하면 추억으로 기록하고, 가볼곳은 제거(추억으로 이동)
                 if (created && created.visited) {
-                    // [B] edit by smsong - 동일 위치+제목 추억이 있으면 중복 생성 방지
                     ensureMemoryForChecklist(created)
-                        .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했습니다'); })
-                        .catch(err => console.warn('추억 자동 생성 실패', err));
-                    // [E] edit by smsong
+                        .then((made) => { showToast('다녀온 곳이라 추억으로 기록했어요'); })
+                        .then(() => trashChecklistQuietly(created.id)) // 원본 가볼곳 제거
+                        .catch(err => console.warn('추억 이동 실패', err))
+                        .finally(() => {
+                            loadChecklistsFromServer().then(function () {
+                                if (mapMode !== 'checklist') setMapMode('checklist');
+                                else refreshMapMarkers();
+                            });
+                        });
+                } else {
+                    showToast('가볼곳을 추가했습니다');
+                    loadChecklistsFromServer().then(function () {
+                        if (mapMode !== 'checklist') setMapMode('checklist');
+                        else refreshMapMarkers();
+                    });
                 }
-                // [B] edit by smsong - 생성 직후 서버에서 최신 목록을 받아 지도에 바로 반영
-                //  (기존: setMapMode 만 호출해 이미 로드된 '옛 목록'으로 마커를 그려 새 가볼곳이 안 보이던 문제)
-                loadChecklistsFromServer().then(function () {
-                    if (mapMode !== 'checklist') setMapMode('checklist');
-                    else refreshMapMarkers();
-                });
                 // [E] edit by smsong
             })
             .catch(err => { console.error(err); showToast('추가 실패. 다시 시도해주십시오.'); })
@@ -3977,20 +3981,30 @@ function saveChecklistEdit() {
         .then(Daylog.handleResponse)
         .then((updated) => {
             _editLocPicked = null; // [smsong] 수정 위치 소비
-            showToast('수정 완료');
             closeChecklistDetail();
-            Daylog.reloadChecklists();
-            // 이번 수정에서 처음으로 '다녀옴'이 된 경우에만 추억 자동 생성
-            // [B] edit by smsong - 재방문 토글(안가봄->갔다왔습니다)로 동일 추억이 중복 생성되지 않도록 dedup 처리
+            // [B] edit by smsong - 처음으로 '다녀옴'이 되면 추억으로 기록하고 가볼곳은 제거(추억으로 이동)
             if (updated && updated.visited && !wasVisited) {
                 ensureMemoryForChecklist(updated)
-                    .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했습니다'); })
-                    .catch(err => console.warn('추억 자동 생성 실패', err));
+                    .then((made) => { showToast('다녀온 곳이라 추억으로 옮겼어요'); })
+                    .then(() => trashChecklistQuietly(updated.id)) // 원본 가볼곳 제거
+                    .catch(err => console.warn('추억 이동 실패', err))
+                    .finally(() => { Daylog.reloadChecklists(); });
+            } else {
+                showToast('수정 완료');
+                Daylog.reloadChecklists();
             }
             // [E] edit by smsong
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주십시오.'); })
         .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
+}
+
+// [B] edit by smsong - '다녀옴' 추억 자동생성 후 원본 가볼곳을 조용히 휴지통으로 제거(확인창/토스트 없음).
+//  추억은 같은 이미지 URL 을 참조하고, 휴지통/영구삭제는 GCS 원본을 지우지 않으므로 이미지 유실 없음.
+function trashChecklistQuietly(id) {
+    if (id == null) return Promise.resolve();
+    return fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse).catch(() => {});
 }
 
 function trashChecklist(id) {

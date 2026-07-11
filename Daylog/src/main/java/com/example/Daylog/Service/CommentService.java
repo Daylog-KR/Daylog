@@ -97,36 +97,47 @@ public class CommentService {
         String title;
         String body;
 
-        // 딥링크: 해당 게시글 상세를 열고 이 댓글(답글)로 스크롤
+        // 딥링크 + 게시글 제목 (어떤 추억/가볼곳인지 표시)
         String kind = (memoryId != null) ? "memory" : "checklist";
+        String kindLabel = (memoryId != null) ? "추억" : "가볼곳";
         Long itemId;
         Long roomId;
+        String itemTitle;
         if (memoryId != null) {
             itemId = (saved.getMemory() != null) ? saved.getMemory().getId() : memoryId;
             roomId = (saved.getMemory() != null) ? saved.getMemory().getRoomId() : null;
+            itemTitle = (saved.getMemory() != null) ? bestTitle(saved.getMemory().getTitle(), saved.getMemory().getPlaceName(), kindLabel) : kindLabel;
         } else {
             itemId = (saved.getChecklist() != null) ? saved.getChecklist().getId() : checklistId;
             roomId = (saved.getChecklist() != null) ? saved.getChecklist().getRoomId() : null;
+            itemTitle = (saved.getChecklist() != null) ? bestTitle(saved.getChecklist().getTitle(), saved.getChecklist().getPlaceName(), kindLabel) : kindLabel;
         }
         String url = deepLink(roomId, kind, itemId, saved.getId());
 
         if (parentId != null) {
-            // 답글 → 부모 댓글 작성자에게. "~님이 '{댓글}'에 답글을 달았습니다 '{답글}'"
+            // 답글 → 부모 댓글 작성자에게. "~님이 답글을 달았습니다" + '게시글' · '부모댓글'에 답글 "답글"
             CommentEntity parent = saved.getParent(); // 최상위 부모로 평탄화되어 저장됨
             targetUid = (parent != null && parent.getOwner() != null) ? parent.getOwner().getUid() : null;
-            String parentSnippet = trunc((parent != null) ? parent.getContent() : null, 18);
+            String parentSnippet = trunc((parent != null) ? parent.getContent() : null, 14);
             title = commenterName + "님이 답글을 달았습니다";
-            body = "'" + parentSnippet + "'에 답글 · " + quote(content);
+            body = "'" + itemTitle + "' · '" + parentSnippet + "'에 답글 " + quote(content);
         } else {
-            // 댓글 → 추억/가볼곳 생성자에게. "~님이 댓글을 달았습니다 '{댓글}'"
+            // 댓글 → 추억/가볼곳 생성자에게. "~님이 댓글을 달았습니다" + '게시글'에 "댓글"
             targetUid = (memoryId != null)
                     ? ((saved.getMemory() != null && saved.getMemory().getOwner() != null) ? saved.getMemory().getOwner().getUid() : null)
                     : ((saved.getChecklist() != null && saved.getChecklist().getOwner() != null) ? saved.getChecklist().getOwner().getUid() : null);
             title = commenterName + "님이 댓글을 달았습니다";
-            body = quote(content);
+            body = "'" + itemTitle + "'에 " + quote(content);
         }
         if (targetUid == null || targetUid.equals(commenter.getUid())) return; // 본인에겐 알림 안 보냄
         notificationService.notify(targetUid, parentId != null ? "REPLY" : "COMMENT", title, body, url);
+    }
+
+    // 게시글 제목: title 우선, 없으면 placeName, 그래도 없으면 종류 라벨
+    private String bestTitle(String title, String placeName, String fallback) {
+        if (title != null && !title.isBlank()) return trunc(title, 20);
+        if (placeName != null && !placeName.isBlank()) return trunc(placeName, 20);
+        return fallback;
     }
 
     // 프론트 딥링크 (상대경로). 상세를 열고 특정 댓글로 이동.

@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="Daylog">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="rooms.css?v=1.0.6">
+    <link rel="stylesheet" href="rooms.css?v=1.0.7">
 </head>
 <body>
 <div class="rooms-page">
@@ -28,9 +28,9 @@
                 <div class="brand-sub">함께할 방을 선택하세요</div>
             </div>
         </div>
-        <!-- [B] edit by smsong - 알림함(인스타 하트) 버튼 -->
+        <!-- [B] edit by smsong - 알림함 버튼(알림 아이콘) · 유저 버튼 바로 옆 -->
         <button id="btn-notif" class="rooms-icon-btn notif-btn" type="button" title="알림" aria-label="알림">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <span class="notif-badge hidden" id="notif-badge"></span>
         </button>
         <!-- [B] edit by smsong - 로그아웃 버튼을 프로필 보기 버튼으로 교체 (로그아웃은 프로필 패널 안으로 이동) -->
@@ -169,10 +169,10 @@
             <!-- [B] edit by smsong - 닉네임 밑 'Daylog' 서브텍스트 제거 -->
         </div>
         <div class="profile-actions">
-            <button id="btn-open-profile-edit" class="rm-btn primary" type="button">프로필 수정</button>
-            <!-- [B] edit by smsong - 푸시 알림 켜기 (댓글/답글/입장요청/입장수락) -->
-            <button id="btn-enable-push" class="rm-btn" type="button">알림 켜기</button>
-            <button id="btn-profile-logout" class="rm-btn" type="button">로그아웃</button>
+            <!-- [B] edit by smsong - 각 버튼 왼쪽에 아이콘 추가 (main.html 설정 메뉴 스타일) -->
+            <button id="btn-open-profile-edit" class="rm-btn primary" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>프로필 수정</button>
+            <button id="btn-enable-push" class="rm-btn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>알림 켜기</button>
+            <button id="btn-profile-logout" class="rm-btn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>로그아웃</button>
         </div>
         <div class="room-modal-actions" style="margin-top:10px;">
             <button id="profile-close" class="rm-btn" type="button">닫기</button>
@@ -225,9 +225,9 @@
 
 <div id="toast"></div>
 
-<script src="config.js?v=1.0.6"></script>
-<script src="rooms.js?v=1.0.6"></script>
-<script src="push.js?v=1.0.6"></script>
-<script src="notifications.js?v=1.0.6"></script>
+<script src="config.js?v=1.0.7"></script>
+<script src="rooms.js?v=1.0.7"></script>
+<script src="push.js?v=1.0.7"></script>
+<script src="notifications.js?v=1.0.7"></script>
 </body>
 </html>
