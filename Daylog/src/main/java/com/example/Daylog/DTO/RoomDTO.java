@@ -45,6 +45,7 @@ public class RoomDTO {
         private String profileURL;
         private boolean owner;
         private String role; // [B] edit by smsong - OWNER / MEMBER / GENERAL
+        private long commentCount; // [B] edit by smsong - #3 이 멤버가 방에서 단 댓글 수
     }
 
     public static RoomDTO from(RoomEntity r, String requesterUid, long memberCount) {

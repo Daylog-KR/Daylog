@@ -102,10 +102,10 @@ public class CommentController {
 
     // [B] edit by smsong - #5 가볼곳 → 추억 전환 시 댓글 이동
     @PostMapping("/move")
-    public ResponseEntity<Map<String, Integer>> move(@RequestParam("fromChecklist") Long fromChecklist,
-                                                     @RequestParam("toMemory") Long toMemory,
-                                                     @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<java.util.Map<String, Integer>> move(@RequestParam("fromChecklist") Long fromChecklist,
+                                                               @RequestParam("toMemory") Long toMemory,
+                                                               @AuthenticationPrincipal UserDetails userDetails) {
         int moved = commentService.moveChecklistCommentsToMemory(fromChecklist, toMemory, userDetails);
-        return ResponseEntity.ok(Map.of("moved", moved));
+        return ResponseEntity.ok(java.util.Map.of("moved", moved));
     }
 }

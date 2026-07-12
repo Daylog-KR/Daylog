@@ -3223,7 +3223,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function closeEditPage() { editPage.classList.remove('open'); }
 
-    document.getElementById('btn-edit-profile').addEventListener('click', openEditPage);
+    // [B] edit by smsong - #3 btn-edit-profile 제거됨 → null 가드
+    var _bep = document.getElementById('btn-edit-profile');
+    if (_bep) _bep.addEventListener('click', openEditPage);
+    // [B] edit by smsong - #3 멤버 보기 버튼 → 멤버 모달
+    var _bmv = document.getElementById('btn-member-view');
+    if (_bmv) _bmv.addEventListener('click', openMemberModal);
+    var _mmClose = document.getElementById('member-modal-close');
+    if (_mmClose) _mmClose.addEventListener('click', function () { var mm = document.getElementById('member-modal'); if (mm) mm.classList.add('hidden'); });
+    var _mmModal = document.getElementById('member-modal');
+    if (_mmModal) _mmModal.addEventListener('click', function (e) { if (e.target.id === 'member-modal') _mmModal.classList.add('hidden'); });
     const btnTrash = document.getElementById('btn-trash');
     if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
     // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
@@ -3394,10 +3403,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (coupleView) coupleView.style.display = 'none';
-            if (memberView) memberView.style.display = 'block';
-            var mem = (Daylog.roomInfo && Daylog.roomInfo.members) || _memberCache;
-            if (mem) paintMemberGrid(mem);
-            else fetchMembersThenPaint();
+            // [B] edit by smsong - #3 멤버 목록은 [멤버 보기] 모달로 이동 → 설정 탭에선 그리드 미표시
+            if (memberView) memberView.style.display = 'none';
         });
     }
     function fetchMembersThenPaint() {
@@ -4853,6 +4860,114 @@ function deleteChecklistForever(id) {
 }
 
 // ===== 통계 클릭용 리스트 모달 / D-Day 정보 =====
+// [B] edit by smsong - #3 멤버 보기 모달
+function openMemberModal() {
+    const modal = document.getElementById('member-modal');
+    const body = document.getElementById('member-modal-body');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+    modal.classList.remove('hidden');
+    const roomId = getRoomId();
+    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(room => { Daylog.roomInfo = room; renderMemberModal((room && room.members) || [], isCoupleRoom()); })
+        .catch(() => { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; }),
+        '멤버를 불러오는 중...');
+}
+
+function renderMemberModal(members, isCouple) {
+    const body = document.getElementById('member-modal-body');
+    if (!body) return;
+    if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버가 없습니다.</div>'; return; }
+    const mems = Daylog.memories || [];
+    const cls = Daylog.checklists || [];
+    body.innerHTML = '';
+    members.forEach(m => {
+        const name = m.nickname || m.name || m.uid;
+        const memCount = mems.filter(x => x.ownerUid === m.uid).length;
+        const clCount = cls.filter(x => x.ownerUid === m.uid).length;
+        const commentCount = m.commentCount || 0;
+        const role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
+        const roleLabel = role === 'OWNER' ? '방장' : (role === 'MEMBER' ? '멤버' : '일반');
+        const roleCls = role === 'OWNER' ? 'owner' : (role === 'MEMBER' ? 'member' : 'general');
+        const avatar = m.profileURL
+            ? `<img class="member-avatar-img" src="${m.profileURL}" alt="" onerror="this.style.display='none'">`
+            : icon('user', 26, 'color:#b08968;');
+        let counts = '';
+        if (!isCouple) {
+            counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
+            counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
+        }
+        counts += `<button class="mm-count" data-act="comment" data-uid="${m.uid}"><b>${commentCount}</b><span>댓글</span></button>`;
+        const card = document.createElement('div');
+        card.className = 'mm-card';
+        card.innerHTML =
+            `<div class="member-avatar">${avatar}</div>` +
+            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name">${escapeHtml(name)}</div></div>` +
+            `<div class="mm-counts">${counts}</div>`;
+        body.appendChild(card);
+    });
+    body.querySelectorAll('.mm-count').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = btn.getAttribute('data-uid');
+            const act = btn.getAttribute('data-act');
+            const mem = members.find(x => x.uid === uid);
+            const nm = mem ? (mem.nickname || mem.name || uid) : uid;
+            if (act === 'mem') openMemoryListModal(nm + '님의 추억', (Daylog.memories || []).filter(x => x.ownerUid === uid));
+            else if (act === 'cl') openChecklistListModal(nm + '님의 가볼곳', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
+            else openCommentedItems(uid, nm);
+        });
+    });
+}
+
+function openCommentedItems(uid, name) {
+    const roomId = getRoomId();
+    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/member/${encodeURIComponent(uid)}/commented`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(res => {
+            const memIds = (res && res.memoryIds) || [];
+            const clIds = (res && res.checklistIds) || [];
+            const mems = (Daylog.memories || []).filter(x => memIds.indexOf(x.id) >= 0);
+            const cls = (Daylog.checklists || []).filter(x => clIds.indexOf(x.id) >= 0);
+            openCommentedListModal(name + '님이 댓글 단 곳', mems, cls);
+        })
+        .catch(() => showToast('댓글 목록을 불러오지 못했습니다')), '댓글을 불러오는 중...');
+}
+
+function openCommentedListModal(title, memItems, clItems) {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen');
+    Daylog._openListKind = null;
+    titleEl.textContent = title;
+    body.innerHTML = '';
+    if (!memItems.length && !clItems.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book',40,'color:#b08968;') + '</span><p>댓글을 단 곳이 없습니다</p></div>';
+    } else {
+        const build = (obj, kind) => {
+            const dateStr = obj.createdAt ? obj.createdAt.substring(0,10).replace(/-/g,'.') : '';
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(obj), icon('book',22,'color:#b08968;'));
+            const row = document.createElement('div');
+            row.className = 'lm-row';
+            row.innerHTML = thumb +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(dateStr) + ' · ' + (kind === 'memory' ? '추억' : '가볼곳') + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(obj.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(obj.content || '') + '</div>' +
+                '</div>';
+            row.addEventListener('click', () => { if (kind === 'memory') openDetailModal(obj, true); else openChecklistDetail(obj, true); });
+            return row;
+        };
+        memItems.forEach(m => body.appendChild(build(m, 'memory')));
+        clItems.forEach(c => body.appendChild(build(c, 'checklist')));
+    }
+    if (body) body.scrollTop = 0;
+    modal.classList.remove('hidden');
+}
+
 function openMemoryListModal(title, items) {
     const modal = document.getElementById('list-modal');
     const titleEl = document.getElementById('list-modal-title');

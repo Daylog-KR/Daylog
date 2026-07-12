@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.13">
+    <link rel="stylesheet" href="main.css?v=1.0.14">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -216,12 +216,12 @@
             <!-- [smsong] 친구/가족 방: 구성원 프로필 그리드 -->
             <div id="member-view" class="member-view" style="display:none;"></div>
 
-            <button type="button" id="btn-edit-profile" class="edit-profile-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> 프로필 수정</button>
+            <!-- [B] edit by smsong - #3 [프로필 수정] 제거, [멤버 보기] 추가(휴지통 위) -->
+            <button type="button" id="btn-member-view" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 보기</button>
             <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
             <!-- [smsong] 방 목록으로 (다른 방으로 이동) -->
             <button type="button" id="btn-rooms" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> 방 목록</button>
-            <!-- [B] edit by smsong - 푸시 알림 켜기 (댓글/답글/입장요청/입장수락) -->
-            <button type="button" id="btn-enable-push" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> 알림 켜기</button>
+            <!-- [B] edit by smsong - #3 [알림 켜기] 제거 (설정 정리) -->
             <button type="button" id="btn-profile-logout" class="logout-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> 로그아웃</button>
             <!-- [smsong] 방장 전용: 멤버 관리(강퇴) -->
             <button type="button" id="btn-perm-admin" class="perm-menu-btn" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 관리</button>
@@ -259,6 +259,17 @@
 <!-- [E] edit by smsong -->
 
 <!-- [B] edit by smsong - 권한 설정 모달 (관리자 전용) -->
+<!-- [B] edit by smsong - #3 멤버 보기 모달 -->
+<div id="member-modal" class="modal hidden">
+    <div class="modal-content member-modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title" id="member-modal-title">멤버</h2>
+            <button type="button" class="close-btn" id="member-modal-close">&times;</button>
+        </div>
+        <div id="member-modal-body" class="member-modal-body"><div class="perm-loading">불러오는 중...</div></div>
+    </div>
+</div>
+
 <div id="perm-modal" class="modal hidden">
     <div class="modal-content perm-content">
         <div class="modal-header">
@@ -697,7 +708,7 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.13"></script>
+<script src="main.js?v=1.0.14"></script>
 <script src="push.js?v=1.0.8"></script>
 </body>
 </html>

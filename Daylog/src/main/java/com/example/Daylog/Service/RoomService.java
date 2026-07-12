@@ -7,6 +7,7 @@ import com.example.Daylog.Entity.UserEntity;
 import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
+import com.example.Daylog.Repository.CommentRepository; // [B] edit by smsong - #3 멤버 댓글 집계
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
@@ -33,6 +34,7 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
+    private final CommentRepository commentRepository; // [B] edit by smsong - #3 멤버 댓글 집계
     private final Storage storage; // [smsong] 방 대표 이미지 GCS 업로드
     // [B] edit by smsong - 멤버십 변동 시 방 권한행 동기화(강퇴/탈퇴/삭제/재입장) 위해 주입
     private final PermissionService permissionService;
@@ -320,6 +322,7 @@ public class RoomService {
             // [B] edit by smsong - #3 멤버 역할: 방장 / 멤버(생성권한) / 일반(조회+댓글)
             String role = isOwnerMember ? "OWNER"
                     : (permissionService.canCreate(m.getUid(), roomId) ? "MEMBER" : "GENERAL");
+            long commentCount = commentRepository.countByOwnerInRoom(m.getUid(), roomId); // [B] #3
             memberDtos.add(RoomDTO.Member.builder()
                     .uid(m.getUid())
                     .name(u.map(UserEntity::getName).orElse(null))
@@ -327,11 +330,21 @@ public class RoomService {
                     .profileURL(u.map(UserEntity::getProfileURL).orElse(null))
                     .owner(isOwnerMember)
                     .role(role)
+                    .commentCount(commentCount)
                     .build());
         }
         RoomDTO dto = RoomDTO.from(room, requesterUid, members.size());
         dto.setMembers(memberDtos);
         return dto;
+    }
+
+    // [B] edit by smsong - #3 특정 멤버가 이 방에서 '댓글 단' 추억/가볼곳 ID 목록 (프론트가 보유 목록을 필터)
+    public java.util.Map<String, List<Long>> getCommentedItemIds(Long roomId, String targetUid, String requesterUid) {
+        requireMember(requesterUid, roomId); // 멤버만 조회 가능
+        java.util.Map<String, List<Long>> out = new java.util.HashMap<>();
+        out.put("memoryIds", commentRepository.memoryIdsCommentedByOwner(targetUid, roomId));
+        out.put("checklistIds", commentRepository.checklistIdsCommentedByOwner(targetUid, roomId));
+        return out;
     }
 
     // ===== 방 대표 이미지 변경 (방장만) =====

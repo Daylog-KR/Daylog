@@ -284,7 +284,7 @@ public class CommentService {
     }
 
     // [B] edit by smsong - #5 가볼곳 '다녀옴' → 추억 전환 시, 가볼곳의 댓글(+답글)을 새 추억으로 이동
-    @Transactional
+    @org.springframework.transaction.annotation.Transactional
     public int moveChecklistCommentsToMemory(Long checklistId, Long memoryId, UserDetails userDetails) {
         if (checklistId == null || memoryId == null) return 0;
         MemoryEntity memory = memoryRepository.findById(memoryId).orElse(null);
