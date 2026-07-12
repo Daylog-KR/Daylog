@@ -62,7 +62,11 @@ button { font-family: inherit; }
 .logo {
     font-family: var(--font-logo); font-size: 1.4rem; font-weight: 600;
     color: var(--primary-dark); letter-spacing: 0.3px; flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    background: none; border: none; padding: 0;
 }
+.logo .logo-glyph { flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.06)); }
+.logo:active { opacity: 0.75; }
 /* 헤더 안의 지도 컨트롤(토글 + 액션) — 지도 탭에서만 노출, 오른쪽 정렬 */
 .header-map-controls { display: none; align-items: center; gap: 8px; }
 .header-map-controls .map-fab { padding: 7px 11px; font-size: 0.72rem; box-shadow: 0 3px 9px rgba(176, 137, 104, 0.32); }
@@ -1322,6 +1326,14 @@ input[type="date"]::-webkit-date-and-time-value {
 .member-role-badge.role-owner { color: var(--primary-dark); background: var(--primary-light); }
 .member-role-badge.role-member { color: #4b7b86; background: #e7eef0; }
 .member-role-badge.role-general { color: #8a8178; background: #efe9e0; }
+/* [B] edit by smsong - #2 내 프로필: 소셜 로그인 뱃지 + 가입일 (본인 전용) */
+.my-profile-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.social-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; font-weight: 700; padding: 5px 11px; border-radius: 999px; line-height: 1; }
+.social-badge svg { display: block; }
+.social-badge.sb-kakao { background: #FEE500; color: #3C1E1E; }
+.social-badge.sb-naver { background: #03C75A; color: #fff; }
+.social-badge.sb-google { background: #fff; color: #3c4043; border: 1px solid #dadce0; }
+.join-date { font-size: 0.78rem; color: var(--gray-500, #8a8178); font-weight: 500; }
 /* [B] edit by smsong - 추억/가볼곳 카운트를 멤버 카드 오른쪽 끝에 정사각형 타일 2개로 배치 */
 .member-counts { display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; margin-left: auto; }
 .member-count-btn {
@@ -2106,7 +2118,18 @@ body.picking .bottom-nav {
 .perm-menu-btn:hover { filter: brightness(1.05); }
 .perm-menu-btn:active { transform: scale(0.98); }
 
-.perm-content { max-width: 560px; }
+/* [B] edit by smsong - #1 권한 모달: 헤더/설명 고정(스크롤X), 유저 목록만 스크롤 */
+.perm-content {
+    max-width: 560px;
+    max-height: 80dvh;
+    overflow: hidden;               /* 전체 스크롤 차단 */
+    display: flex; flex-direction: column;
+}
+.perm-content .modal-header,
+.perm-content > .perm-desc { flex-shrink: 0; }
+.perm-content #perm-modal-body.perm-body {
+    flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto;
+}
 .perm-desc { font-size: 0.84rem; color: var(--gray-500, #8a8178); margin: 0 0 14px; line-height: 1.5; }
 .perm-body { display: flex; flex-direction: column; gap: 10px; max-height: 64vh; overflow-y: auto; }
 .perm-loading, .perm-empty { text-align: center; color: var(--gray-500, #8a8178); padding: 28px 0; font-size: 0.9rem; }

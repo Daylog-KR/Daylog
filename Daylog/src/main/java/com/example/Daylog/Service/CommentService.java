@@ -282,4 +282,28 @@ public class CommentService {
         }
         return m;
     }
+
+    // [B] edit by smsong - #5 가볼곳 '다녀옴' → 추억 전환 시, 가볼곳의 댓글(+답글)을 새 추억으로 이동
+    @Transactional
+    public int moveChecklistCommentsToMemory(Long checklistId, Long memoryId, UserDetails userDetails) {
+        if (checklistId == null || memoryId == null) return 0;
+        MemoryEntity memory = memoryRepository.findById(memoryId).orElse(null);
+        if (memory == null) return 0;
+        int moved = 0;
+        List<CommentEntity> roots =
+                commentRepository.findByChecklist_IdAndParentIsNullAndDeletedFalseOrderByCreatedAtAsc(checklistId);
+        for (CommentEntity root : roots) {
+            root.setMemory(memory);
+            root.setChecklist(null);
+            commentRepository.save(root);
+            moved++;
+            for (CommentEntity reply : commentRepository.findByParent_Id(root.getId())) {
+                reply.setMemory(memory);
+                reply.setChecklist(null);
+                commentRepository.save(reply);
+                moved++;
+            }
+        }
+        return moved;
+    }
 }

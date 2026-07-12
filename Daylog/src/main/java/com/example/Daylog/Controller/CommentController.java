@@ -99,4 +99,13 @@ public class CommentController {
     public ResponseEntity<List<CommentDTO>> getTrash(@AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(commentService.getTrash(userDetails));
     }
+
+    // [B] edit by smsong - #5 가볼곳 → 추억 전환 시 댓글 이동
+    @PostMapping("/move")
+    public ResponseEntity<Map<String, Integer>> move(@RequestParam("fromChecklist") Long fromChecklist,
+                                                     @RequestParam("toMemory") Long toMemory,
+                                                     @AuthenticationPrincipal UserDetails userDetails) {
+        int moved = commentService.moveChecklistCommentsToMemory(fromChecklist, toMemory, userDetails);
+        return ResponseEntity.ok(Map.of("moved", moved));
+    }
 }

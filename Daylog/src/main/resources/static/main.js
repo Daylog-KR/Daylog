@@ -2974,6 +2974,40 @@ document.addEventListener('DOMContentLoaded', () => {
     let editingUser = null;
     const profileFileInput = document.getElementById('profile-file');
 
+    // [B] edit by smsong - #2 내 프로필: 소셜 로그인 종류(카카오/네이버/구글) + 가입일 표시 (본인만)
+    function renderMySocialInfo() {
+        var wrap = document.getElementById('my-profile-info');
+        var badge = document.getElementById('my-social-badge');
+        var jd = document.getElementById('my-join-date');
+        if (!wrap) return;
+        if (!currentUser) { wrap.style.display = 'none'; return; }
+        var kakao = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>';
+        var naver = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>';
+        var google = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>';
+        var map = {
+            kakao:  { label: '카카오', cls: 'kakao',  icon: kakao },
+            naver:  { label: '네이버', cls: 'naver',  icon: naver },
+            google: { label: '구글',   cls: 'google', icon: google }
+        };
+        var info = map[(currentUser.provider || '').toLowerCase()];
+        var any = false;
+        if (badge) {
+            if (info) { badge.className = 'social-badge sb-' + info.cls; badge.innerHTML = info.icon + '<span>' + info.label + ' 로그인</span>'; badge.style.display = ''; any = true; }
+            else { badge.style.display = 'none'; badge.innerHTML = ''; }
+        }
+        if (jd) {
+            var c = currentUser.createdAt;
+            if (c) {
+                var d = new Date(c);
+                var s = isNaN(d.getTime())
+                    ? String(c).substring(0, 10).replace(/-/g, '.')
+                    : (d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'));
+                jd.textContent = s + ' 가입'; jd.style.display = ''; any = true;
+            } else { jd.style.display = 'none'; jd.textContent = ''; }
+        }
+        wrap.style.display = any ? 'flex' : 'none';
+    }
+
     function loadProfiles(force) {
         if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
         if (!requireAuthOrRedirect()) return;
@@ -3020,6 +3054,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
                 applyRoomProfileMode(); // [smsong] 방 타입별(커플/친구·가족) 화면 전환
                 applyCoupleEditButtons(); // [smsong] 방장이면 '나/상대방' 변경 버튼 노출
+                renderMySocialInfo(); // [B] edit by smsong - #2 내 소셜/가입일 표시
                 // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
                 if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();
                 maybePromptNickname();
@@ -3194,6 +3229,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
     const btnRooms = document.getElementById('btn-rooms');
     if (btnRooms) btnRooms.addEventListener('click', () => { location.href = 'rooms.html'; });
+    // [B] edit by smsong - #4 헤더 로고(아이콘+Daylog) 클릭 → 방 목록
+    const logoHome = document.getElementById('logo-home');
+    if (logoHome) {
+        logoHome.addEventListener('click', () => { location.href = 'rooms.html'; });
+        logoHome.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); location.href = 'rooms.html'; } });
+    }
     const btnProfileLogout = document.getElementById('btn-profile-logout');
     if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
@@ -3983,7 +4024,17 @@ function createMemoryFromChecklist(cl) {
     fd.append('memoryData', JSON.stringify(memoryData));
     // mediaData(새 파일) 없음 → 백엔드가 mediaOrder의 기존 URL을 그대로 보존
     return fetch(`${Daylog.api}/api/memories`, { method: 'POST', headers: Daylog.authHeaders(false), body: fd })
-        .then(Daylog.handleResponse);
+        .then(Daylog.handleResponse)
+        .then(function (created) {
+            // [B] edit by smsong - #5 가볼곳 댓글(+답글)을 새 추억으로 이동
+            if (created && created.id && cl.id) {
+                return fetch(`${Daylog.api}/comment/move?fromChecklist=${cl.id}&toMemory=${created.id}`,
+                    { method: 'POST', headers: Daylog.authHeaders(true) })
+                    .then(Daylog.handleResponse).catch(function () {})
+                    .then(function () { return created; });
+            }
+            return created;
+        });
 }
 
 // [B] edit by smsong - 가볼곳 '다녀옴' 추억 자동 생성 시 중복 방지
