@@ -20,10 +20,16 @@ public class NotificationService {
     private final WebPushService webPushService;
 
     public void notify(String recipientUid, String type, String title, String body, String url) {
+        notify(recipientUid, null, type, title, body, url);
+    }
+
+    // [B] edit by smsong - #1 방별 알림: roomId 포함 저장
+    public void notify(String recipientUid, Long roomId, String type, String title, String body, String url) {
         if (recipientUid == null || recipientUid.isBlank()) return;
         try {
             notificationRepository.save(NotificationEntity.builder()
                     .recipientUid(recipientUid)
+                    .roomId(roomId)
                     .type(type)
                     .title(title)
                     .body(body)
@@ -36,11 +42,15 @@ public class NotificationService {
 
     // 여러 명에게 (excludeUid 는 제외 — 보통 행위자 본인)
     public void notifyAll(Collection<String> uids, String excludeUid, String type, String title, String body, String url) {
+        notifyAll(uids, excludeUid, null, type, title, body, url);
+    }
+
+    public void notifyAll(Collection<String> uids, String excludeUid, Long roomId, String type, String title, String body, String url) {
         if (uids == null) return;
         for (String u : uids) {
             if (u == null) continue;
             if (excludeUid != null && excludeUid.equals(u)) continue;
-            notify(u, type, title, body, url);
+            notify(u, roomId, type, title, body, url);
         }
     }
 
@@ -50,13 +60,30 @@ public class NotificationService {
         return notificationRepository.findByRecipientUidOrderByCreatedAtDesc(uid, PageRequest.of(0, size));
     }
 
+    // [B] edit by smsong - #1 방별 목록
+    @Transactional(readOnly = true)
+    public List<NotificationEntity> listByRoom(String uid, Long roomId, int limit) {
+        int size = (limit <= 0 || limit > 100) ? 50 : limit;
+        return notificationRepository.findByRecipientUidAndRoomIdOrderByCreatedAtDesc(uid, roomId, PageRequest.of(0, size));
+    }
+
     @Transactional(readOnly = true)
     public long unreadCount(String uid) {
         return notificationRepository.countByRecipientUidAndIsReadFalse(uid);
     }
 
+    @Transactional(readOnly = true)
+    public long unreadCountByRoom(String uid, Long roomId) {
+        return notificationRepository.countByRecipientUidAndRoomIdAndIsReadFalse(uid, roomId);
+    }
+
     @Transactional
     public void markAllRead(String uid) {
         try { notificationRepository.markAllRead(uid); } catch (Exception ignore) { }
+    }
+
+    @Transactional
+    public void markRoomRead(String uid, Long roomId) {
+        try { notificationRepository.markRoomRead(uid, roomId); } catch (Exception ignore) { }
     }
 }

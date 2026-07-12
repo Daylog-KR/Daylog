@@ -35,6 +35,9 @@ public class NotificationEntity {
     @Column(length = 500)
     private String url;
 
+    // [B] edit by smsong - #1 방별 알림 필터용 (댓글/답글/입장 등이 속한 방)
+    private Long roomId;
+
     @Builder.Default
     @Column(nullable = false)
     private boolean isRead = false;

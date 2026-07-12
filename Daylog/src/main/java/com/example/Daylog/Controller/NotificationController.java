@@ -23,13 +23,17 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
-    // 알림 목록 (최신순, 기본 50개)
+    // 알림 목록 (최신순, 기본 50개) — roomId 주면 그 방 알림만
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> list(@AuthenticationPrincipal UserDetails ud,
-                                                           @RequestParam(value = "limit", defaultValue = "50") int limit) {
+                                                           @RequestParam(value = "limit", defaultValue = "50") int limit,
+                                                           @RequestParam(value = "roomId", required = false) Long roomId) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
+        List<NotificationEntity> src = (roomId != null)
+                ? notificationService.listByRoom(ud.getUsername(), roomId, limit)
+                : notificationService.list(ud.getUsername(), limit);
         List<Map<String, Object>> out = new ArrayList<>();
-        for (NotificationEntity n : notificationService.list(ud.getUsername(), limit)) {
+        for (NotificationEntity n : src) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", n.getId());
             m.put("type", n.getType());
@@ -43,18 +47,24 @@ public class NotificationController {
         return ResponseEntity.ok(out);
     }
 
-    // 안 읽은 알림 수 (배지)
+    // 안 읽은 알림 수 (배지) — roomId 주면 그 방 기준
     @GetMapping("/unread-count")
-    public ResponseEntity<Map<String, Object>> unreadCount(@AuthenticationPrincipal UserDetails ud) {
+    public ResponseEntity<Map<String, Object>> unreadCount(@AuthenticationPrincipal UserDetails ud,
+                                                           @RequestParam(value = "roomId", required = false) Long roomId) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
-        return ResponseEntity.ok(Map.of("count", notificationService.unreadCount(ud.getUsername())));
+        long count = (roomId != null)
+                ? notificationService.unreadCountByRoom(ud.getUsername(), roomId)
+                : notificationService.unreadCount(ud.getUsername());
+        return ResponseEntity.ok(Map.of("count", count));
     }
 
-    // 모두 읽음 처리 (목록 열 때 호출)
+    // 모두 읽음 처리 (목록 열 때 호출) — roomId 주면 그 방만
     @PostMapping("/read-all")
-    public ResponseEntity<Void> readAll(@AuthenticationPrincipal UserDetails ud) {
+    public ResponseEntity<Void> readAll(@AuthenticationPrincipal UserDetails ud,
+                                        @RequestParam(value = "roomId", required = false) Long roomId) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
-        notificationService.markAllRead(ud.getUsername());
+        if (roomId != null) notificationService.markRoomRead(ud.getUsername(), roomId);
+        else notificationService.markAllRead(ud.getUsername());
         return ResponseEntity.ok().build();
     }
 }

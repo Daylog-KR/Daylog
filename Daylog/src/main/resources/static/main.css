@@ -73,6 +73,9 @@ button { font-family: inherit; }
 body[data-active-tab="tab-map"] .header-map-controls { display: flex; margin-left: auto; }
 /* 지도 탭: 로그아웃만 숨김 (디데이는 다른 탭과 동일하게 중앙 표시) */
 body[data-active-tab="tab-map"] #btn-logout { display: none; }
+/* [B] edit by smsong - #1 알림 버튼은 모든 탭에서 상단 우측 표시 */
+.navbar .notif-btn { margin-left: auto; flex-shrink: 0; position: relative; background: none; border: none; cursor: pointer; color: var(--gray-600, #6f645a); padding: 6px; }
+body.picking .navbar .notif-btn { display: none; }
 /* 위치 선택 모드 동안에는 헤더 컨트롤 숨김 */
 body.picking .header-map-controls { display: none !important; }
 
@@ -648,14 +651,36 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 }
 
 /* [추가] 날짜 입력창 크기 맞춤 및 모바일(iOS/안드로이드) 왼쪽 정렬 강제 지정 */
+/* [B] edit by smsong - #2 iOS에서 date 입력이 폼 밖으로 튀어나가는 문제 해결 (appearance/box-sizing/min-width) */
 input[type="date"] {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
     text-align: left;
 }
 input[type="date"]::-webkit-date-and-time-value {
     text-align: left;
     min-height: 1.2em;
+    margin: 0;                 /* iOS 기본 마진 제거 → 오버플로 방지 */
+    padding: 0;
 }
+input[type="date"]::-webkit-calendar-picker-indicator {
+    margin-left: auto;         /* 달력 아이콘 오른쪽 정렬 */
+    flex-shrink: 0;
+}
+/* [B] edit by smsong - #2 타임라인 필터의 날짜 입력이 '기본 스타일'로 보이던 것 → 폼 인풋과 동일하게 */
+.filter-field input[type="text"],
+.filter-field input[type="date"] {
+    width: 100%; box-sizing: border-box;
+    border: 1px solid var(--gray-200); border-radius: 10px;
+    padding: 10px 12px; font-size: 0.9rem; font-family: var(--font-main);
+    background: var(--gray-50); color: var(--gray-800); outline: none;
+}
+.filter-field input[type="text"]:focus,
+.filter-field input[type="date"]:focus { border-color: var(--primary); background: var(--white); }
 
 .preview-zone img {
     width: 100%;

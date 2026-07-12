@@ -251,6 +251,7 @@ async function loadRooms() {
 // [B] edit by smsong - 요청 대기중/거절된 방 목록 로드
 async function loadPendingRooms() {
     if (!uid) return;
+    showLoading('요청 현황을 불러오는 중...'); // [B] edit by smsong - #3 로딩
     try {
         const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}/pending`, { headers: authHeaders(true) });
         if (!res.ok) { myPendingRooms = []; return; }
@@ -259,7 +260,7 @@ async function loadPendingRooms() {
     } catch (e) {
         console.error(e);
         myPendingRooms = [];
-    }
+    } finally { hideLoading(); }
 }
 
 // 현재 탭에 맞춰 필터링 후 렌더
@@ -904,6 +905,7 @@ function _bustImg(url) {
 }
 
 async function loadMe() {
+    showLoading('내 정보를 불러오는 중...'); // [B] edit by smsong - #3 로딩
     try {
         const res = await fetch(`${API_BASE}/user/uid/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
         if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
@@ -911,6 +913,7 @@ async function loadMe() {
         me = await res.json();
         maybePromptNicknameRooms();
     } catch (e) { /* 네트워크 오류 시 조용히 무시 (방 목록은 계속 사용 가능) */ }
+    finally { hideLoading(); }
 }
 
 // 닉네임이 없으면 최초 설정 모달 노출 (있으면 노출하지 않음)

@@ -225,7 +225,7 @@ public class PermissionService {
         RoomEntity room = roomRepository.findById(roomId).orElse(null);
         if (room == null || room.getOwnerUid() == null || room.getOwnerUid().equals(requesterUid)) return;
         String name = pushName(requesterUid);
-        notificationService.notify(room.getOwnerUid(), "JOIN_REQUEST",
+        notificationService.notify(room.getOwnerUid(), roomId, "JOIN_REQUEST",
                 name + "님이 입장을 요청했습니다",
                 "'" + safeName(room.getName()) + "' 방 · 요청을 확인해보세요", "/rooms.html");
     }
@@ -238,7 +238,7 @@ public class PermissionService {
         String enterUrl = "/main.html?room=" + roomId;
 
         // (1) 새로 입장한 멤버 = '방에 초대(입장)되었을 때'
-        notificationService.notify(newUid, "JOINED",
+        notificationService.notify(newUid, roomId, "JOINED",
                 "'" + roomName + "' 방에 입장했어요",
                 "지금 바로 함께 기록해보세요", enterUrl);
 
@@ -248,7 +248,7 @@ public class PermissionService {
             if (m.getUid() != null) uids.add(m.getUid());
         }
         String name = pushName(newUid);
-        notificationService.notifyAll(uids, newUid, "ACCEPTED",
+        notificationService.notifyAll(uids, newUid, roomId, "ACCEPTED",
                 name + "님이 '" + roomName + "' 방에 입장했어요",
                 "새 멤버가 합류했어요", enterUrl);
     }
@@ -260,7 +260,7 @@ public class PermissionService {
         String body = (reason != null && !reason.trim().isEmpty())
                 ? ("사유: " + reason.trim())
                 : "방장이 입장 요청을 거부했어요";
-        notificationService.notify(targetUid, "REJECTED",
+        notificationService.notify(targetUid, roomId, "REJECTED",
                 "'" + roomName + "' 방 입장이 거부되었어요", body, "/rooms.html");
     }
 
@@ -271,7 +271,7 @@ public class PermissionService {
         String body = (reason != null && !reason.trim().isEmpty())
                 ? ("사유: " + reason.trim())
                 : "방장에 의해 내보내졌습니다";
-        notificationService.notify(targetUid, "KICKED",
+        notificationService.notify(targetUid, roomId, "KICKED",
                 "'" + roomName + "' 방에서 내보내졌어요", body, "/rooms.html");
     }
 

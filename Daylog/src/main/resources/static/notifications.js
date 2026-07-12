@@ -11,6 +11,15 @@
         return h;
     }
     function loggedIn() { return !!localStorage.getItem('accessToken'); }
+    // [B] edit by smsong - #1 main.html 은 방별 알림. window.__NOTIF_ROOM_ID__ 있으면 그 방으로 스코프
+    function roomScope() {
+        var r = (typeof window !== 'undefined') ? window.__NOTIF_ROOM_ID__ : null;
+        return (r === undefined || r === null || r === '') ? null : r;
+    }
+    function scopeQS(prefix) {
+        var r = roomScope();
+        return r ? (prefix + 'roomId=' + encodeURIComponent(r)) : '';
+    }
 
     function esc(s) {
         return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -68,7 +77,7 @@
 
     function refreshBadge() {
         if (!loggedIn()) { setBadge(0); return; }
-        fetch(API + '/api/notifications/unread-count', { headers: authHeaders() })
+        fetch(API + '/api/notifications/unread-count' + scopeQS('?'), { headers: authHeaders() })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (d) { if (d) setBadge(d.count); })
             .catch(function () {});
@@ -126,13 +135,13 @@
         ov.addEventListener('click', closePanel);
         pn.querySelector('.ni-close').addEventListener('click', closePanel);
 
-        fetch(API + '/api/notifications?limit=50', { headers: authHeaders() })
+        fetch(API + '/api/notifications?limit=50' + scopeQS('&'), { headers: authHeaders() })
             .then(function (r) { return r.ok ? r.json() : []; })
             .then(function (items) { renderList(items); })
             .catch(function () { renderList([]); });
 
         // 열면 모두 읽음 처리 + 배지 제거
-        fetch(API + '/api/notifications/read-all', { method: 'POST', headers: authHeaders() })
+        fetch(API + '/api/notifications/read-all' + scopeQS('?'), { method: 'POST', headers: authHeaders() })
             .then(function () { setBadge(0); })
             .catch(function () {});
     }

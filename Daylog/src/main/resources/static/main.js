@@ -1090,6 +1090,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try { applyPermButtons(); } catch (e) {} // 권한 확인 전엔 생성 FAB 숨김
     try { applyMyPermUI(); } catch (e) {}
     if (currentUid) { try { loadMyPermission(); } catch (e) { console.warn('권한 로딩 실패', e); } }
+    // [B] edit by smsong - #4 방 멤버(작성자/수정자 이름)를 초기에 미리 로드 → 상세 진입 시 '작성자' 폴백 방지
+    if (currentUid) { try { ensureRoomInfoThen(function () {}); } catch (e) {} }
     // [E] edit by smsong
     Daylog.openChecklistDetailById = (id) => {
         const c = checklistList.find(x => x.id === id);
@@ -1233,8 +1235,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 디데이 (방 커플 기준일로 표시, 커플 방에만) ---
     applyDdayVisibility();
 
-    // --- 로그아웃 ---
-    document.getElementById('btn-logout').addEventListener('click', (e) => {
+    // --- 로그아웃 (헤더 버튼은 알림으로 교체됨 → null 가드. 로그아웃은 설정 메뉴 버튼 사용) ---
+    var _btnLogout = document.getElementById('btn-logout');
+    if (_btnLogout) _btnLogout.addEventListener('click', (e) => {
         e.preventDefault();
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
     });
@@ -3387,6 +3390,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 Daylog.roomInfo = room;
                 if (room && room.type) localStorage.setItem('selectedRoomType', String(room.type).toUpperCase());
                 _memberCache = (room && room.members) || [];
+                // [B] edit by smsong - #4 작성자/수정자 즉시 표시: 멤버 정보로 usersByUid 채움(설정 미방문에도 이름 표시)
+                try {
+                    Daylog.usersByUid = Daylog.usersByUid || {};
+                    _memberCache.forEach(function (m) {
+                        if (m && m.uid) Daylog.usersByUid[m.uid] = {
+                            uid: m.uid, nickname: m.nickname, name: m.name, profileURL: m.profileURL
+                        };
+                    });
+                } catch (e) {}
             })
             .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err))
             .finally(() => { _roomInfoLoading = false; cb(); }), '방 정보를 불러오는 중...'); // [smsong] 로딩

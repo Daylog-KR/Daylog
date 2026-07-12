@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.14">
+    <link rel="stylesheet" href="main.css?v=1.0.15">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -90,8 +90,8 @@
     <div class="dday-counter">
         <!-- [B] edit by smsong - 디데이 하트 제거 --><span class="dday-prefix">D +</span><span id="dday-count">0</span><!-- [E] edit by smsong -->
     </div>
-    <!-- [B] edit by smsong - 상단 로그아웃 버튼을 텍스트 → 아이콘(로그아웃)으로 변경 (rooms 아이콘 버튼과 동일 스타일) -->
-    <button class="logout-btn" id="btn-logout" type="button" title="로그아웃" aria-label="로그아웃"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    <!-- [B] edit by smsong - #1 상단 로그아웃 → 알림 버튼(방별 알림). 로그아웃은 설정 메뉴에 있음 -->
+    <button class="notif-btn" id="btn-notif" type="button" title="알림" aria-label="알림"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge hidden" id="notif-badge"></span></button>
     <!-- [E] edit by smsong -->
     <input type="file" id="memory-file" accept="image/*" multiple style="display: none;">
 </header>
@@ -708,7 +708,10 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.14"></script>
+<script src="main.js?v=1.0.15"></script>
 <script src="push.js?v=1.0.8"></script>
+<!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
+<script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>
+<script src="notifications.js?v=1.0.15"></script>
 </body>
 </html>

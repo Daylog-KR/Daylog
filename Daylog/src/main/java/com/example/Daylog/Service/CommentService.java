@@ -130,7 +130,7 @@ public class CommentService {
             body = "'" + itemTitle + "'에 " + quote(content);
         }
         if (targetUid == null || targetUid.equals(commenter.getUid())) return; // 본인에겐 알림 안 보냄
-        notificationService.notify(targetUid, parentId != null ? "REPLY" : "COMMENT", title, body, url);
+        notificationService.notify(targetUid, roomId, parentId != null ? "REPLY" : "COMMENT", title, body, url);
     }
 
     // 게시글 제목: title 우선, 없으면 placeName, 그래도 없으면 종류 라벨
