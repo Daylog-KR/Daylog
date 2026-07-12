@@ -150,7 +150,14 @@ const ME_ALIAS = ['송성민', 's s'];             // (표시용) '송성민'으
 
 // [smsong] 방(공유 공간) 컨텍스트 헬퍼
 function getRoomId() { return localStorage.getItem('selectedRoomId') || ''; }
-function getRoomType() { return (localStorage.getItem('selectedRoomType') || 'COUPLE').toUpperCase(); }
+// [B] edit by smsong - #2 방 타입은 서버에서 받은 roomInfo.type(권위) 우선, 없으면 localStorage.
+//  (알림 딥링크로 진입 시 localStorage 가 비어/오래돼 COUPLE 로 오판하던 버그 해결)
+function getRoomType() {
+    var t = (window.Daylog && Daylog.roomInfo && Daylog.roomInfo.type)
+        ? Daylog.roomInfo.type
+        : localStorage.getItem('selectedRoomType');
+    return (t || '').toUpperCase();
+}
 function getRoomOwnerUid() { return localStorage.getItem('selectedRoomOwnerUid') || ''; }
 function isRoomOwner() { return !!(getUid() && getUid() === getRoomOwnerUid()); }
 function isCoupleRoom() { return getRoomType() === 'COUPLE'; }
@@ -2970,6 +2977,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadProfiles(force) {
         if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
         if (!requireAuthOrRedirect()) return;
+        // [B] edit by smsong - #2 커플/멤버 판정 전에 서버 방정보(타입 권위)를 반드시 확보 → 커플 오판/깜빡임 제거
+        ensureRoomInfoThen(function () {
         withLoading(fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(users => {
@@ -3020,6 +3029,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('프로필 조회 실패: ' + (err.message || '서버 오류'));
                 loadSelfProfileFallback();
             }), '프로필을 불러오는 중...'); // [smsong] 로딩
+        }); // [B] edit by smsong - ensureRoomInfoThen 콜백 닫기
     }
 
     // /user/all 이 막혔을 때 최소한 본인 정보만이라도 채우는 폴백
@@ -3313,19 +3323,41 @@ document.addEventListener('DOMContentLoaded', () => {
     //  커플: 기존 커플 카드(디데이/우리의 추억/나♥상대) 그대로
     //  친구·가족: 구성원 프로필 그리드 → 프로필의 추억/가볼곳 조회
     var _memberCache = null;
+    var _roomInfoLoading = false;
+    // [B] edit by smsong - #2 설정 뷰 판정 전에 서버 방정보(타입 권위) 를 반드시 확보 → 커플/멤버 오판 방지
+    function ensureRoomInfoThen(cb) {
+        if (Daylog.roomInfo) { cb(); return; }
+        var roomId = getRoomId();
+        if (!roomId) { cb(); return; }
+        if (_roomInfoLoading) { setTimeout(function () { ensureRoomInfoThen(cb); }, 120); return; }
+        _roomInfoLoading = true;
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => {
+                Daylog.roomInfo = room;
+                if (room && room.type) localStorage.setItem('selectedRoomType', String(room.type).toUpperCase());
+                _memberCache = (room && room.members) || [];
+            })
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err))
+            .finally(() => { _roomInfoLoading = false; cb(); }), '방 정보를 불러오는 중...'); // [smsong] 로딩
+    }
+
     function applyRoomProfileMode() {
-        var coupleView = document.getElementById('couple-view');
-        var memberView = document.getElementById('member-view');
-        if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
-        if (isCoupleRoom()) {
-            if (coupleView) coupleView.style.display = '';
-            if (memberView) memberView.style.display = 'none';
-            return;
-        }
-        if (coupleView) coupleView.style.display = 'none';
-        if (memberView) memberView.style.display = 'block';
-        if (_memberCache) paintMemberGrid(_memberCache);
-        else fetchMembersThenPaint();
+        ensureRoomInfoThen(function () {
+            var coupleView = document.getElementById('couple-view');
+            var memberView = document.getElementById('member-view');
+            if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
+            if (isCoupleRoom()) {
+                if (coupleView) coupleView.style.display = '';
+                if (memberView) memberView.style.display = 'none';
+                return;
+            }
+            if (coupleView) coupleView.style.display = 'none';
+            if (memberView) memberView.style.display = 'block';
+            var mem = (Daylog.roomInfo && Daylog.roomInfo.members) || _memberCache;
+            if (mem) paintMemberGrid(mem);
+            else fetchMembersThenPaint();
+        });
     }
     function fetchMembersThenPaint() {
         var roomId = getRoomId();
@@ -3338,7 +3370,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function paintMemberGrid(members) {
         var container = document.getElementById('member-view');
         if (!container) return;
-        var typeName = (getRoomType() === 'FAMILY') ? '가족' : '친구';
+        var _rt = getRoomType();
+        var typeName = (_rt === 'FAMILY') ? '가족' : (_rt === 'ACQUAINTANCE') ? '지인' : '친구'; // [B] edit by smsong - 지인 추가
         var head = document.createElement('div');
         head.className = 'member-view-head';
         head.textContent = typeName + ' 구성원 ' + members.length + '명';
@@ -3354,10 +3387,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<img src="${Daylog.bustImg(m.profileURL)}" alt="" class="member-avatar-img">`
                 : `<span class="member-avatar-fallback">${icon('user',30)}</span>`;
             var ownerBadge = m.owner ? '<span class="member-owner-badge">방장</span>' : '';
+            // [B] edit by smsong - #3 역할(방장/멤버/일반) 뱃지를 닉네임 '바로 위'에 배치
+            var _role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
+            var _roleLabel = (_role === 'OWNER') ? '방장' : (_role === 'MEMBER') ? '멤버' : '일반';
+            var _roleCls = (_role === 'OWNER') ? 'owner' : (_role === 'MEMBER') ? 'member' : 'general';
             card.innerHTML =
                 `<div class="member-avatar">${avatar}</div>` +
                 `<div class="member-info">` +
-                    `<div class="member-name">${_escHtml(name)} ${ownerBadge}</div>` +
+                    `<div class="member-role-badge role-${_roleCls}">${_roleLabel}</div>` +
+                    `<div class="member-name">${_escHtml(name)}</div>` +
                 `</div>` +
                 // [B] edit by smsong - 추억/가볼곳 타일을 멤버 카드 오른쪽 끝에 배치
                 `<div class="member-counts">` +

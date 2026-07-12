@@ -82,7 +82,7 @@ public class RoomService {
     }
 
     // ===== 생성 =====
-    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY");
+    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY", "ACQUAINTANCE"); // [B] edit by smsong - 지인(ACQUAINTANCE) 추가
 
     @Transactional
     public RoomDTO createRoom(String uid, String name, String type, String coupleSince) {
@@ -316,12 +316,17 @@ public class RoomService {
         List<RoomDTO.Member> memberDtos = new ArrayList<>();
         for (RoomMemberEntity m : members) {
             Optional<UserEntity> u = userRepository.findByUid(m.getUid());
+            boolean isOwnerMember = room.getOwnerUid().equals(m.getUid());
+            // [B] edit by smsong - #3 멤버 역할: 방장 / 멤버(생성권한) / 일반(조회+댓글)
+            String role = isOwnerMember ? "OWNER"
+                    : (permissionService.canCreate(m.getUid(), roomId) ? "MEMBER" : "GENERAL");
             memberDtos.add(RoomDTO.Member.builder()
                     .uid(m.getUid())
                     .name(u.map(UserEntity::getName).orElse(null))
                     .nickname(u.map(UserEntity::getNickname).orElse(null))
                     .profileURL(u.map(UserEntity::getProfileURL).orElse(null))
-                    .owner(room.getOwnerUid().equals(m.getUid()))
+                    .owner(isOwnerMember)
+                    .role(role)
                     .build());
         }
         RoomDTO dto = RoomDTO.from(room, requesterUid, members.size());

@@ -44,6 +44,7 @@ public class RoomDTO {
         private String nickname;
         private String profileURL;
         private boolean owner;
+        private String role; // [B] edit by smsong - OWNER / MEMBER / GENERAL
     }
 
     public static RoomDTO from(RoomEntity r, String requesterUid, long memberCount) {

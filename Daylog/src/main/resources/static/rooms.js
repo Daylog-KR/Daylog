@@ -116,6 +116,7 @@ let selectedImageFile = null; // [smsong] 방 생성/수정 시 첨부한 대표
 function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
     if (type === 'FAMILY') return { label: '가족', cls: 'family' };
+    if (type === 'ACQUAINTANCE') return { label: '지인', cls: 'acquaintance' }; // [B] edit by smsong
     return { label: '커플', cls: 'couple' };
 }
 function updateTypeChips() {

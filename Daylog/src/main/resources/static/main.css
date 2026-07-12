@@ -1313,6 +1313,15 @@ input[type="date"]::-webkit-date-and-time-value {
     font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
     background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
 }
+/* [B] edit by smsong - #3 역할 뱃지(방장/멤버/일반)를 닉네임 바로 위에 배치 */
+.member-card .member-info { gap: 3px; }
+.member-role-badge {
+    align-self: flex-start; font-size: 0.62rem; font-weight: 700;
+    border-radius: 6px; padding: 2px 7px; line-height: 1.35;
+}
+.member-role-badge.role-owner { color: var(--primary-dark); background: var(--primary-light); }
+.member-role-badge.role-member { color: #4b7b86; background: #e7eef0; }
+.member-role-badge.role-general { color: #8a8178; background: #efe9e0; }
 /* [B] edit by smsong - 추억/가볼곳 카운트를 멤버 카드 오른쪽 끝에 정사각형 타일 2개로 배치 */
 .member-counts { display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; margin-left: auto; }
 .member-count-btn {
