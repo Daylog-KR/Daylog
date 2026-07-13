@@ -2381,6 +2381,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
                 _clSig = sig;
                 checklistList = arr;
+                Daylog.checklists = checklistList; // [B] edit by smsong - 멤버 모달 가볼곳 카운트용 (추억처럼 노출)
                 // [B] edit by smsong - 목록 전체 이미지 사전 로드 제거 → lazy 로 위임 (스크롤/전환 성능)
                 applyChecklistFilter();
                 if (typeof updateChecklistStats === 'function') updateChecklistStats();
@@ -4886,11 +4887,18 @@ function openMemberModal() {
     body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
     modal.classList.remove('hidden');
     const roomId = getRoomId();
-    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: Daylog.authHeaders(true) })
-        .then(Daylog.handleResponse)
-        .then(room => { Daylog.roomInfo = room; renderMemberModal((room && room.members) || [], isCoupleRoom()); })
-        .catch(() => { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; }),
-        '멤버를 불러오는 중...');
+    // [B] edit by smsong - 추억/가볼곳 목록을 먼저 로드해야 카운트가 정확(특히 가볼곳 탭 미방문 시 0 방지)
+    withLoading(Promise.all([
+        (Daylog.reload ? Promise.resolve(Daylog.reload()) : Promise.resolve()),
+        (Daylog.reloadChecklists ? Promise.resolve(Daylog.reloadChecklists()) : Promise.resolve()),
+        fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse)
+    ]).then(function (results) {
+        const room = results[2];
+        Daylog.roomInfo = room;
+        renderMemberModal((room && room.members) || [], isCoupleRoom());
+    }).catch(function () {
+        body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>';
+    }), '멤버를 불러오는 중...');
 }
 
 function renderMemberModal(members, isCouple) {
@@ -4904,19 +4912,16 @@ function renderMemberModal(members, isCouple) {
         const name = m.nickname || m.name || m.uid;
         const memCount = mems.filter(x => x.ownerUid === m.uid).length;
         const clCount = cls.filter(x => x.ownerUid === m.uid).length;
-        const commentCount = m.commentCount || 0;
         const role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
         const roleLabel = role === 'OWNER' ? '방장' : (role === 'MEMBER' ? '멤버' : '일반');
         const roleCls = role === 'OWNER' ? 'owner' : (role === 'MEMBER' ? 'member' : 'general');
         const avatar = m.profileURL
             ? `<img class="member-avatar-img" src="${m.profileURL}" alt="" onerror="this.style.display='none'">`
             : icon('user', 26, 'color:#b08968;');
+        // [B] edit by smsong - 추억/가볼곳 개수만 표시 (댓글 제거)
         let counts = '';
-        if (!isCouple) {
-            counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
-            counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
-        }
-        counts += `<button class="mm-count" data-act="comment" data-uid="${m.uid}"><b>${commentCount}</b><span>댓글</span></button>`;
+        counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
+        counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
         const card = document.createElement('div');
         card.className = 'mm-card';
         card.innerHTML =
@@ -4933,7 +4938,6 @@ function renderMemberModal(members, isCouple) {
             const nm = mem ? (mem.nickname || mem.name || uid) : uid;
             if (act === 'mem') openMemoryListModal(nm + '님의 추억', (Daylog.memories || []).filter(x => x.ownerUid === uid));
             else if (act === 'cl') openChecklistListModal(nm + '님의 가볼곳', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
-            else openCommentedItems(uid, nm);
         });
     });
 }
