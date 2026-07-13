@@ -123,8 +123,9 @@ body[data-active-tab="tab-checklist"] .dday-counter,
 body[data-active-tab="tab-profile"] .dday-counter {
     position: absolute; left: 50%; transform: translateX(-50%); margin-left: 0;
 }
-/* 내정보 탭: 로그아웃은 오른쪽 정렬 (디데이가 absolute라 auto 마진 대체) */
-body[data-active-tab="tab-profile"] #btn-logout { margin-left: auto; }
+/* [B] edit by smsong - #5 설정 탭: 알림(order50, margin-left:auto)이 이미 오른쪽으로 밀어주므로
+   로그아웃은 auto 제거 → 알림+로그아웃이 함께 오른쪽에 붙어 다른 탭과 동일 정렬 */
+body[data-active-tab="tab-profile"] #btn-logout { margin-left: 0; }
 .dday-counter {
     margin-left: auto;
     font-size: 0.85rem; font-weight: 500; color: var(--gray-600);
