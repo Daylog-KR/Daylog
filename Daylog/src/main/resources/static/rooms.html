@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="Daylog">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="rooms.css?v=1.0.3">
+    <link rel="stylesheet" href="rooms.css?v=1.0.16">
 </head>
 <body>
 <div class="rooms-page">
@@ -28,10 +28,17 @@
                 <div class="brand-sub">함께할 방을 선택하세요</div>
             </div>
         </div>
+        <!-- [B] edit by smsong - 알림/프로필 버튼을 한 그룹으로 묶어 오른쪽에 나란히(간격 축소) -->
+        <div class="rooms-actions">
+        <button id="btn-notif" class="rooms-icon-btn notif-btn" type="button" title="알림" aria-label="알림">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge hidden" id="notif-badge"></span>
+        </button>
         <!-- [B] edit by smsong - 로그아웃 버튼을 프로필 보기 버튼으로 교체 (로그아웃은 프로필 패널 안으로 이동) -->
         <button id="btn-profile" class="rooms-icon-btn" type="button" title="내 프로필" aria-label="내 프로필">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </button>
+        </div>
         <!-- [E] edit by smsong -->
     </header>
 
@@ -86,6 +93,8 @@
             <button class="type-chip active" data-type="COUPLE" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/></svg> 커플</button>
             <button class="type-chip" data-type="FRIEND" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 친구</button>
             <button class="type-chip" data-type="FAMILY" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> 가족</button>
+            <!-- [B] edit by smsong - 지인 타입 추가 -->
+            <button class="type-chip" data-type="ACQUAINTANCE" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg> 지인</button>
         </div>
         <!-- [smsong] 만난 날짜 (커플 전용) → 방 디데이 기준일 -->
         <div id="room-dday-row" class="room-dday-row" style="display:none;">
@@ -161,13 +170,19 @@
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div class="profile-view-name" id="profile-view-name">나</div>
+            <!-- [B] edit by smsong - #2 실제 이름 + 소셜 로그인 + 가입일 표시 -->
+            <div class="profile-view-realname" id="profile-view-realname"></div>
+            <div class="profile-view-meta" id="profile-view-meta">
+                <span class="social-badge" id="profile-view-social"></span>
+                <span class="join-date" id="profile-view-joindate"></span>
+            </div>
             <!-- [B] edit by smsong - 닉네임 밑 'Daylog' 서브텍스트 제거 -->
         </div>
         <div class="profile-actions">
-            <button id="btn-open-profile-edit" class="rm-btn primary" type="button">프로필 수정</button>
-            <!-- [B] edit by smsong - 푸시 알림 켜기 (댓글/답글/입장요청/입장수락) -->
-            <button id="btn-enable-push" class="rm-btn" type="button">알림 켜기</button>
-            <button id="btn-profile-logout" class="rm-btn" type="button">로그아웃</button>
+            <!-- [B] edit by smsong - 각 버튼 왼쪽에 아이콘 추가 (main.html 설정 메뉴 스타일) -->
+            <button id="btn-open-profile-edit" class="rm-btn primary" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>프로필 수정</button>
+            <button id="btn-enable-push" class="rm-btn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>알림 켜기</button>
+            <button id="btn-profile-logout" class="rm-btn" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>로그아웃</button>
         </div>
         <div class="room-modal-actions" style="margin-top:10px;">
             <button id="profile-close" class="rm-btn" type="button">닫기</button>
@@ -220,8 +235,9 @@
 
 <div id="toast"></div>
 
-<script src="config.js?v=1.0.3"></script>
-<script src="rooms.js?v=1.0.3"></script>
-<script src="push.js?v=1.0.5"></script>
+<script src="config.js?v=1.0.11"></script>
+<script src="rooms.js?v=1.0.16"></script>
+<script src="push.js?v=1.0.11"></script>
+<script src="notifications.js?v=1.0.15"></script>
 </body>
 </html>
