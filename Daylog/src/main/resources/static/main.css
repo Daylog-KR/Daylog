@@ -62,13 +62,34 @@ button { font-family: inherit; }
 .logo {
     font-family: var(--font-logo); font-size: 1.4rem; font-weight: 600;
     color: var(--primary-dark); letter-spacing: 0.3px; flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    background: none; border: none; padding: 0;
 }
+.logo .logo-glyph { flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.06)); }
+.logo:active { opacity: 0.75; }
 /* 헤더 안의 지도 컨트롤(토글 + 액션) — 지도 탭에서만 노출, 오른쪽 정렬 */
 .header-map-controls { display: none; align-items: center; gap: 8px; }
 .header-map-controls .map-fab { padding: 7px 11px; font-size: 0.72rem; box-shadow: 0 3px 9px rgba(176, 137, 104, 0.32); }
-body[data-active-tab="tab-map"] .header-map-controls { display: flex; margin-left: auto; }
+body[data-active-tab="tab-map"] .header-map-controls { display: flex; margin-left: 0; }
 /* 지도 탭: 로그아웃만 숨김 (디데이는 다른 탭과 동일하게 중앙 표시) */
 body[data-active-tab="tab-map"] #btn-logout { display: none; }
+/* [B] edit by smsong - #1 알림 버튼은 모든 탭에서 상단 우측 표시 */
+/* [B] edit by smsong - #5 알림 버튼: 로그아웃과 동일한 네모 박스 + 필터/로그아웃 왼쪽에 배치 */
+.navbar .notif-btn {
+    order: 50; margin-left: auto; flex-shrink: 0; position: relative;
+    width: 40px; height: 40px; border-radius: 12px; padding: 0; cursor: pointer;
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s ease, background 0.2s;
+}
+.navbar .notif-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
+.navbar .notif-btn:active { transform: scale(0.96); }
+body.picking .navbar .notif-btn { display: none; }
+/* 필터 컨트롤은 알림 오른쪽에 붙임(맨 오른쪽), 로그아웃(설정)도 맨 오른쪽 */
+body[data-active-tab="tab-map"] .header-map-controls,
+body[data-active-tab="tab-timeline"] .header-timeline-controls,
+body[data-active-tab="tab-checklist"] .header-checklist-controls { order: 51; margin-left: 0; }
+.navbar #btn-logout { order: 51; }
 /* 위치 선택 모드 동안에는 헤더 컨트롤 숨김 */
 body.picking .header-map-controls { display: none !important; }
 
@@ -85,12 +106,12 @@ body.picking .navbar { z-index: 700; } /* 검색/추천 드롭다운이 지도 �
 
 /* 헤더 안의 타임라인 검색 버튼 — 타임라인 탭에서만 오른쪽에 노출 */
 .header-timeline-controls { display: none; align-items: center; position: relative; }
-body[data-active-tab="tab-timeline"] .header-timeline-controls { display: flex; margin-left: auto; }
+body[data-active-tab="tab-timeline"] .header-timeline-controls { display: flex; margin-left: 0; }
 body[data-active-tab="tab-timeline"] #btn-logout { display: none; }
 
 /* 헤더 안의 가볼곳 검색 버튼 — 가볼곳 탭에서만 오른쪽에 노출 */
 .header-checklist-controls { display: none; align-items: center; position: relative; }
-body[data-active-tab="tab-checklist"] .header-checklist-controls { display: flex; margin-left: auto; }
+body[data-active-tab="tab-checklist"] .header-checklist-controls { display: flex; margin-left: 0; }
 body[data-active-tab="tab-checklist"] #btn-logout { display: none; }
 /* 가볼곳 필터(카테고리+방문여부) — 검색 버튼으로 토글 */
 .cl-filter-wrap { animation: dropIn 0.28s var(--ease-soft); }
@@ -644,14 +665,36 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 }
 
 /* [추가] 날짜 입력창 크기 맞춤 및 모바일(iOS/안드로이드) 왼쪽 정렬 강제 지정 */
+/* [B] edit by smsong - #2 iOS에서 date 입력이 폼 밖으로 튀어나가는 문제 해결 (appearance/box-sizing/min-width) */
 input[type="date"] {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
     text-align: left;
 }
 input[type="date"]::-webkit-date-and-time-value {
     text-align: left;
     min-height: 1.2em;
+    margin: 0;                 /* iOS 기본 마진 제거 → 오버플로 방지 */
+    padding: 0;
 }
+input[type="date"]::-webkit-calendar-picker-indicator {
+    margin-left: auto;         /* 달력 아이콘 오른쪽 정렬 */
+    flex-shrink: 0;
+}
+/* [B] edit by smsong - #2 타임라인 필터의 날짜 입력이 '기본 스타일'로 보이던 것 → 폼 인풋과 동일하게 */
+.filter-field input[type="text"],
+.filter-field input[type="date"] {
+    width: 100%; box-sizing: border-box;
+    border: 1px solid var(--gray-200); border-radius: 10px;
+    padding: 10px 12px; font-size: 0.9rem; font-family: var(--font-main);
+    background: var(--gray-50); color: var(--gray-800); outline: none;
+}
+.filter-field input[type="text"]:focus,
+.filter-field input[type="date"]:focus { border-color: var(--primary); background: var(--white); }
 
 .preview-zone img {
     width: 100%;
@@ -1204,6 +1247,9 @@ input[type="date"]::-webkit-date-and-time-value {
 }
 
 .comment-item { display: flex; gap: 10px; align-items: flex-start; }
+/* [B] edit by smsong - 푸시 딥링크로 이동한 댓글/답글 잠깐 강조 */
+.comment-item.comment-highlight { animation: commentHl 2.6s ease; border-radius: 10px; }
+@keyframes commentHl { 0%,100% { background: transparent; } 12%,55% { background: #f6e9d6; } }
 .comment-item.is-reply { margin-top: 12px; }
 .c-avatar {
     flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
@@ -1310,6 +1356,46 @@ input[type="date"]::-webkit-date-and-time-value {
     font-size: 0.62rem; font-weight: 700; color: var(--primary-dark);
     background: var(--primary-light); border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
 }
+/* [B] edit by smsong - #3 역할 뱃지(방장/멤버/일반)를 닉네임 바로 위에 배치 */
+.member-card .member-info { gap: 3px; }
+.member-role-badge {
+    align-self: flex-start; font-size: 0.62rem; font-weight: 700;
+    border-radius: 6px; padding: 2px 7px; line-height: 1.35;
+}
+.member-role-badge.role-owner { color: var(--primary-dark); background: var(--primary-light); }
+.member-role-badge.role-member { color: #4b7b86; background: #e7eef0; }
+.member-role-badge.role-general { color: #8a8178; background: #efe9e0; }
+/* [B] edit by smsong - #2 내 프로필: 소셜 로그인 뱃지 + 가입일 (본인 전용) */
+.my-profile-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.social-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; font-weight: 700; padding: 5px 11px; border-radius: 999px; line-height: 1; }
+.social-badge svg { display: block; }
+.social-badge.sb-kakao { background: #FEE500; color: #3C1E1E; }
+.social-badge.sb-naver { background: #03C75A; color: #fff; }
+.social-badge.sb-google { background: #fff; color: #3c4043; border: 1px solid #dadce0; }
+.join-date { font-size: 0.78rem; color: var(--gray-500, #8a8178); font-weight: 500; }
+/* [B] edit by smsong - #3 멤버 보기 모달 카드 */
+.member-modal-content { max-width: 480px; max-height: 80dvh; overflow: hidden; display: flex; flex-direction: column; }
+.member-modal-content .modal-header { flex-shrink: 0; }
+.member-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.mm-card { display: flex; align-items: center; gap: 12px; background: var(--gray-50, #faf7f2); border: 1px solid var(--gray-200, #eee); border-radius: 16px; padding: 12px 13px; }
+.mm-card .member-avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--primary-light); display: flex; align-items: center; justify-content: center; }
+.mm-card .member-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.mm-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mm-info .member-role-badge { align-self: flex-start; }
+.mm-name { font-size: 0.98rem; font-weight: 700; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mm-counts { display: flex; gap: 6px; flex-shrink: 0; }
+.mm-count { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 46px; padding: 6px 4px; border: 1px solid var(--gray-200, #eee); border-radius: 12px; background: #fff; cursor: pointer; transition: background .12s, transform .08s; }
+.mm-count:hover { background: var(--primary-light); }
+.mm-count:active { transform: scale(.95); }
+.mm-count b { font-size: 0.95rem; color: var(--primary-dark); line-height: 1.1; }
+.mm-count span { font-size: 0.62rem; color: var(--gray-500, #8a8178); }
+/* [B] edit by smsong - #4 멤버 댓글 목록: 게시글 + 댓글 내용 */
+.cmt-row { cursor: pointer; }
+.cmt-row .lm-row-main { width: 100%; }
+.cmt-row-on { font-size: 0.78rem; color: var(--gray-500, #8a8178); display: flex; align-items: center; gap: 4px; }
+.cmt-row-on b { color: var(--primary-dark); font-weight: 700; }
+.cmt-row-text { font-size: 0.95rem; color: var(--gray-800); margin-top: 3px; line-height: 1.4; word-break: break-word; }
+.cmt-row .lm-row-date { margin-top: 4px; }
 /* [B] edit by smsong - 추억/가볼곳 카운트를 멤버 카드 오른쪽 끝에 정사각형 타일 2개로 배치 */
 .member-counts { display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; margin-left: auto; }
 .member-count-btn {
@@ -1909,13 +1995,14 @@ html, body { -webkit-font-smoothing: antialiased; }
 /* ===== 지도 헤더 필터(➕) 버튼 + 드롭다운 폼 ===== */
 .header-map-filter { position: relative; display: flex; align-items: center; }
 .hdr-icon-btn {
-    width: 38px; height: 38px; border-radius: 50%;
+    width: 40px; height: 40px; border-radius: 12px;
     background: var(--white); border: 1px solid var(--gray-200);
     box-shadow: var(--shadow-sm); font-size: 1.05rem; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
+    color: var(--gray-500);
     transition: transform 0.15s ease, background 0.2s;
 }
-.hdr-icon-btn:hover { background: var(--gray-50); }
+.hdr-icon-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
 .hdr-icon-btn:active { transform: scale(0.92); }
 /* 아이콘 바로 아래로 살짝 떠서 나오는 필터 폼 */
 .map-filter-pop {
@@ -2094,7 +2181,18 @@ body.picking .bottom-nav {
 .perm-menu-btn:hover { filter: brightness(1.05); }
 .perm-menu-btn:active { transform: scale(0.98); }
 
-.perm-content { max-width: 560px; }
+/* [B] edit by smsong - #1 권한 모달: 헤더/설명 고정(스크롤X), 유저 목록만 스크롤 */
+.perm-content {
+    max-width: 560px;
+    max-height: 80dvh;
+    overflow: hidden;               /* 전체 스크롤 차단 */
+    display: flex; flex-direction: column;
+}
+.perm-content .modal-header,
+.perm-content > .perm-desc { flex-shrink: 0; }
+.perm-content #perm-modal-body.perm-body {
+    flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto;
+}
 .perm-desc { font-size: 0.84rem; color: var(--gray-500, #8a8178); margin: 0 0 14px; line-height: 1.5; }
 .perm-body { display: flex; flex-direction: column; gap: 10px; max-height: 64vh; overflow-y: auto; }
 .perm-loading, .perm-empty { text-align: center; color: var(--gray-500, #8a8178); padding: 28px 0; font-size: 0.9rem; }
@@ -2120,6 +2218,12 @@ body.picking .bottom-nav {
 .perm-kick-btn { background: #c0392b; color: #fff; border: none; } /* [smsong] 강퇴하기: 위험 동작 강조 */
 .perm-kick-btn:hover { background: #a5301f; }
 .perm-flags { display: flex; gap: 6px; flex: 1 1 100%; }
+/* [B] edit by smsong - #3 역할(일반/멤버) 선택 UI */
+.perm-role { display: flex; gap: 4px; background: #f1e9dd; border-radius: 9px; padding: 3px; flex: 0 0 auto; }
+.perm-role-btn { border: none; background: transparent; color: #8a7d6d; font-size: 0.8rem; font-weight: 600; padding: 5px 14px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
+.perm-role-btn.active { background: #b08968; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+.perm-role-btn:disabled { opacity: 0.5; cursor: default; }
+.perm-role-label { font-size: 0.82rem; font-weight: 700; color: #9c6644; padding: 5px 10px; }
 .perm-chip {
     flex: 1; border: 1px solid var(--gray-200, #e2ddd6); background: var(--white, #fff);
     color: var(--gray-500, #8a8178); border-radius: 10px; padding: 8px 6px;

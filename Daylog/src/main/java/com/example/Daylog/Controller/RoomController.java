@@ -83,6 +83,15 @@ public class RoomController {
         return ResponseEntity.ok(roomService.getRoomWithMembers(roomId, ud.getUsername()));
     }
 
+    // [B] edit by smsong - #4 특정 멤버가 이 방에서 단 댓글 상세(게시글 + 댓글 내용)
+    @GetMapping("/{roomId}/member/{uid}/commented")
+    public ResponseEntity<List<Map<String, Object>>> commentedItems(@PathVariable("roomId") Long roomId,
+                                                                    @PathVariable("uid") String uid,
+                                                                    @AuthenticationPrincipal UserDetails ud) {
+        if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
+        return ResponseEntity.ok(roomService.getCommentedItems(roomId, uid, ud.getUsername()));
+    }
+
     // 방 삭제 (방장만) — ?uid= 로 요청자 전달
     @DeleteMapping("/{roomId}")
     public ResponseEntity<Void> deleteRoom(@PathVariable("roomId") Long roomId,

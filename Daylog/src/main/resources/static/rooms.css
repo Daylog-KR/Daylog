@@ -45,6 +45,8 @@ html, body {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     background: var(--bg-color);
 }
+/* [B] edit by smsong - 알림/프로필 버튼을 오른쪽에 나란히 붙임(간격 축소) */
+.rooms-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* 상단 탭 (내 방 보기 / 전체 방 보기) — 헤더 아래 고정 */
 .rooms-tabs {
@@ -80,6 +82,7 @@ html, body {
 .room-type-badge.couple { background: #fbe9e5; color: #c0563e; }
 .room-type-badge.friend { background: #e7eef0; color: #4b7b86; }
 .room-type-badge.family { background: #eae7f2; color: #6b5b95; }
+.room-type-badge.acquaintance { background: #e8f0e6; color: #5a8a4f; } /* [B] edit by smsong - 지인 */
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-logo {
     width: 52px; height: 52px; border-radius: 16px;
@@ -312,6 +315,15 @@ html, body {
 }
 .profile-view-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .profile-view-name { margin-top: 14px; font-size: 1.28rem; font-weight: 700; color: var(--gray-800); }
+/* [B] edit by smsong - #2 실제 이름 + 소셜 로그인 + 가입일 */
+.profile-view-realname { font-size: 0.85rem; color: var(--gray-500, #8a8178); margin-top: 3px; }
+.profile-view-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+.social-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 700; padding: 5px 11px; border-radius: 999px; line-height: 1; }
+.social-badge svg { display: block; }
+.social-badge.sb-kakao { background: #FEE500; color: #3C1E1E; }
+.social-badge.sb-naver { background: #03C75A; color: #fff; }
+.social-badge.sb-google { background: #fff; color: #3c4043; border: 1px solid #dadce0; }
+.join-date { font-size: 0.76rem; color: var(--gray-500, #8a8178); font-weight: 500; }
 .profile-view-sub { margin-top: 4px; font-size: 0.85rem; color: var(--gray-500); }
 .profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .profile-actions .rm-btn { width: 100%; }
