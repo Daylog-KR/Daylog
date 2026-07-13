@@ -22,6 +22,7 @@ public class UserDTO {
         private String profileURL;
         private String provider;
         private int likeCount;
+        private java.time.LocalDateTime createdAt; // [B] edit by smsong - #2 가입일
 
         public static UserDTO entityToDto(UserEntity userEntity) {
                 return new UserDTO(
@@ -37,10 +38,11 @@ public class UserDTO {
                         userEntity.getPhone(),
                         userEntity.getProfileURL(),
                         userEntity.getProvider(),
-                        userEntity.getLikeCount());
+                        userEntity.getLikeCount(),
+                        userEntity.getCreatedAt());
         }
 
         public UserEntity dtoToEntity() {
-                return new UserEntity(id, uid, password, name, age, gender, nickname, address, email, phone, profileURL, provider, likeCount);
+                return new UserEntity(id, uid, password, name, age, gender, nickname, address, email, phone, profileURL, provider, likeCount, createdAt);
         }
 }

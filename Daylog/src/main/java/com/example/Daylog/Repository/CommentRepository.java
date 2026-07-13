@@ -3,30 +3,10 @@ package com.example.Daylog.Repository;
 import com.example.Daylog.Entity.CommentEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
 public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
-
-    // [B] edit by smsong - #3 멤버별 댓글 집계 (방 안, 삭제 제외)
-    @Query("SELECT COUNT(c) FROM comments c WHERE c.owner.uid = :uid AND c.deleted = false " +
-           "AND ((c.memory IS NOT NULL AND c.memory.roomId = :roomId) OR (c.checklist IS NOT NULL AND c.checklist.roomId = :roomId))")
-    long countByOwnerInRoom(@Param("uid") String uid, @Param("roomId") Long roomId);
-
-    @Query("SELECT DISTINCT c.memory.id FROM comments c WHERE c.owner.uid = :uid AND c.deleted = false " +
-           "AND c.memory IS NOT NULL AND c.memory.roomId = :roomId")
-    List<Long> memoryIdsCommentedByOwner(@Param("uid") String uid, @Param("roomId") Long roomId);
-
-    @Query("SELECT DISTINCT c.checklist.id FROM comments c WHERE c.owner.uid = :uid AND c.deleted = false " +
-           "AND c.checklist IS NOT NULL AND c.checklist.roomId = :roomId")
-    List<Long> checklistIdsCommentedByOwner(@Param("uid") String uid, @Param("roomId") Long roomId);
-
-    // [B] edit by smsong - #4 멤버가 방에서 단 댓글 상세(게시글 제목/댓글 내용 표시용, 최신순)
-    @Query("SELECT c FROM comments c WHERE c.owner.uid = :uid AND c.deleted = false " +
-           "AND ((c.memory IS NOT NULL AND c.memory.roomId = :roomId) OR (c.checklist IS NOT NULL AND c.checklist.roomId = :roomId)) " +
-           "ORDER BY c.createdAt DESC")
-    List<CommentEntity> findCommentsByOwnerInRoom(@Param("uid") String uid, @Param("roomId") Long roomId);
 
     // 특정 추억의 "최상위" 댓글 (대댓글 제외, 휴지통 제외)
     List<CommentEntity> findByMemory_IdAndParentIsNullAndDeletedFalseOrderByCreatedAtAsc(Long memoryId);

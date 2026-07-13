@@ -150,14 +150,7 @@ const ME_ALIAS = ['송성민', 's s'];             // (표시용) '송성민'으
 
 // [smsong] 방(공유 공간) 컨텍스트 헬퍼
 function getRoomId() { return localStorage.getItem('selectedRoomId') || ''; }
-// [B] edit by smsong - #2 방 타입은 서버에서 받은 roomInfo.type(권위) 우선, 없으면 localStorage.
-//  (알림 딥링크로 진입 시 localStorage 가 비어/오래돼 COUPLE 로 오판하던 버그 해결)
-function getRoomType() {
-    var t = (window.Daylog && Daylog.roomInfo && Daylog.roomInfo.type)
-        ? Daylog.roomInfo.type
-        : localStorage.getItem('selectedRoomType');
-    return (t || '').toUpperCase();
-}
+function getRoomType() { return (localStorage.getItem('selectedRoomType') || 'COUPLE').toUpperCase(); }
 function getRoomOwnerUid() { return localStorage.getItem('selectedRoomOwnerUid') || ''; }
 function isRoomOwner() { return !!(getUid() && getUid() === getRoomOwnerUid()); }
 function isCoupleRoom() { return getRoomType() === 'COUPLE'; }
@@ -300,13 +293,10 @@ function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') :
 function _myPerm() { return (Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
 function isAdminUser() { var p = _myPerm(); return !!(p && p.admin); }
 function canCreateObject() { var p = _myPerm(); return !!(p && (p.admin || p.canCreate)); } // 생성 권한
-function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // (구) 수정 권한
-// [B] edit by smsong - #2 작성자(본인) 또는 관리자(방장)만 수정/휴지통/삭제 가능
-function _isAdminPerm() { var p = _myPerm(); return !!(p && p.admin); }
-function isOwnerOf(item) { return !!(item && item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid); }
-function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canEdit)); }   // 수정 버튼
-function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
-function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
+function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // 수정 권한
+function canManageObject(item) { return isPrivilegedUser(); }                                  // 수정 버튼 표시
+function canTrashObject(item) { var p = _myPerm(); return !!(p && (p.admin || p.canTrash)); }  // 휴지통 버튼
+function canDeleteObject() { var p = _myPerm(); return !!(p && (p.admin || p.canDelete)); }    // 영구삭제 버튼
 // 생성 FAB 표시/차단 (권한 없으면 숨김)
 function applyPermButtons() {
     var show = canCreateObject();
@@ -329,7 +319,7 @@ function applyMyPermUI() {
 //  관리자 = 방장. 미승인 멤버는 차단 화면(권한 요청 폼) 표시.
 function loadMyPermission() {
     if (!(Daylog && Daylog.api)) return Promise.resolve(null);
-    return withLoading(fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
+    return fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
         .then(function (res) {
             if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status); throw new Error('HTTP ' + res.status); }
             return res.json();
@@ -358,7 +348,7 @@ function loadMyPermission() {
                 blockUnauthorizedUser();
             }
             return null;
-        }), '방 정보를 불러오는 중...'); // [smsong] 로딩
+        });
 }
 if (Daylog) Daylog.loadMyPermission = loadMyPermission;
 
@@ -650,38 +640,15 @@ function renderPermissionList(list) {
                   : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
                 // [E] edit by smsong
             '</div>' +
-            // [B] edit by smsong - #3 4개 토글 → 역할(일반/멤버) 선택. 관리자는 라벨만.
-            permRoleSelector(p, lockToggles) +
+            '<div class="perm-flags">' +
+              permToggle(p, 'canCreate', '생성', lockToggles) +
+              permToggle(p, 'canEdit', '수정', lockToggles) +
+              permToggle(p, 'canTrash', '휴지통', lockToggles) +
+              permToggle(p, 'canDelete', '삭제', lockToggles) +
+            '</div>' +
         '</div>';
     });
     body.innerHTML = html;
-    // [B] edit by smsong - #4 저장 후 스크롤 위치 복원
-    if (Daylog._permScrollKeep != null) {
-        var _kp = Daylog._permScrollKeep; Daylog._permScrollKeep = null;
-        body.scrollTop = _kp;
-        requestAnimationFrame(function () { body.scrollTop = _kp; }); // 레이아웃 확정 후 한 번 더
-    }
-}
-
-// [B] edit by smsong - #3 역할 선택 UI (일반 유저 / 멤버). 관리자(방장)는 잠금 라벨.
-function permRoleSelector(p, lock) {
-    if (p.admin) return '<div class="perm-role-label">관리자</div>';
-    if (!p.accessAllowed) return ''; // 접근 허용 전에는 역할 선택 없음
-    var isMember = !!p.canCreate;    // 멤버 = 생성권한 보유(생성/수정/삭제 가능)
-    var dis = lock ? ' disabled' : '';
-    return '<div class="perm-role">' +
-        '<button type="button" class="perm-role-btn' + (!isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'general\')">일반</button>' +
-        '<button type="button" class="perm-role-btn' + (isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'member\')">멤버</button>' +
-    '</div>';
-}
-function setPermRole(uid, role) {
-    var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
-    if (!p || p.admin) return;
-    if (!p.accessAllowed) { showToast('먼저 접근을 허용해 주십시오'); return; }
-    var member = (role === 'member');
-    if (member === !!p.canCreate) return; // 변화 없으면 무시
-    // 멤버: 생성/수정/삭제 가능(단, 수정·삭제는 본인 게시글만) · 일반: 조회+댓글만
-    putPermission(uid, { accessAllowed: true, canCreate: member, canEdit: member, canTrash: member, canDelete: member });
 }
 function togglePerm(uid, key) {
     var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
@@ -745,9 +712,6 @@ function decideAccess(uid, approve) {
         .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
 }
 function putPermission(uid, patch) {
-    // [B] edit by smsong - #4 권한 변경 후 목록 재렌더 시 스크롤 위치 유지
-    var _pb = document.getElementById('perm-modal-body');
-    Daylog._permScrollKeep = _pb ? _pb.scrollTop : 0;
     withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid),
         { method: 'PUT', headers: Daylog.authHeaders(true), body: JSON.stringify(patch) }), '저장하는 중...')
         .then(function () { openPermissionAdmin(); })
@@ -1090,59 +1054,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try { applyPermButtons(); } catch (e) {} // 권한 확인 전엔 생성 FAB 숨김
     try { applyMyPermUI(); } catch (e) {}
     if (currentUid) { try { loadMyPermission(); } catch (e) { console.warn('권한 로딩 실패', e); } }
-    // [B] edit by smsong - #4 방 멤버(작성자/수정자 이름)를 초기에 미리 로드 → 상세 진입 시 '작성자' 폴백 방지
-    if (currentUid) { try { ensureRoomInfoThen(function () {}); } catch (e) {} }
     // [E] edit by smsong
     Daylog.openChecklistDetailById = (id) => {
         const c = checklistList.find(x => x.id === id);
         if (c) openChecklistDetail(c);
     };
-    // [B] edit by smsong - 푸시 딥링크: 게시글 상세 열고 해당 댓글로 스크롤 (데이터 로드까지 폴링)
-    Daylog.openMemoryDetailById = (id) => {
-        const m = memoryList.find(x => String(x.id) === String(id));
-        if (m) { openDetailModal(m); return true; }
-        return false;
-    };
-    Daylog._openByDeepLink = function (type, id) {
-        if (type === 'memory') {
-            const m = memoryList.find(x => String(x.id) === String(id));
-            if (m) { openDetailModal(m); return true; }
-        } else if (type === 'checklist') {
-            const c = checklistList.find(x => String(x.id) === String(id));
-            if (c) { openChecklistDetail(c); return true; }
-        }
-        return false;
-    };
-    Daylog.handleDeepLink = function () {
-        try {
-            const p = new URLSearchParams(location.search);
-            const type = p.get('type'), id = p.get('id'), comment = p.get('comment');
-            if (!type || !id) return;
-            let tries = 0;
-            (function attempt() {
-                if (Daylog._openByDeepLink(type, id)) {
-                    if (comment) _scrollToComment(comment);
-                    try { history.replaceState(null, '', 'main.html'); } catch (e) {}
-                    return;
-                }
-                if (tries++ < 40) setTimeout(attempt, 250); // 최대 ~10초 데이터 대기
-            })();
-        } catch (e) {}
-    };
-    function _scrollToComment(commentId) {
-        let tries = 0;
-        (function attempt() {
-            const el = document.querySelector('.comment-item[data-id="' + commentId + '"]');
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                el.classList.add('comment-highlight');
-                setTimeout(function () { el.classList.remove('comment-highlight'); }, 2600);
-                return;
-            }
-            if (tries++ < 30) setTimeout(attempt, 200); // 댓글 로드 대기
-        })();
-    }
-    setTimeout(function () { try { Daylog.handleDeepLink(); } catch (e) {} }, 400);
 
     // 해당 마커를 잠깐 빠르게 흔들어 "여기입니다" 표시
     function shakeMarker(memory) {
@@ -1162,7 +1078,6 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.focusOnMap = function (memory) {
         if (!memory || memory.lat == null || memory.lng == null) return;
         closeDetailModal();
-        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click(); // 탭 전환 + map resize 트리거
         _suppressDrop = true;       // 등장 애니메이션 끄고 '흔들기'만
@@ -1203,7 +1118,6 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog.focusChecklistOnMap = function (item) {
         if (!item || item.lat == null || item.lng == null) return;
         closeChecklistDetail();
-        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
         const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
         if (mapNav) mapNav.click();
         _suppressDrop = true;        // 등장 애니메이션 끄고 '흔들기'만
@@ -1235,9 +1149,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 디데이 (방 커플 기준일로 표시, 커플 방에만) ---
     applyDdayVisibility();
 
-    // --- 로그아웃 (헤더 버튼은 알림으로 교체됨 → null 가드. 로그아웃은 설정 메뉴 버튼 사용) ---
-    var _btnLogout = document.getElementById('btn-logout');
-    if (_btnLogout) _btnLogout.addEventListener('click', (e) => {
+    // --- 로그아웃 ---
+    document.getElementById('btn-logout').addEventListener('click', (e) => {
         e.preventDefault();
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
     });
@@ -1249,10 +1162,6 @@ document.addEventListener('DOMContentLoaded', () => {
         navLogo.setAttribute('title', '방 목록으로 이동');
         navLogo.addEventListener('click', () => {
             if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html';
-        });
-        // [B] edit by smsong - #1 키보드(Enter/Space)도 confirm 경유
-        navLogo.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html'; }
         });
     }
     // [E] edit by smsong
@@ -2345,7 +2254,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadMemoriesFromServer() {
         if (!requireAuthOrRedirect()) return Promise.resolve();
 
-        return withLoading(fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
+        return fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(memories => {
                 const list = memories || [];
@@ -2364,7 +2273,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 buildTimelinePlaceOptions();
                 applyTimelineFilter();
             })
-            .catch(err => console.error("데이터 로드 실패:", err)), '추억을 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error("데이터 로드 실패:", err));
     }
 
     // ==========================================
@@ -2372,7 +2281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     function loadChecklistsFromServer() {
         if (!requireAuthOrRedirect()) return Promise.resolve();
-        return withLoading(fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
+        return fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(list => {
                 const arr = list || [];
@@ -2387,7 +2296,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
                 if (mapMode === 'checklist') renderActiveMapMarkers();
             })
-            .catch(err => console.error("가볼곳 로드 실패:", err)), '가볼곳을 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error("가볼곳 로드 실패:", err));
     }
 
     // 가볼곳 마커 — 사진 대신 제목 말풍선, 타입별 색상, 방문 표시
@@ -2575,26 +2484,22 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(handleResponse)
             .then((created) => {
                 closeChecklistModal();
+                showToast('가볼곳을 추가했습니다');
                 pickTarget = 'memory';
-                // [B] edit by smsong - '다녀왔습니다'로 추가하면 추억으로 기록하고, 가볼곳은 제거(추억으로 이동)
+                // 다녀온 곳으로 추가하면 동일 위치에 추억도 자동 생성
                 if (created && created.visited) {
+                    // [B] edit by smsong - 동일 위치+제목 추억이 있으면 중복 생성 방지
                     ensureMemoryForChecklist(created)
-                        .then((made) => { showToast('다녀온 곳이라 추억으로 기록했어요'); })
-                        .then(() => trashChecklistQuietly(created.id)) // 원본 가볼곳 제거
-                        .catch(err => console.warn('추억 이동 실패', err))
-                        .finally(() => {
-                            // [B] edit by smsong - #3 추억/가볼곳 모두 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
-                            Promise.all([loadMemoriesFromServer(), loadChecklistsFromServer()]).then(function () {
-                                if (mapMode !== 'memory') setMapMode('memory'); else refreshMapMarkers();
-                            });
-                        });
-                } else {
-                    showToast('가볼곳을 추가했습니다');
-                    loadChecklistsFromServer().then(function () {
-                        if (mapMode !== 'checklist') setMapMode('checklist');
-                        else refreshMapMarkers();
-                    });
+                        .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했습니다'); })
+                        .catch(err => console.warn('추억 자동 생성 실패', err));
+                    // [E] edit by smsong
                 }
+                // [B] edit by smsong - 생성 직후 서버에서 최신 목록을 받아 지도에 바로 반영
+                //  (기존: setMapMode 만 호출해 이미 로드된 '옛 목록'으로 마커를 그려 새 가볼곳이 안 보이던 문제)
+                loadChecklistsFromServer().then(function () {
+                    if (mapMode !== 'checklist') setMapMode('checklist');
+                    else refreshMapMarkers();
+                });
                 // [E] edit by smsong
             })
             .catch(err => { console.error(err); showToast('추가 실패. 다시 시도해주십시오.'); })
@@ -2981,46 +2886,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let editingUser = null;
     const profileFileInput = document.getElementById('profile-file');
 
-    // [B] edit by smsong - #2 내 프로필: 소셜 로그인 종류(카카오/네이버/구글) + 가입일 표시 (본인만)
-    function renderMySocialInfo() {
-        var wrap = document.getElementById('my-profile-info');
-        var badge = document.getElementById('my-social-badge');
-        var jd = document.getElementById('my-join-date');
-        if (!wrap) return;
-        if (!currentUser) { wrap.style.display = 'none'; return; }
-        var kakao = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>';
-        var naver = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>';
-        var google = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>';
-        var map = {
-            kakao:  { label: '카카오', cls: 'kakao',  icon: kakao },
-            naver:  { label: '네이버', cls: 'naver',  icon: naver },
-            google: { label: '구글',   cls: 'google', icon: google }
-        };
-        var info = map[(currentUser.provider || '').toLowerCase()];
-        var any = false;
-        if (badge) {
-            if (info) { badge.className = 'social-badge sb-' + info.cls; badge.innerHTML = info.icon + '<span>' + info.label + ' 로그인</span>'; badge.style.display = ''; any = true; }
-            else { badge.style.display = 'none'; badge.innerHTML = ''; }
-        }
-        if (jd) {
-            var c = currentUser.createdAt;
-            if (c) {
-                var d = new Date(c);
-                var s = isNaN(d.getTime())
-                    ? String(c).substring(0, 10).replace(/-/g, '.')
-                    : (d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'));
-                jd.textContent = s + ' 가입'; jd.style.display = ''; any = true;
-            } else { jd.style.display = 'none'; jd.textContent = ''; }
-        }
-        wrap.style.display = any ? 'flex' : 'none';
-    }
-
     function loadProfiles(force) {
         if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
         if (!requireAuthOrRedirect()) return;
-        // [B] edit by smsong - #2 커플/멤버 판정 전에 서버 방정보(타입 권위)를 반드시 확보 → 커플 오판/깜빡임 제거
-        ensureRoomInfoThen(function () {
-        withLoading(fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
+        fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(users => {
                 const list = users || [];
@@ -3061,7 +2930,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
                 applyRoomProfileMode(); // [smsong] 방 타입별(커플/친구·가족) 화면 전환
                 applyCoupleEditButtons(); // [smsong] 방장이면 '나/상대방' 변경 버튼 노출
-                renderMySocialInfo(); // [B] edit by smsong - #2 내 소셜/가입일 표시
                 // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
                 if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();
                 maybePromptNickname();
@@ -3070,8 +2938,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("프로필 로드 실패(/user/all):", err);
                 showToast('프로필 조회 실패: ' + (err.message || '서버 오류'));
                 loadSelfProfileFallback();
-            }), '프로필을 불러오는 중...'); // [smsong] 로딩
-        }); // [B] edit by smsong - ensureRoomInfoThen 콜백 닫기
+            });
     }
 
     // /user/all 이 막혔을 때 최소한 본인 정보만이라도 채우는 폴백
@@ -3230,24 +3097,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function closeEditPage() { editPage.classList.remove('open'); }
 
-    // [B] edit by smsong - #3 btn-edit-profile 제거됨 → null 가드
-    var _bep = document.getElementById('btn-edit-profile');
-    if (_bep) _bep.addEventListener('click', openEditPage);
-    // [B] edit by smsong - #3 멤버 보기 버튼 → 멤버 모달
-    var _bmv = document.getElementById('btn-member-view');
-    if (_bmv) _bmv.addEventListener('click', openMemberModal);
-    var _mmClose = document.getElementById('member-modal-close');
-    if (_mmClose) _mmClose.addEventListener('click', function () { var mm = document.getElementById('member-modal'); if (mm) mm.classList.add('hidden'); });
-    var _mmModal = document.getElementById('member-modal');
-    if (_mmModal) _mmModal.addEventListener('click', function (e) { if (e.target.id === 'member-modal') _mmModal.classList.add('hidden'); });
+    document.getElementById('btn-edit-profile').addEventListener('click', openEditPage);
     const btnTrash = document.getElementById('btn-trash');
     if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
     // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
     const btnRooms = document.getElementById('btn-rooms');
     if (btnRooms) btnRooms.addEventListener('click', () => { location.href = 'rooms.html'; });
-    // [B] edit by smsong - #1 로고 클릭 핸들러는 아래 navLogo(confirm) 하나로 통일 (중복 무조건 이동 제거)
-    const logoHome = document.getElementById('logo-home');
-    if (logoHome) { logoHome.setAttribute('tabindex', '0'); }
     const btnProfileLogout = document.getElementById('btn-profile-logout');
     if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
         if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
@@ -3377,62 +3232,32 @@ document.addEventListener('DOMContentLoaded', () => {
     //  커플: 기존 커플 카드(디데이/우리의 추억/나♥상대) 그대로
     //  친구·가족: 구성원 프로필 그리드 → 프로필의 추억/가볼곳 조회
     var _memberCache = null;
-    var _roomInfoLoading = false;
-    // [B] edit by smsong - #2 설정 뷰 판정 전에 서버 방정보(타입 권위) 를 반드시 확보 → 커플/멤버 오판 방지
-    function ensureRoomInfoThen(cb) {
-        if (Daylog.roomInfo) { cb(); return; }
-        var roomId = getRoomId();
-        if (!roomId) { cb(); return; }
-        if (_roomInfoLoading) { setTimeout(function () { ensureRoomInfoThen(cb); }, 120); return; }
-        _roomInfoLoading = true;
-        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
-            .then(handleResponse)
-            .then(room => {
-                Daylog.roomInfo = room;
-                if (room && room.type) localStorage.setItem('selectedRoomType', String(room.type).toUpperCase());
-                _memberCache = (room && room.members) || [];
-                // [B] edit by smsong - #4 작성자/수정자 즉시 표시: 멤버 정보로 usersByUid 채움(설정 미방문에도 이름 표시)
-                try {
-                    Daylog.usersByUid = Daylog.usersByUid || {};
-                    _memberCache.forEach(function (m) {
-                        if (m && m.uid) Daylog.usersByUid[m.uid] = {
-                            uid: m.uid, nickname: m.nickname, name: m.name, profileURL: m.profileURL
-                        };
-                    });
-                } catch (e) {}
-            })
-            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err))
-            .finally(() => { _roomInfoLoading = false; cb(); }), '방 정보를 불러오는 중...'); // [smsong] 로딩
-    }
-
     function applyRoomProfileMode() {
-        ensureRoomInfoThen(function () {
-            var coupleView = document.getElementById('couple-view');
-            var memberView = document.getElementById('member-view');
-            if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
-            if (isCoupleRoom()) {
-                if (coupleView) coupleView.style.display = '';
-                if (memberView) memberView.style.display = 'none';
-                return;
-            }
-            if (coupleView) coupleView.style.display = 'none';
-            // [B] edit by smsong - #3 멤버 목록은 [멤버 보기] 모달로 이동 → 설정 탭에선 그리드 미표시
+        var coupleView = document.getElementById('couple-view');
+        var memberView = document.getElementById('member-view');
+        if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
+        if (isCoupleRoom()) {
+            if (coupleView) coupleView.style.display = '';
             if (memberView) memberView.style.display = 'none';
-        });
+            return;
+        }
+        if (coupleView) coupleView.style.display = 'none';
+        if (memberView) memberView.style.display = 'block';
+        if (_memberCache) paintMemberGrid(_memberCache);
+        else fetchMembersThenPaint();
     }
     function fetchMembersThenPaint() {
         var roomId = getRoomId();
         if (!roomId) return;
-        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { _memberCache = (room && room.members) || []; paintMemberGrid(_memberCache); })
-            .catch(err => console.error('[Daylog] 멤버 뷰 로드 실패:', err)), '멤버를 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error('[Daylog] 멤버 뷰 로드 실패:', err));
     }
     function paintMemberGrid(members) {
         var container = document.getElementById('member-view');
         if (!container) return;
-        var _rt = getRoomType();
-        var typeName = (_rt === 'FAMILY') ? '가족' : (_rt === 'ACQUAINTANCE') ? '지인' : '친구'; // [B] edit by smsong - 지인 추가
+        var typeName = (getRoomType() === 'FAMILY') ? '가족' : '친구';
         var head = document.createElement('div');
         head.className = 'member-view-head';
         head.textContent = typeName + ' 구성원 ' + members.length + '명';
@@ -3448,15 +3273,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<img src="${Daylog.bustImg(m.profileURL)}" alt="" class="member-avatar-img">`
                 : `<span class="member-avatar-fallback">${icon('user',30)}</span>`;
             var ownerBadge = m.owner ? '<span class="member-owner-badge">방장</span>' : '';
-            // [B] edit by smsong - #3 역할(방장/멤버/일반) 뱃지를 닉네임 '바로 위'에 배치
-            var _role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
-            var _roleLabel = (_role === 'OWNER') ? '방장' : (_role === 'MEMBER') ? '멤버' : '일반';
-            var _roleCls = (_role === 'OWNER') ? 'owner' : (_role === 'MEMBER') ? 'member' : 'general';
             card.innerHTML =
                 `<div class="member-avatar">${avatar}</div>` +
                 `<div class="member-info">` +
-                    `<div class="member-role-badge role-${_roleCls}">${_roleLabel}</div>` +
-                    `<div class="member-name">${_escHtml(name)}</div>` +
+                    `<div class="member-name">${_escHtml(name)} ${ownerBadge}</div>` +
                 `</div>` +
                 // [B] edit by smsong - 추억/가볼곳 타일을 멤버 카드 오른쪽 끝에 배치
                 `<div class="member-counts">` +
@@ -3488,10 +3308,10 @@ document.addEventListener('DOMContentLoaded', () => {
         var roomId = getRoomId();
         if (!roomId) return;
         if (!force && Daylog.roomInfo) { afterRoomInfo(); return; }
-        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { Daylog.roomInfo = room; _memberCache = (room && room.members) || null; afterRoomInfo(); })
-            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err)), '방 정보를 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err));
     }
     function afterRoomInfo() {
         if (isCoupleRoom()) { loadProfiles(true); applyCoupleEditButtons(); }
@@ -3521,10 +3341,10 @@ document.addEventListener('DOMContentLoaded', () => {
         body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
         // 최신 멤버 확보 후 렌더
         var roomId = getRoomId();
-        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+        fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { Daylog.roomInfo = room; renderCouplePicker((room && room.members) || []); })
-            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); }), '멤버를 불러오는 중...'); // [smsong] 로딩
+            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); });
     }
     function renderCouplePicker(members) {
         var body = document.getElementById('couple-pick-body');
@@ -4044,17 +3864,7 @@ function createMemoryFromChecklist(cl) {
     fd.append('memoryData', JSON.stringify(memoryData));
     // mediaData(새 파일) 없음 → 백엔드가 mediaOrder의 기존 URL을 그대로 보존
     return fetch(`${Daylog.api}/api/memories`, { method: 'POST', headers: Daylog.authHeaders(false), body: fd })
-        .then(Daylog.handleResponse)
-        .then(function (created) {
-            // [B] edit by smsong - #5 가볼곳 댓글(+답글)을 새 추억으로 이동
-            if (created && created.id && cl.id) {
-                return fetch(`${Daylog.api}/comment/move?fromChecklist=${cl.id}&toMemory=${created.id}`,
-                    { method: 'POST', headers: Daylog.authHeaders(true) })
-                    .then(Daylog.handleResponse).catch(function () {})
-                    .then(function () { return created; });
-            }
-            return created;
-        });
+        .then(Daylog.handleResponse);
 }
 
 // [B] edit by smsong - 가볼곳 '다녀옴' 추억 자동 생성 시 중복 방지
@@ -4121,35 +3931,20 @@ function saveChecklistEdit() {
         .then(Daylog.handleResponse)
         .then((updated) => {
             _editLocPicked = null; // [smsong] 수정 위치 소비
+            showToast('수정 완료');
             closeChecklistDetail();
-            // [B] edit by smsong - 처음으로 '다녀옴'이 되면 추억으로 기록하고 가볼곳은 제거(추억으로 이동)
+            Daylog.reloadChecklists();
+            // 이번 수정에서 처음으로 '다녀옴'이 된 경우에만 추억 자동 생성
+            // [B] edit by smsong - 재방문 토글(안가봄->갔다왔습니다)로 동일 추억이 중복 생성되지 않도록 dedup 처리
             if (updated && updated.visited && !wasVisited) {
                 ensureMemoryForChecklist(updated)
-                    .then((made) => { showToast('다녀온 곳이라 추억으로 옮겼어요'); })
-                    .then(() => trashChecklistQuietly(updated.id)) // 원본 가볼곳 제거
-                    .catch(err => console.warn('추억 이동 실패', err))
-                    .finally(() => {
-                        // [B] edit by smsong - #3 추억/가볼곳 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
-                        Promise.all([loadMemoriesFromServer(), loadChecklistsFromServer()]).then(function () {
-                            if (mapMode !== 'memory') setMapMode('memory'); else refreshMapMarkers();
-                        });
-                    });
-            } else {
-                showToast('수정 완료');
-                Daylog.reloadChecklists();
+                    .then((made) => { if (made) showToast('다녀온 곳이라 추억에도 기록했습니다'); })
+                    .catch(err => console.warn('추억 자동 생성 실패', err));
             }
             // [E] edit by smsong
         })
         .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주십시오.'); })
         .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
-}
-
-// [B] edit by smsong - '다녀옴' 추억 자동생성 후 원본 가볼곳을 조용히 휴지통으로 제거(확인창/토스트 없음).
-//  추억은 같은 이미지 URL 을 참조하고, 휴지통/영구삭제는 GCS 원본을 지우지 않으므로 이미지 유실 없음.
-function trashChecklistQuietly(id) {
-    if (id == null) return Promise.resolve();
-    return fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) })
-        .then(Daylog.handleResponse).catch(() => {});
 }
 
 function trashChecklist(id) {
@@ -4617,7 +4412,7 @@ function loadComments(kind, targetId) {
     const list = document.getElementById(listId);
     if (!list) return;
     const path = (kind === 'checklist') ? `/comment/checklist/${targetId}` : `/comment/memory/${targetId}`;
-    withLoading(fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
+    fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse)
         .then(comments => {
             comments = comments || [];
@@ -4635,7 +4430,7 @@ function loadComments(kind, targetId) {
         .catch(err => {
             console.error(err);
             list.innerHTML = '<div class="comments-empty">댓글을 조회 실패</div>';
-        }), '댓글을 불러오는 중...'); // [smsong] 로딩
+        });
 }
 
 function submitComment(kind, targetId, parentId, inputId) {
@@ -4737,13 +4532,13 @@ function openTrashModal() {
     modal.classList.remove('hidden');
 
     const uid = Daylog.currentUid;
-    withLoading(Promise.all([
+    Promise.all([
         fetch(`${Daylog.api}/api/memories/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
         fetch(`${Daylog.api}/comment/trash`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
         fetch(`${Daylog.api}/api/checklists/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
     ]).then(([memories, comments, checklists]) => {
         renderTrash(memories || [], comments || [], checklists || []);
-    }), '휴지통을 불러오는 중...'); // [smsong] 로딩
+    });
 }
 
 function closeTrashModal() {
@@ -4781,8 +4576,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(m) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                (canTrashObject(m) ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
-                (canDeleteObject(m) ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
+                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
+                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });
@@ -4822,8 +4617,8 @@ function renderTrash(memories, comments, checklists) {
                 autoDeleteText(c) + // [smsong]
                 '</div>' +
                 '<div class="trash-actions">' +
-                (canTrashObject(c) ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
-                (canDeleteObject(c) ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
+                (canTrashObject() ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
+                (canDeleteObject() ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
                 '</div>' +
                 '</div>';
         });
@@ -4878,115 +4673,6 @@ function deleteChecklistForever(id) {
 }
 
 // ===== 통계 클릭용 리스트 모달 / D-Day 정보 =====
-// [B] edit by smsong - #3 멤버 보기 모달
-function openMemberModal() {
-    const modal = document.getElementById('member-modal');
-    const body = document.getElementById('member-modal-body');
-    if (!modal || !body) return;
-    body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
-    modal.classList.remove('hidden');
-    const roomId = getRoomId();
-    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: Daylog.authHeaders(true) })
-        .then(Daylog.handleResponse)
-        .then(room => { Daylog.roomInfo = room; renderMemberModal((room && room.members) || [], isCoupleRoom()); })
-        .catch(() => { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; }),
-        '멤버를 불러오는 중...');
-}
-
-function renderMemberModal(members, isCouple) {
-    const body = document.getElementById('member-modal-body');
-    if (!body) return;
-    if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버가 없습니다.</div>'; return; }
-    const mems = Daylog.memories || [];
-    const cls = Daylog.checklists || [];
-    body.innerHTML = '';
-    members.forEach(m => {
-        const name = m.nickname || m.name || m.uid;
-        const memCount = mems.filter(x => x.ownerUid === m.uid).length;
-        const clCount = cls.filter(x => x.ownerUid === m.uid).length;
-        const commentCount = m.commentCount || 0;
-        const role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
-        const roleLabel = role === 'OWNER' ? '방장' : (role === 'MEMBER' ? '멤버' : '일반');
-        const roleCls = role === 'OWNER' ? 'owner' : (role === 'MEMBER' ? 'member' : 'general');
-        const avatar = m.profileURL
-            ? `<img class="member-avatar-img" src="${m.profileURL}" alt="" onerror="this.style.display='none'">`
-            : icon('user', 26, 'color:#b08968;');
-        let counts = '';
-        if (!isCouple) {
-            counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
-            counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
-        }
-        counts += `<button class="mm-count" data-act="comment" data-uid="${m.uid}"><b>${commentCount}</b><span>댓글</span></button>`;
-        const card = document.createElement('div');
-        card.className = 'mm-card';
-        card.innerHTML =
-            `<div class="member-avatar">${avatar}</div>` +
-            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name">${escapeHtml(name)}</div></div>` +
-            `<div class="mm-counts">${counts}</div>`;
-        body.appendChild(card);
-    });
-    body.querySelectorAll('.mm-count').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const uid = btn.getAttribute('data-uid');
-            const act = btn.getAttribute('data-act');
-            const mem = members.find(x => x.uid === uid);
-            const nm = mem ? (mem.nickname || mem.name || uid) : uid;
-            if (act === 'mem') openMemoryListModal(nm + '님의 추억', (Daylog.memories || []).filter(x => x.ownerUid === uid));
-            else if (act === 'cl') openChecklistListModal(nm + '님의 가볼곳', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
-            else openCommentedItems(uid, nm);
-        });
-    });
-}
-
-function openCommentedItems(uid, name) {
-    const roomId = getRoomId();
-    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/member/${encodeURIComponent(uid)}/commented`, { headers: Daylog.authHeaders(true) })
-        .then(Daylog.handleResponse)
-        .then(entries => { openCommentedListModal(name + '님이 남긴 댓글', entries || []); })
-        .catch(() => showToast('댓글 목록을 불러오지 못했습니다')), '댓글을 불러오는 중...');
-}
-
-function openCommentedListModal(title, entries) {
-    const modal = document.getElementById('list-modal');
-    const titleEl = document.getElementById('list-modal-title');
-    const body = document.getElementById('list-modal-body');
-    if (!modal || !body) return;
-    modal.classList.remove('dday-mode');
-    modal.classList.add('list-fullscreen');
-    Daylog._openListKind = null;
-    titleEl.textContent = title;
-    body.innerHTML = '';
-    if (!entries.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>작성한 댓글이 없습니다</p></div>';
-    } else {
-        entries.forEach(function (e) {
-            const kindLabel = (e.type === 'memory') ? '추억' : '가볼곳';
-            const dateStr = e.createdAt ? String(e.createdAt).substring(0, 10).replace(/-/g, '.') : '';
-            const row = document.createElement('div');
-            row.className = 'lm-row cmt-row';
-            row.innerHTML =
-                '<div class="lm-row-main">' +
-                    '<div class="cmt-row-on">' + icon(e.type === 'memory' ? 'book' : 'bookmark', 13, 'color:#b08968;') +
-                        " <b>" + kindLabel + "</b> · '" + escapeHtml(e.itemTitle || '') + "'</div>" +
-                    '<div class="cmt-row-text">' + escapeHtml(e.content || '') + '</div>' +
-                    (dateStr ? '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' : '') +
-                '</div>';
-            row.addEventListener('click', function () {
-                if (e.type === 'memory') {
-                    const m = (Daylog.memories || []).find(x => String(x.id) === String(e.itemId));
-                    if (m) openDetailModal(m, true); else showToast('원본 추억을 찾을 수 없습니다');
-                } else {
-                    const c = (Daylog.checklists || []).find(x => String(x.id) === String(e.itemId));
-                    if (c) openChecklistDetail(c, true); else showToast('원본 가볼곳을 찾을 수 없습니다');
-                }
-            });
-            body.appendChild(row);
-        });
-    }
-    if (body) body.scrollTop = 0;
-    modal.classList.remove('hidden');
-}
-
 function openMemoryListModal(title, items) {
     const modal = document.getElementById('list-modal');
     const titleEl = document.getElementById('list-modal-title');
@@ -5071,7 +4757,7 @@ function showDDayInfo() {
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
     var since = getDdayStart();
-    var canEdit = false; // [B] edit by smsong - 디데이 수정 불가(요청): 편집 입력/저장 UI 비활성화
+    var canEdit = isCoupleRoom() && isRoomOwner();
     titleEl.innerHTML = 'D-Day';
     var html = '<div class="dday-info">';
     if (since) {

@@ -7,7 +7,6 @@ import com.example.Daylog.Entity.UserEntity;
 import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
-import com.example.Daylog.Repository.CommentRepository; // [B] edit by smsong - #3 멤버 댓글 집계
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
@@ -34,7 +33,6 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
-    private final CommentRepository commentRepository; // [B] edit by smsong - #3 멤버 댓글 집계
     private final Storage storage; // [smsong] 방 대표 이미지 GCS 업로드
     // [B] edit by smsong - 멤버십 변동 시 방 권한행 동기화(강퇴/탈퇴/삭제/재입장) 위해 주입
     private final PermissionService permissionService;
@@ -84,7 +82,7 @@ public class RoomService {
     }
 
     // ===== 생성 =====
-    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY", "ACQUAINTANCE"); // [B] edit by smsong - 지인(ACQUAINTANCE) 추가
+    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY");
 
     @Transactional
     public RoomDTO createRoom(String uid, String name, String type, String coupleSince) {
@@ -318,47 +316,17 @@ public class RoomService {
         List<RoomDTO.Member> memberDtos = new ArrayList<>();
         for (RoomMemberEntity m : members) {
             Optional<UserEntity> u = userRepository.findByUid(m.getUid());
-            boolean isOwnerMember = room.getOwnerUid().equals(m.getUid());
-            // [B] edit by smsong - #3 멤버 역할: 방장 / 멤버(생성권한) / 일반(조회+댓글)
-            String role = isOwnerMember ? "OWNER"
-                    : (permissionService.canCreate(m.getUid(), roomId) ? "MEMBER" : "GENERAL");
-            long commentCount = commentRepository.countByOwnerInRoom(m.getUid(), roomId); // [B] #3
             memberDtos.add(RoomDTO.Member.builder()
                     .uid(m.getUid())
                     .name(u.map(UserEntity::getName).orElse(null))
                     .nickname(u.map(UserEntity::getNickname).orElse(null))
                     .profileURL(u.map(UserEntity::getProfileURL).orElse(null))
-                    .owner(isOwnerMember)
-                    .role(role)
-                    .commentCount(commentCount)
+                    .owner(room.getOwnerUid().equals(m.getUid()))
                     .build());
         }
         RoomDTO dto = RoomDTO.from(room, requesterUid, members.size());
         dto.setMembers(memberDtos);
         return dto;
-    }
-
-    // [B] edit by smsong - #3 특정 멤버가 이 방에서 '댓글 단' 추억/가볼곳 ID 목록 (프론트가 보유 목록을 필터)
-    // [B] edit by smsong - #4 특정 멤버가 이 방에서 단 댓글 상세(게시글 종류/제목 + 댓글 내용)
-    @Transactional(readOnly = true)
-    public List<java.util.Map<String, Object>> getCommentedItems(Long roomId, String targetUid, String requesterUid) {
-        requireMember(requesterUid, roomId); // 멤버만 조회 가능
-        List<java.util.Map<String, Object>> out = new ArrayList<>();
-        for (com.example.Daylog.Entity.CommentEntity c : commentRepository.findCommentsByOwnerInRoom(targetUid, roomId)) {
-            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-            boolean isMem = c.getMemory() != null;
-            String title = isMem ? c.getMemory().getTitle() : (c.getChecklist() != null ? c.getChecklist().getTitle() : null);
-            String place = isMem ? c.getMemory().getPlaceName() : (c.getChecklist() != null ? c.getChecklist().getPlaceName() : null);
-            String label = (title != null && !title.isBlank()) ? title : (place != null && !place.isBlank() ? place : (isMem ? "추억" : "가볼곳"));
-            m.put("type", isMem ? "memory" : "checklist");
-            m.put("itemId", isMem ? c.getMemory().getId() : (c.getChecklist() != null ? c.getChecklist().getId() : null));
-            m.put("itemTitle", label);
-            m.put("content", c.getContent());
-            m.put("commentId", c.getId());
-            m.put("createdAt", c.getCreatedAt() != null ? c.getCreatedAt().toString() : null);
-            out.add(m);
-        }
-        return out;
     }
 
     // ===== 방 대표 이미지 변경 (방장만) =====
