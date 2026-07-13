@@ -393,8 +393,8 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
     border-bottom: 2px solid var(--gray-100); padding-bottom: 10px;
 }
 /* [B] edit by smsong - 타임라인/달력 보기 전환 */
-.tl-view-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--gray-100); padding-bottom: 10px; }
-.tl-view-header .section-title { margin: 0; border: none; padding: 0; }
+.tl-view-header { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--gray-100); padding-bottom: 10px; }
+.tl-view-header .section-title { margin: 0 auto 0 0; border: none; padding: 0; }
 .tl-view-toggle { display: flex; gap: 4px; background: var(--gray-100); border-radius: 11px; padding: 3px; flex-shrink: 0; }
 .tl-view-btn { border: none; background: transparent; color: var(--gray-500); width: 36px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
 .tl-view-btn.active { background: var(--white); color: var(--primary-dark); box-shadow: var(--shadow-sm); }
@@ -414,7 +414,15 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .cal-dow-cell.sat { color: #4b7b86; }
 .cal-cell { position: relative; aspect-ratio: 1 / 1; border-radius: 10px; background: var(--gray-50); border: 1px solid var(--gray-100); overflow: hidden; }
 .cal-cell.empty { background: transparent; border: none; }
-.cal-cell.has { cursor: pointer; }
+.cal-cell.has { cursor: pointer; border: 2px solid var(--cal-date-color, #2e9e5b); }
+/* [B] edit by smsong - 추억 날짜 색상 선택 */
+.tl-color-wrap { position: relative; }
+.tl-color-btn svg { color: var(--cal-date-color, #2e9e5b); }
+.cal-color-palette { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; background: var(--white); border: 1px solid var(--gray-200); border-radius: 12px; padding: 9px; box-shadow: var(--shadow-md); display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.cal-color-palette.hidden { display: none; }
+.cal-color-sw { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--white); box-shadow: 0 0 0 1px var(--gray-200); cursor: pointer; padding: 0; transition: transform .1s; }
+.cal-color-sw:hover { transform: scale(1.1); }
+.cal-color-sw:active { transform: scale(0.9); }
 .cal-day { position: absolute; top: 4px; left: 5px; z-index: 2; font-size: 0.72rem; font-weight: 700; color: var(--gray-600); line-height: 1; }
 .cal-cell.sun .cal-day { color: #d05a4a; }
 .cal-cell.sat .cal-day { color: #4b7b86; }

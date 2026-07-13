@@ -919,10 +919,18 @@ Daylog.thumbUrlOf = function (url) {
     return url.substring(0, i + 1) + 'thumb_' + url.substring(i + 1);
 };
 // 썸네일이 아직 없거나(구버전 기록/HEIC 등) 로드 실패하면 원본으로 폴백
+// [B] edit by smsong - 원본 1회 재시도(data-fb 가드) → 서버 썸네일 404 여도 항상 원본이 뜨게. 흰 썸네일 방지.
 Daylog._thumbFallback = function (img) {
-    img.onerror = null;
-    var full = img.getAttribute('data-full');
-    if (full && img.src !== full) img.src = full;
+    try {
+        var full = img.getAttribute('data-full');
+        if (full && img.getAttribute('data-fb') !== '1' && img.src !== full) {
+            img.setAttribute('data-fb', '1');
+            img.src = full;               // onerror 유지 → 원본도 실패하면 다시 호출
+            return;
+        }
+    } catch (e) {}
+    img.onerror = null;                   // 원본까지 실패 → 중단(더 이상 재시도 안 함)
+    img.classList.add('is-loaded');       // fade 클래스 보장(투명 잔상 방지)
 };
 // [B] edit by smsong - 목록(내 목록/댓글 목록 등) lm-thumb 도 동일하게 <img> + 서버 썸네일 + lazy/async.
 Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
@@ -2790,6 +2798,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== [B] edit by smsong - 타임라인/달력 보기 =====
     var _tlView = 'list';
     var _calYear = null, _calMonth = null; // month: 0-11
+    // 추억 날짜 테두리 색상 (기기 저장, 로그아웃/재시작 후에도 유지)
+    var CAL_COLORS = ['#2e9e5b', '#3f7fb0', '#d05a4a', '#8a6fbf', '#e08a3c', '#d46a9a', '#b08968', '#333333'];
+    var _calDateColor = (function () { try { return localStorage.getItem('daylog_cal_date_color') || '#2e9e5b'; } catch (e) { return '#2e9e5b'; } })();
+    function _applyCalColor() {
+        try { document.documentElement.style.setProperty('--cal-date-color', _calDateColor); } catch (e) {}
+    }
+    _applyCalColor(); // 초기 1회(버튼 아이콘 색 반영)
+    function _setCalColor(c) {
+        _calDateColor = c;
+        try { localStorage.setItem('daylog_cal_date_color', c); } catch (e) {}
+        _applyCalColor();
+    }
 
     function _initCalMonthIfNeeded() {
         if (_calYear != null && _calMonth != null) return;
@@ -2809,19 +2829,41 @@ document.addEventListener('DOMContentLoaded', () => {
         var cal = document.getElementById('timeline-calendar');
         var bList = document.getElementById('tl-view-list');
         var bCal = document.getElementById('tl-view-cal');
+        var colorWrap = document.getElementById('tl-color-wrap');
         if (view === 'calendar') {
             _initCalMonthIfNeeded();
             if (feed) feed.classList.add('hidden');
             if (cal) cal.classList.remove('hidden');
             if (bList) bList.classList.remove('active');
             if (bCal) bCal.classList.add('active');
+            if (colorWrap) colorWrap.style.display = '';
             renderCalendar();
         } else {
             if (feed) feed.classList.remove('hidden');
             if (cal) cal.classList.add('hidden');
             if (bList) bList.classList.add('active');
             if (bCal) bCal.classList.remove('active');
+            if (colorWrap) colorWrap.style.display = 'none';
+            var pal = document.getElementById('cal-color-palette');
+            if (pal) pal.classList.add('hidden');
         }
+    }
+
+    // [B] edit by smsong - 색상 팔레트 구성 + 선택
+    function _buildColorPalette() {
+        var pal = document.getElementById('cal-color-palette');
+        if (!pal || pal.getAttribute('data-built') === '1') return;
+        pal.setAttribute('data-built', '1');
+        pal.innerHTML = CAL_COLORS.map(function (c) {
+            return '<button type="button" class="cal-color-sw" data-color="' + c + '" style="background:' + c + ';" aria-label="색상"></button>';
+        }).join('');
+        pal.querySelectorAll('.cal-color-sw').forEach(function (sw) {
+            sw.addEventListener('click', function (e) {
+                e.stopPropagation();
+                _setCalColor(sw.getAttribute('data-color'));
+                pal.classList.add('hidden');
+            });
+        });
     }
 
     function renderCalendar() {
@@ -2864,7 +2906,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (items.length) {
                 var cover = coverUrlOf(items[0]);
                 var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
-                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
                 else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
                 if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
             }
@@ -2873,6 +2915,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         html += '<div class="cal-grid cal-days">' + cells + '</div>';
         cont.innerHTML = html;
+        _applyCalColor(); // [B] edit by smsong - 저장된 추억 날짜 색상 적용
 
         var prev = document.getElementById('cal-prev');
         var next = document.getElementById('cal-next');
@@ -2900,6 +2943,19 @@ document.addEventListener('DOMContentLoaded', () => {
     var _tlvCal = document.getElementById('tl-view-cal');
     if (_tlvList) _tlvList.addEventListener('click', function () { setTimelineView('list'); });
     if (_tlvCal) _tlvCal.addEventListener('click', function () { setTimelineView('calendar'); });
+    // [B] edit by smsong - 추억 날짜 색상 버튼 → 팔레트 토글
+    var _calColorBtn = document.getElementById('cal-color-btn');
+    if (_calColorBtn) _calColorBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _buildColorPalette();
+        var pal = document.getElementById('cal-color-palette');
+        if (pal) pal.classList.toggle('hidden');
+    });
+    document.addEventListener('click', function (e) {
+        var wrap = document.getElementById('tl-color-wrap');
+        var pal = document.getElementById('cal-color-palette');
+        if (pal && !pal.classList.contains('hidden') && wrap && !wrap.contains(e.target)) pal.classList.add('hidden');
+    });
     const tlFilterPop = document.getElementById('tl-filter-pop');
     if (tlFilterToggle && tlFilterPop) {
         tlFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); tlFilterPop.classList.toggle('hidden'); });
