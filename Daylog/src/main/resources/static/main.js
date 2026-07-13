@@ -2784,7 +2784,110 @@ document.addEventListener('DOMContentLoaded', () => {
         if (_tlPlaceFilter) list = list.filter(m => (m.placeName || '').trim() === _tlPlaceFilter);
         if (day) list = list.filter(m => (m.createdAt || '').substring(0, 10) === day);
         renderTimeline(list);
+        if (_tlView === 'calendar') renderCalendar(); // [B] edit by smsong - 달력 뷰 동기화
     }
+
+    // ===== [B] edit by smsong - 타임라인/달력 보기 =====
+    var _tlView = 'list';
+    var _calYear = null, _calMonth = null; // month: 0-11
+
+    function _initCalMonthIfNeeded() {
+        if (_calYear != null && _calMonth != null) return;
+        var base;
+        if (memoryList && memoryList.length) {
+            var latest = [...memoryList].sort(sortByDateDesc)[0];
+            base = (latest && latest.createdAt) ? new Date(latest.createdAt) : new Date();
+            if (isNaN(base.getTime())) base = new Date();
+        } else base = new Date();
+        _calYear = base.getFullYear();
+        _calMonth = base.getMonth();
+    }
+
+    function setTimelineView(view) {
+        _tlView = view;
+        var feed = document.getElementById('timeline-feed');
+        var cal = document.getElementById('timeline-calendar');
+        var bList = document.getElementById('tl-view-list');
+        var bCal = document.getElementById('tl-view-cal');
+        if (view === 'calendar') {
+            _initCalMonthIfNeeded();
+            if (feed) feed.classList.add('hidden');
+            if (cal) cal.classList.remove('hidden');
+            if (bList) bList.classList.remove('active');
+            if (bCal) bCal.classList.add('active');
+            renderCalendar();
+        } else {
+            if (feed) feed.classList.remove('hidden');
+            if (cal) cal.classList.add('hidden');
+            if (bList) bList.classList.add('active');
+            if (bCal) bCal.classList.remove('active');
+        }
+    }
+
+    function renderCalendar() {
+        var cont = document.getElementById('timeline-calendar');
+        if (!cont) return;
+        _initCalMonthIfNeeded();
+        var y = _calYear, mo = _calMonth;
+
+        // 날짜별 추억 그룹 (전체 추억 기준, YYYY-MM-DD)
+        var byDate = {};
+        (memoryList || []).forEach(function (m) {
+            var key = (m.createdAt || '').substring(0, 10);
+            if (key) (byDate[key] = byDate[key] || []).push(m);
+        });
+
+        var startDow = new Date(y, mo, 1).getDay();       // 0=일
+        var daysInMonth = new Date(y, mo + 1, 0).getDate();
+        var chevL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+        var chevR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+        var html = '<div class="cal-head">' +
+            '<button type="button" class="cal-nav" id="cal-prev" aria-label="이전 달">' + chevL + '</button>' +
+            '<div class="cal-month">' + y + '년 ' + (mo + 1) + '월</div>' +
+            '<button type="button" class="cal-nav" id="cal-next" aria-label="다음 달">' + chevR + '</button>' +
+            '</div>';
+        html += '<div class="cal-grid cal-dow">' +
+            ['일', '월', '화', '수', '목', '금', '토'].map(function (d, i) {
+                return '<div class="cal-dow-cell' + (i === 0 ? ' sun' : '') + (i === 6 ? ' sat' : '') + '">' + d + '</div>';
+            }).join('') + '</div>';
+
+        var cells = '';
+        for (var i = 0; i < startDow; i++) cells += '<div class="cal-cell empty"></div>';
+        for (var d = 1; d <= daysInMonth; d++) {
+            var dateKey = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+            var items = byDate[dateKey] || [];
+            var dow = new Date(y, mo, d).getDay();
+            var cls = 'cal-cell' + (items.length ? ' has' : '') + (dow === 0 ? ' sun' : '') + (dow === 6 ? ' sat' : '');
+            var cell = '<div class="' + cls + '" data-date="' + dateKey + '">';
+            cell += '<span class="cal-day">' + d + '</span>';
+            if (items.length) {
+                var cover = coverUrlOf(items[0]);
+                var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
+                else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
+                if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
+            }
+            cell += '</div>';
+            cells += cell;
+        }
+        html += '<div class="cal-grid cal-days">' + cells + '</div>';
+        cont.innerHTML = html;
+
+        var prev = document.getElementById('cal-prev');
+        var next = document.getElementById('cal-next');
+        if (prev) prev.addEventListener('click', function () { _calMonth--; if (_calMonth < 0) { _calMonth = 11; _calYear--; } renderCalendar(); });
+        if (next) next.addEventListener('click', function () { _calMonth++; if (_calMonth > 11) { _calMonth = 0; _calYear++; } renderCalendar(); });
+        cont.querySelectorAll('.cal-cell.has').forEach(function (cell) {
+            cell.addEventListener('click', function () {
+                var key = cell.getAttribute('data-date');
+                var items = byDate[key] || [];
+                if (items.length === 1) openDetailModal(items[0]);
+                else if (items.length > 1) openMemoryListModal(key.replace(/-/g, '.') + ' 추억', items);
+            });
+        });
+    }
+    Daylog._renderCalendar = renderCalendar; // 외부(로드 후)에서 갱신용
     // 검색어(제목/내용/위치) 검색
     const tlKw = document.getElementById('tl-filter-keyword');
     const tlKwBtn = document.getElementById('tl-keyword-search');
@@ -2792,6 +2895,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tlKwBtn) tlKwBtn.addEventListener('click', runTlKeyword);
     if (tlKw) tlKw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runTlKeyword(); } });
     const tlFilterToggle = document.getElementById('tl-filter-toggle');
+    // [B] edit by smsong - 타임라인/달력 보기 전환 버튼
+    var _tlvList = document.getElementById('tl-view-list');
+    var _tlvCal = document.getElementById('tl-view-cal');
+    if (_tlvList) _tlvList.addEventListener('click', function () { setTimelineView('list'); });
+    if (_tlvCal) _tlvCal.addEventListener('click', function () { setTimelineView('calendar'); });
     const tlFilterPop = document.getElementById('tl-filter-pop');
     if (tlFilterToggle && tlFilterPop) {
         tlFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); tlFilterPop.classList.toggle('hidden'); });

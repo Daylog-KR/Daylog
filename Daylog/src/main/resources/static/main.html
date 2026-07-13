@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.17">
+    <link rel="stylesheet" href="main.css?v=1.0.19">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -135,8 +135,16 @@
     <section id="tab-timeline" class="tab-content" style="display: none;">
         <div class="content-wrapper">
             <section class="timeline-section">
-                <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg> 타임라인</h3>
+                <!-- [B] edit by smsong - 타임라인/달력 보기 전환 헤더 -->
+                <div class="tl-view-header">
+                    <h3 class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg> 타임라인</h3>
+                    <div class="tl-view-toggle">
+                        <button type="button" id="tl-view-list" class="tl-view-btn active" title="타임라인으로 보기" aria-label="타임라인으로 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.3"/><circle cx="3.5" cy="12" r="1.3"/><circle cx="3.5" cy="18" r="1.3"/></svg></button>
+                        <button type="button" id="tl-view-cal" class="tl-view-btn" title="달력으로 보기" aria-label="달력으로 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
+                    </div>
+                </div>
                 <div id="timeline-feed"></div>
+                <div id="timeline-calendar" class="hidden"></div>
             </section>
         </div>
     </section>
@@ -706,7 +714,7 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.18"></script>
+<script src="main.js?v=1.0.19"></script>
 <script src="push.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>
