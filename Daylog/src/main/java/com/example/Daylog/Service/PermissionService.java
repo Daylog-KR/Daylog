@@ -295,6 +295,23 @@ public class PermissionService {
         });
     }
 
+    // [B] edit by smsong - #3 이 방 알림 켜기/끄기 (사용자별). 행이 없으면 생성.
+    @Transactional
+    public boolean setNotifyMuted(String uid, Long roomId, boolean muted) {
+        requireRoom(roomId);
+        PermissionEntity e = permissionRepository.findByRoomIdAndUid(roomId, uid)
+                .orElseGet(() -> PermissionEntity.builder().roomId(roomId).uid(uid).requestStatus("NONE").build());
+        e.setNotifyMuted(muted);
+        permissionRepository.save(e);
+        return muted;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isNotifyMuted(String uid, Long roomId) {
+        return permissionRepository.findByRoomIdAndUid(roomId, uid)
+                .map(PermissionEntity::isNotifyMuted).orElse(false);
+    }
+
     // [B] edit by smsong - 수락 안내 대상 여부: 권한행의 acceptSeen 반환(행 없으면 true=안내 없음).
     //  rooms '내가 속한 방' 목록 DTO 에 실어 최초 1회 '입장 수락됨' 안내를 판단한다.
     @Transactional(readOnly = true)

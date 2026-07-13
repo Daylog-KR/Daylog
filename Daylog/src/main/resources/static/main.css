@@ -35,6 +35,27 @@
     --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* [B] edit by smsong - #6 다크모드: 변수 오버라이드 */
+[data-theme="dark"] {
+    --primary-light: #4a3f34;
+    --rose-soft: #3a2b2b;
+    --bg-color: #171513;
+    --gray-50: #211e1b;
+    --gray-100: #2a2622;
+    --gray-200: #3a352f;
+    --gray-400: #8f887f;
+    --gray-500: #a89f94;
+    --gray-600: #c4bcb1;
+    --gray-800: #f1ece5;
+    --white: #201d1a;
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-up: 0 -6px 22px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] body { background: var(--bg-color); }
+[data-theme="dark"] img.cal-thumb, [data-theme="dark"] .tl-thumb img, [data-theme="dark"] .lm-thumb img, [data-theme="dark"] .cl-thumb img { filter: brightness(0.92); }
+[data-theme="dark"] .social-badge.sb-google { background: #2a2622; color: #e8e2da; border-color: #3a352f; }
+
 html, body {
     width: 100%;             /* [수정] 가로 크기 고정 */
     max-width: 100%;         /* [수정] 가로 최대크기 제한 */
@@ -620,7 +641,7 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
    z-index 를 카드(.welcome-content z-index:2)보다 위(5)로 → 축포가 폼 '위'에서 터짐.
    pointer-events:none 이라 카드 위를 덮어도 동의 체크/버튼 클릭은 그대로 통과 ========= */
 .welcome-fx {
-    position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden;
+    position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden;
 }
 /* [B] edit by smsong - 커다란 링 제거. 여러 지점에서 터지는 '폭죽' 스파크 + 떨어지는 색종이.
    원점(터지는 위치)은 JS 가 left/top(px)로 지정 → 화면 곳곳에서 파바박 터짐. */
@@ -1231,6 +1252,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border: 1px solid var(--gray-200); border-radius: 18px;
 }
 .dday-info-emoji { font-size: 2.4rem; margin-bottom: 12px; }
+/* [B] edit by smsong - #4 탭하면 축포 */
+.dday-celebrate { cursor: pointer; border-radius: 16px; padding: 8px 6px; transition: background 0.15s, transform 0.1s; -webkit-tap-highlight-color: transparent; user-select: none; }
+.dday-celebrate:hover { background: var(--gray-50); }
+.dday-celebrate:active { transform: scale(0.97); }
 .dday-info-label { font-size: 0.9rem; color: var(--gray-500); margin-bottom: 6px; }
 .dday-info-date {
     font-family: var(--font-logo); font-size: 1.5rem; font-weight: 600;
@@ -1951,6 +1976,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 .logout-menu-btn:hover { background: var(--gray-50); }
 .logout-menu-btn:active { transform: scale(0.98); }
+/* [B] edit by smsong - #2 로그아웃 강조: 빨간 테두리 */
+.logout-btn { border-color: #e05a4a; color: #e05a4a; }
+.logout-btn:hover { background: #fdf0ee; color: #d9433a; border-color: #d9433a; }
+.logout-menu-btn { border-color: #e05a4a; color: #d34a3c; }
+.logout-menu-btn:hover { background: #fdf0ee; border-color: #d9433a; }
+/* [B] edit by smsong - #3 방 알림 토글 버튼 상태 표시 */
+.room-notif-toggle { display: flex; align-items: center; gap: 8px; }
+.room-notif-toggle .rnt-state { margin-left: auto; font-size: 0.82rem; font-weight: 700; color: #2e9e5b; background: #e8f3ec; border-radius: 999px; padding: 3px 12px; }
+.room-notif-toggle.off .rnt-state { color: #a8a29a; background: var(--gray-100); }
+.room-notif-toggle.off .rnt-ico { color: #a8a29a; }
 
 /* ---- 검색어(제목/내용/위치) 검색 행 (타임라인 · 가볼곳 공용) ---- */
 .filter-search-row { display: flex; gap: 8px; align-items: center; }

@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+    <!-- [B] edit by smsong - #6 다크모드: 렌더 전에 테마 적용(깜빡임 방지) -->
+    <script>(function(){try{var t=localStorage.getItem("daylog_theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
@@ -14,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.20">
+    <link rel="stylesheet" href="main.css?v=1.0.21">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -227,15 +229,17 @@
             <!-- [smsong] 친구/가족 방: 구성원 프로필 그리드 -->
             <div id="member-view" class="member-view" style="display:none;"></div>
 
+            <!-- [B] edit by smsong - #1 멤버 관리(방장 전용)를 멤버 보기 바로 위로 이동 -->
+            <button type="button" id="btn-perm-admin" class="perm-menu-btn" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 관리</button>
             <!-- [B] edit by smsong - #3 [프로필 수정] 제거, [멤버 보기] 추가(휴지통 위) -->
             <button type="button" id="btn-member-view" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 보기</button>
             <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
+            <!-- [B] edit by smsong - #3 방 알림 켜기/끄기 (휴지통 아래, 방 목록 위) -->
+            <button type="button" id="btn-room-notif-toggle" class="rooms-menu-btn room-notif-toggle" aria-pressed="true"><span class="rnt-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> <span class="rnt-label">방 알림</span> <span class="rnt-state">켜짐</span></button>
             <!-- [smsong] 방 목록으로 (다른 방으로 이동) -->
             <button type="button" id="btn-rooms" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> 방 목록</button>
             <!-- [B] edit by smsong - #3 [알림 켜기] 제거 (설정 정리) -->
             <button type="button" id="btn-profile-logout" class="logout-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> 로그아웃</button>
-            <!-- [smsong] 방장 전용: 멤버 관리(강퇴) -->
-            <button type="button" id="btn-perm-admin" class="perm-menu-btn" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 관리</button>
             <!-- [E] edit by smsong -->
 
             <p class="version-text">Daylog v2.0.0</p>
@@ -308,9 +312,7 @@
 
 <!-- [B] edit by smsong - 승인된 멤버 최초 진입: 환영 + 이용수칙 동의 폼 -->
 <div id="welcome-modal" class="modal hidden">
-    <!-- [B] edit by smsong - 화면을 가득 채우는 전체 화면 축포 레이어 (카드 뒤에서 사방으로 팡) -->
-    <div class="welcome-fx" id="welcome-fx" aria-hidden="true"></div>
-    <!-- [E] edit by smsong -->
+    <!-- [B] edit by smsong - #4 축포 레이어는 body 레벨(#confetti-fx)로 이동 → 폼 닫아도 유지 -->
     <div class="modal-content welcome-content">
         <div class="welcome-logo-wrap">
             <div class="welcome-logo">
@@ -716,10 +718,12 @@
     <div class="lightbox-hint" id="lightbox-hint">탭하면 확대 · 좌우로 넘기기</div>
 </div>
 
+<!-- [B] edit by smsong - #4 축포 레이어 (body 레벨, 모달과 독립 → 폼 닫아도 다 떨어질 때까지 유지) -->
+<div class="welcome-fx" id="welcome-fx" aria-hidden="true"></div>
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.20"></script>
+<script src="main.js?v=1.0.21"></script>
 <script src="push.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>

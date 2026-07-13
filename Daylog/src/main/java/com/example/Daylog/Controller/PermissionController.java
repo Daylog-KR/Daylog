@@ -103,5 +103,13 @@ public class PermissionController {
         permissionService.dismissRequest(uidOf(ud), roomId);
         return ResponseEntity.ok().build();
     }
+    // [B] edit by smsong - #3 이 방 알림 켜기/끄기 (muted=true 면 끔)
+    @PostMapping("/notify-mute")
+    public ResponseEntity<java.util.Map<String, Object>> notifyMute(@RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                                    @RequestParam("muted") boolean muted,
+                                                                    @AuthenticationPrincipal UserDetails ud) {
+        boolean m = permissionService.setNotifyMuted(uidOf(ud), roomId, muted);
+        return ResponseEntity.ok(java.util.Map.of("notifyMuted", m));
+    }
     // [E] edit by smsong
 }

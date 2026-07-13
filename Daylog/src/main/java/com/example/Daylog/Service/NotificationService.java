@@ -2,6 +2,7 @@ package com.example.Daylog.Service;
 
 import com.example.Daylog.Entity.NotificationEntity;
 import com.example.Daylog.Repository.NotificationRepository;
+import com.example.Daylog.Repository.PermissionRepository; // [B] edit by smsong - #3 방 알림 음소거 체크
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final WebPushService webPushService;
+    private final PermissionRepository permissionRepository; // [B] edit by smsong - #3
 
     public void notify(String recipientUid, String type, String title, String body, String url) {
         notify(recipientUid, null, type, title, body, url);
@@ -26,6 +28,14 @@ public class NotificationService {
     // [B] edit by smsong - #1 방별 알림: roomId 포함 저장
     public void notify(String recipientUid, Long roomId, String type, String title, String body, String url) {
         if (recipientUid == null || recipientUid.isBlank()) return;
+        // [B] edit by smsong - #3 수신자가 이 방 알림을 껐으면(muted) 저장·발송 모두 생략
+        if (roomId != null) {
+            try {
+                boolean muted = permissionRepository.findByRoomIdAndUid(roomId, recipientUid)
+                        .map(com.example.Daylog.Entity.PermissionEntity::isNotifyMuted).orElse(false);
+                if (muted) return;
+            } catch (Exception ignore) {}
+        }
         try {
             notificationRepository.save(NotificationEntity.builder()
                     .recipientUid(recipientUid)

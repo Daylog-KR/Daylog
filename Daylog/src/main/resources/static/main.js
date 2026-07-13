@@ -337,6 +337,7 @@ function loadMyPermission() {
         .then(function (p) {
             Daylog.myPerm = p || null;
             applyMyPermUI();
+            try { applyRoomNotifToggle(); } catch (e) {} // [B] edit by smsong - #3 방 알림 토글 상태 반영
             if (p && !p.accessAllowed && !p.admin) { blockUnauthorizedUser(); } // 접근 미허용 → 차단
             // [B] edit by smsong - 방장(관리자)이면 진입 시 대기중 접근 요청 알림 확인
             else if ((p && p.admin) || isRoomOwner()) { try { checkPendingAccessRequests(); } catch (e) {} }
@@ -447,6 +448,35 @@ if (Daylog) { Daylog.openRoomMembers = openRoomMembers; }
 
 
 // 권한 API 전용 fetch: handleResponse(자동 로그아웃/차단 튕김)를 쓰지 않고 상태코드를 그대로 표면화
+// [B] edit by smsong - #3 방 알림 켜기/끄기 토글
+function applyRoomNotifToggle() {
+    var btn = document.getElementById('btn-room-notif-toggle');
+    if (!btn) return;
+    var muted = !!(window.Daylog && Daylog.myPerm && Daylog.myPerm.notifyMuted);
+    var on = !muted;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.classList.toggle('off', !on);
+    var st = btn.querySelector('.rnt-state');
+    if (st) st.textContent = on ? '켜짐' : '꺼짐';
+    var ico = btn.querySelector('.rnt-ico');
+    if (ico) ico.innerHTML = on
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+}
+function toggleRoomNotif() {
+    if (!(window.Daylog && Daylog.api)) return;
+    var curMuted = !!(Daylog.myPerm && Daylog.myPerm.notifyMuted);
+    var newMuted = !curMuted;
+    withLoading(_permFetch('/api/permissions/notify-mute?muted=' + newMuted, { method: 'POST', headers: Daylog.authHeaders(true) }), '변경 중...')
+        .then(function (res) { return res.json ? res.json() : res; })
+        .then(function (d) {
+            if (Daylog.myPerm) Daylog.myPerm.notifyMuted = (d && typeof d.notifyMuted === 'boolean') ? d.notifyMuted : newMuted;
+            applyRoomNotifToggle();
+            showToast(newMuted ? '이 방 알림 꺼짐' : '이 방 알림 켜짐');
+        })
+        .catch(function () { showToast('변경에 실패했어요'); });
+}
+
 function _permFetch(path, opts) {
     return fetch(Daylog.api + path, opts || { headers: Daylog.authHeaders(true) })
         .then(function (res) {
@@ -3401,6 +3431,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // [B] edit by smsong - #3 멤버 보기 버튼 → 멤버 모달
     var _bmv = document.getElementById('btn-member-view');
     if (_bmv) _bmv.addEventListener('click', openMemberModal);
+    // [B] edit by smsong - #3 방 알림 켜기/끄기 토글 버튼
+    var _brnt = document.getElementById('btn-room-notif-toggle');
+    if (_brnt) _brnt.addEventListener('click', toggleRoomNotif);
+    try { applyRoomNotifToggle(); } catch (e) {}
     var _mmClose = document.getElementById('member-modal-close');
     if (_mmClose) _mmClose.addEventListener('click', function () { var mm = document.getElementById('member-modal'); if (mm) mm.classList.add('hidden'); });
     var _mmModal = document.getElementById('member-modal');
@@ -5246,10 +5280,13 @@ function showDDayInfo() {
         const start = new Date(since);
         const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
         const n = daysSince(since);
-        html += '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
-                '<div class="dday-info-label">우리가 만난 날</div>' +
+        // [B] edit by smsong - #4 '우리가 만난 날' 탭할 때마다 축포
+        html += '<div class="dday-celebrate" id="dday-celebrate" title="탭하면 축포가 터져요">' +
+                '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
+                '<div class="dday-info-label">우리가 만난 날 🎉</div>' +
                 '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
-                '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>';
+                '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
+                '</div>';
     } else {
         html += '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
                 '<div class="dday-info-label">만난 날짜가 설정되지 않았어요</div>';
@@ -5262,6 +5299,12 @@ function showDDayInfo() {
     }
     html += '</div>';
     body.innerHTML = html;
+    // [B] edit by smsong - #4 '우리가 만난 날' 탭마다 축포 + 열릴 때 1회
+    var _cel = document.getElementById('dday-celebrate');
+    if (_cel) {
+        _cel.addEventListener('click', function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); });
+        if (since) setTimeout(function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); }, 180);
+    }
     if (canEdit) {
         var saveBtn = document.getElementById('dday-edit-save');
         if (saveBtn) saveBtn.addEventListener('click', saveDday);

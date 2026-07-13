@@ -59,6 +59,10 @@ public class PermissionEntity {
     @Builder.Default
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean welcomeSeen = false;
+    // [B] edit by smsong - #3 이 방의 알림 음소거(끄기) 여부 (사용자별·방별)
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
+    private boolean notifyMuted = false;
     // [E] edit by smsong
 
     // [B] edit by smsong - 방장에게 '강퇴' 당한 상태인지 구분.

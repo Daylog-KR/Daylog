@@ -24,6 +24,27 @@
     --font-logo: 'Lora', serif;
 }
 
+/* [B] edit by smsong - #6 다크모드: 변수 오버라이드 */
+[data-theme="dark"] {
+    --primary-light: #4a3f34;
+    --bg-color: #171513;
+    --gray-50: #211e1b;
+    --gray-100: #2a2622;
+    --gray-200: #3a352f;
+    --gray-300: #4a443d;
+    --gray-400: #8f887f;
+    --gray-500: #a89f94;
+    --gray-600: #c4bcb1;
+    --gray-700: #dcd4ca;
+    --gray-800: #f1ece5;
+    --white: #201d1a;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25);
+    --shadow-md: 0 4px 15px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.4);
+}
+[data-theme="dark"] body { background: var(--bg-color); }
+[data-theme="dark"] .social-badge.sb-google { background: #2a2622; color: #e8e2da; border-color: #3a352f; }
+
 html, body {
     height: 100%; font-family: var(--font-main);
     background-color: var(--bg-color); color: var(--gray-800);
@@ -225,6 +246,13 @@ html, body {
 .rm-btn.primary { background: var(--primary); color: var(--white); }
 .rm-btn.primary:hover { background: var(--primary-dark); }
 .rm-btn:active { transform: scale(0.98); }
+/* [B] edit by smsong - #2 로그아웃 강조: 빨간 테두리 */
+#btn-profile-logout { border: 1.5px solid #e05a4a; color: #d34a3c; background: var(--white); }
+#btn-profile-logout:hover { background: #fdf0ee; border-color: #d9433a; color: #d9433a; }
+/* [B] edit by smsong - #6 다크모드 토글 버튼 */
+.dark-toggle-btn { display: flex; align-items: center; }
+.dark-toggle-btn .dt-state { margin-left: auto; font-size: 0.82rem; font-weight: 700; color: var(--gray-500); background: var(--gray-100); border-radius: 999px; padding: 3px 12px; }
+.dark-toggle-btn.on .dt-state { color: #f0d9b5; background: #4a3f34; }
 
 /* [smsong] 방 대표 이미지 픽커 */
 .room-img-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
