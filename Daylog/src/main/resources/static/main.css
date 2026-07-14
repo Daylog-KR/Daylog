@@ -1984,9 +1984,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .logout-btn:hover { background: #fdf0ee; color: #d9433a; border-color: #d9433a; }
 .logout-menu-btn { border-color: #e05a4a; color: #d34a3c; }
 .logout-menu-btn:hover { background: #fdf0ee; border-color: #d9433a; }
-/* [B] edit by smsong - #3 방 알림 토글 버튼 상태 표시 */
-.room-notif-toggle { display: flex; align-items: center; gap: 8px; }
-.room-notif-toggle .rnt-state { margin-left: auto; font-size: 0.82rem; font-weight: 700; color: #2e9e5b; background: #e8f3ec; border-radius: 999px; padding: 3px 12px; }
+/* [B] edit by smsong - #3 방 알림 토글 버튼 / 라벨 중앙 정렬 (상태 뱃지는 오른쪽 절대배치) */
+.room-notif-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; position: relative; }
+.room-notif-toggle .rnt-state { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.82rem; font-weight: 700; color: #2e9e5b; background: #e8f3ec; border-radius: 999px; padding: 3px 12px; }
 .room-notif-toggle.off .rnt-state { color: #a8a29a; background: var(--gray-100); }
 .room-notif-toggle.off .rnt-ico { color: #a8a29a; }
 
@@ -2252,12 +2252,12 @@ body.picking .bottom-nav {
 /* [B] edit by smsong - 권한 설정 버튼 + 관리자 권한 메뉴 + 차단화면 요청 버튼 */
 .perm-menu-btn {
     display: block; width: 100%; margin-top: 10px;
-    background: var(--primary, #b08968); color: #fff;
-    border: 1px solid var(--primary, #b08968); border-radius: 14px;
-    padding: 14px; font-size: 0.95rem; font-weight: 700;
+    background: var(--white); color: var(--gray-600);
+    border: 1px solid var(--primary-light); border-radius: 14px;
+    padding: 14px; font-size: 0.95rem; font-weight: 600;
     font-family: var(--font-main); cursor: pointer; transition: all 0.2s ease;
 }
-.perm-menu-btn:hover { filter: brightness(1.05); }
+.perm-menu-btn:hover { background: var(--gray-50); }
 .perm-menu-btn:active { transform: scale(0.98); }
 
 /* [B] edit by smsong - #1 권한 모달: 헤더/설명 고정(스크롤X), 유저 목록만 스크롤 */

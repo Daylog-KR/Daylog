@@ -360,6 +360,21 @@ html, body {
 .profile-view-sub { margin-top: 4px; font-size: 0.85rem; color: var(--gray-500); }
 .profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .profile-actions .rm-btn { width: 100%; }
+/* [B] edit by smsong - 프로필 폼 버튼을 main [멤버 보기]/[휴지통] 과 동일 스타일로 통일 */
+.profile-actions .rm-btn,
+.profile-actions .rm-btn.primary {
+    display: flex; align-items: center; justify-content: center;
+    background: var(--white); color: var(--gray-600);
+    border: 1px solid var(--primary-light); border-radius: 14px;
+    padding: 14px; font-size: 0.95rem; font-weight: 600;
+    box-shadow: none;
+}
+.profile-actions .rm-btn:hover,
+.profile-actions .rm-btn.primary:hover { background: var(--gray-50); filter: none; }
+.profile-actions .rm-btn:active { transform: scale(0.98); }
+/* 로그아웃은 main 로그아웃과 동일하게 빨간 테두리 */
+.profile-actions #btn-profile-logout { border: 1.5px solid #e05a4a; color: #d34a3c; background: var(--white); }
+.profile-actions #btn-profile-logout:hover { background: #fdf0ee; border-color: #d9433a; color: #d9433a; }
 
 /* [B] edit by smsong - 프로필 수정 폼 (아바타 + 닉네임) */
 .pe-avatar-wrap {
