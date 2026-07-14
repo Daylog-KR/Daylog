@@ -416,6 +416,9 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 /* [B] edit by smsong - 타임라인/달력 보기 전환 */
 .tl-view-header { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--gray-100); padding-bottom: 10px; }
 .tl-view-header .section-title { margin: 0 auto 0 0; border: none; padding: 0; }
+/* [B] edit by smsong - #2 색상 지정 버튼을 달력/리스트 토글 왼쪽으로 */
+.tl-view-header .tl-color-wrap { order: 1; }
+.tl-view-header .tl-view-toggle { order: 2; }
 .tl-view-toggle { display: flex; gap: 4px; background: var(--gray-100); border-radius: 11px; padding: 3px; flex-shrink: 0; }
 .tl-view-btn { border: none; background: transparent; color: var(--gray-500); width: 36px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
 .tl-view-btn.active { background: var(--white); color: var(--primary-dark); box-shadow: var(--shadow-sm); }

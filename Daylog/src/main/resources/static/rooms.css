@@ -249,9 +249,9 @@ html, body {
 /* [B] edit by smsong - #2 로그아웃 강조: 빨간 테두리 */
 #btn-profile-logout { border: 1.5px solid #e05a4a; color: #d34a3c; background: var(--white); }
 #btn-profile-logout:hover { background: #fdf0ee; border-color: #d9433a; color: #d9433a; }
-/* [B] edit by smsong - #6 다크모드 토글 버튼 */
-.dark-toggle-btn { display: flex; align-items: center; }
-.dark-toggle-btn .dt-state { margin-left: auto; font-size: 0.82rem; font-weight: 700; color: var(--gray-500); background: var(--gray-100); border-radius: 999px; padding: 3px 12px; }
+/* [B] edit by smsong - #6 다크모드 토글 버튼 / #1 라벨 중앙 정렬 */
+.dark-toggle-btn { display: flex; align-items: center; justify-content: center; position: relative; }
+.dark-toggle-btn .dt-state { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.82rem; font-weight: 700; color: var(--gray-500); background: var(--gray-100); border-radius: 999px; padding: 3px 12px; }
 .dark-toggle-btn.on .dt-state { color: #f0d9b5; background: #4a3f34; }
 
 /* [smsong] 방 대표 이미지 픽커 */
@@ -335,6 +335,11 @@ html, body {
 
 /* [B] edit by smsong - 내 프로필 보기 패널 */
 .profile-view { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 4px 0 6px; }
+/* [B] edit by smsong - #3 프로필 우상단 X 닫기 */
+.profile-card { position: relative; }
+.profile-x-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--gray-100); color: var(--gray-600); font-size: 1.5rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 3; padding: 0; transition: background 0.15s; }
+.profile-x-close:hover { background: var(--gray-200); color: var(--gray-800); }
+.profile-x-close:active { transform: scale(0.92); }
 .profile-view-avatar {
     width: 92px; height: 92px; border-radius: 50%; overflow: hidden;
     background: var(--gray-100); border: 1px solid var(--gray-200);
