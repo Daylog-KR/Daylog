@@ -256,18 +256,19 @@ html, body {
 .setting-toggle .ui-switch { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
 .ui-switch { position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: var(--gray-300, #d1cbc1); transition: background .22s ease; }
 .ui-switch .sw-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); transition: transform .22s cubic-bezier(.2,.8,.3,1); display: flex; align-items: center; justify-content: center; }
-.ui-switch .sw-txt { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 0.58rem; font-weight: 800; color: #fff; letter-spacing: .4px; }
-.ui-switch .sw-on { left: 9px; opacity: 0; }
-.ui-switch .sw-off { right: 8px; opacity: 1; color: #fff; }
+.ui-switch .sw-knob .sw-on, .ui-switch .sw-knob .sw-off { font-size: 0.5rem; font-weight: 800; line-height: 1; letter-spacing: .2px; }
+.ui-switch .sw-knob .sw-on { display: none; color: var(--primary-dark, #9c6644); }
+.ui-switch .sw-knob .sw-off { display: block; color: #bcb4a8; }
 .ui-switch .sw-sun { display: block; }
 .ui-switch .sw-moon { display: none; }
 /* ON 상태 */
-.setting-toggle.on .ui-switch { background: #3b5bdb; }
+.setting-toggle.on .ui-switch { background: var(--primary, #b08968); }
 .setting-toggle.on .ui-switch .sw-knob { transform: translateX(22px); }
-.setting-toggle.on .ui-switch .sw-on { opacity: 1; }
-.setting-toggle.on .ui-switch .sw-off { opacity: 0; }
-/* 다크모드 변형: 노브에 해/달 */
-.setting-toggle.dark.on .ui-switch { background: #5847a6; }
+.setting-toggle.on .ui-switch .sw-knob .sw-on { display: block; }
+.setting-toggle.on .ui-switch .sw-knob .sw-off { display: none; }
+/* 다크모드 변형: 노브에 해/달 (텍스트 대신 아이콘) */
+.setting-toggle.dark .ui-switch .sw-knob .sw-on, .setting-toggle.dark .ui-switch .sw-knob .sw-off { display: none !important; }
+.setting-toggle.dark.on .ui-switch { background: #7a6f63; }
 .setting-toggle.dark.on .ui-switch .sw-sun { display: none; }
 .setting-toggle.dark.on .ui-switch .sw-moon { display: block; }
 

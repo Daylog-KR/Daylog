@@ -1991,13 +1991,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .setting-toggle .ui-switch { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
 .ui-switch { position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: var(--gray-200, #e5e0d8); transition: background .22s ease; }
 .ui-switch .sw-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); transition: transform .22s cubic-bezier(.2,.8,.3,1); display: flex; align-items: center; justify-content: center; }
-.ui-switch .sw-txt { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 0.58rem; font-weight: 800; color: #fff; letter-spacing: .4px; }
-.ui-switch .sw-on { left: 9px; opacity: 0; }
-.ui-switch .sw-off { right: 8px; opacity: 1; }
-.setting-toggle.on .ui-switch { background: #3b5bdb; }
+.ui-switch .sw-knob .sw-on, .ui-switch .sw-knob .sw-off { font-size: 0.5rem; font-weight: 800; line-height: 1; letter-spacing: .2px; }
+.ui-switch .sw-knob .sw-on { display: none; color: var(--primary-dark, #9c6644); }
+.ui-switch .sw-knob .sw-off { display: block; color: #bcb4a8; }
+.setting-toggle.on .ui-switch { background: var(--primary, #b08968); }
 .setting-toggle.on .ui-switch .sw-knob { transform: translateX(22px); }
-.setting-toggle.on .ui-switch .sw-on { opacity: 1; }
-.setting-toggle.on .ui-switch .sw-off { opacity: 0; }
+.setting-toggle.on .ui-switch .sw-knob .sw-on { display: block; }
+.setting-toggle.on .ui-switch .sw-knob .sw-off { display: none; }
 
 /* ---- 검색어(제목/내용/위치) 검색 행 (타임라인 · 가볼곳 공용) ---- */
 .filter-search-row { display: flex; gap: 8px; align-items: center; }
