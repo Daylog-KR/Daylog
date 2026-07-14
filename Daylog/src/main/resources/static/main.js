@@ -3422,9 +3422,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // [B] edit by smsong - #3 btn-edit-profile 제거됨 → null 가드
     var _bep = document.getElementById('btn-edit-profile');
     if (_bep) _bep.addEventListener('click', openEditPage);
-    // [B] edit by smsong - #3 멤버 보기 버튼 → 멤버 모달
-    var _bmv = document.getElementById('btn-member-view');
-    if (_bmv) _bmv.addEventListener('click', openMemberModal);
+    // [B] edit by smsong - 헤더 설정(톱니) 버튼 → 설정 모달 (멤버 보기 버튼은 제거됨)
+    var _bset = document.getElementById('btn-settings');
+    if (_bset) _bset.addEventListener('click', function () { var m = document.getElementById('settings-modal'); if (m) m.classList.remove('hidden'); });
+    var _setClose = document.getElementById('settings-modal-close');
+    if (_setClose) _setClose.addEventListener('click', function () { var m = document.getElementById('settings-modal'); if (m) m.classList.add('hidden'); });
+    var _setModal = document.getElementById('settings-modal');
+    if (_setModal) _setModal.addEventListener('click', function (e) { if (e.target.id === 'settings-modal') _setModal.classList.add('hidden'); });
+    // 설정 모달 안 액션(휴지통/멤버관리/방목록/로그아웃) 클릭 시 모달 닫기 (방 알림 토글은 유지)
+    ['btn-trash', 'btn-perm-admin', 'btn-rooms', 'btn-profile-logout'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.addEventListener('click', function () { if (_setModal) _setModal.classList.add('hidden'); });
+    });
     // [B] edit by smsong - #3 방 알림 켜기/끄기 토글 버튼
     var _brnt = document.getElementById('btn-room-notif-toggle');
     if (_brnt) _brnt.addEventListener('click', toggleRoomNotif);
@@ -3609,8 +3618,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (coupleView) coupleView.style.display = 'none';
-            // [B] edit by smsong - #3 멤버 목록은 [멤버 보기] 모달로 이동 → 설정 탭에선 그리드 미표시
-            if (memberView) memberView.style.display = 'none';
+            // [B] edit by smsong - 하단 설정 탭: 비커플 방은 멤버 목록을 그대로 표시(멤버 보기 대체)
+            if (memberView) {
+                memberView.style.display = 'block';
+                var mem = (Daylog.roomInfo && Daylog.roomInfo.members) || _memberCache;
+                if (mem && mem.length) {
+                    // 추억/가볼곳 카운트 정확도를 위해 목록 로드 후 렌더
+                    Promise.all([
+                        (Daylog.reload ? Promise.resolve(Daylog.reload()) : Promise.resolve()),
+                        (Daylog.reloadChecklists ? Promise.resolve(Daylog.reloadChecklists()) : Promise.resolve())
+                    ]).then(function () { renderMemberModal(mem, false, 'member-view'); });
+                } else {
+                    withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(getRoomId())}/members`, { headers: authHeaders(true) })
+                        .then(handleResponse)
+                        .then(function (room) {
+                            Daylog.roomInfo = room; _memberCache = (room && room.members) || [];
+                            return Promise.all([
+                                (Daylog.reload ? Promise.resolve(Daylog.reload()) : Promise.resolve()),
+                                (Daylog.reloadChecklists ? Promise.resolve(Daylog.reloadChecklists()) : Promise.resolve())
+                            ]);
+                        })
+                        .then(function () { renderMemberModal(_memberCache, false, 'member-view'); })
+                        .catch(function () {}), '멤버를 불러오는 중...');
+                }
+            }
         });
     }
     function fetchMembersThenPaint() {
@@ -5093,8 +5124,8 @@ function openMemberModal() {
     }), '멤버를 불러오는 중...');
 }
 
-function renderMemberModal(members, isCouple) {
-    const body = document.getElementById('member-modal-body');
+function renderMemberModal(members, isCouple, targetId) {
+    const body = document.getElementById(targetId || 'member-modal-body');
     if (!body) return;
     if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버가 없습니다.</div>'; return; }
     const mems = Daylog.memories || [];

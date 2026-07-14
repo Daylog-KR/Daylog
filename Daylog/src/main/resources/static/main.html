@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.27">
+    <link rel="stylesheet" href="main.css?v=1.0.28">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -94,8 +94,8 @@
     </div>
     <!-- [B] edit by smsong - #1 상단 로그아웃 → 알림 버튼(방별 알림). 로그아웃은 설정 메뉴에 있음 -->
     <button class="notif-btn" id="btn-notif" type="button" title="알림" aria-label="알림"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge hidden" id="notif-badge"></span></button>
-    <!-- [B] edit by smsong - #5 로그아웃 버튼 복원 (설정 탭 전용, 맨 오른쪽). 알림은 그 왼쪽 -->
-    <button class="logout-btn" id="btn-logout" type="button" title="로그아웃" aria-label="로그아웃"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    <!-- [B] edit by smsong - 헤더 설정(톱니) 버튼: 모든 탭 우측, 알림/필터와 동일 스타일. 로그아웃은 설정 모달로 이동 -->
+    <button class="notif-btn settings-hdr-btn" id="btn-settings" type="button" title="설정" aria-label="설정"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <!-- [E] edit by smsong -->
     <input type="file" id="memory-file" accept="image/*" multiple style="display: none;">
 </header>
@@ -226,25 +226,10 @@
 
             </div><!-- /couple-view -->
 
-            <!-- [smsong] 친구/가족 방: 구성원 프로필 그리드 -->
+            <!-- [smsong] 친구/가족/지인 방: 구성원 목록 (하단 설정 탭에 표시) -->
             <div id="member-view" class="member-view" style="display:none;"></div>
 
-            <!-- [B] edit by smsong - #1 멤버 관리(방장 전용)를 멤버 보기 바로 위로 이동 -->
-            <button type="button" id="btn-perm-admin" class="perm-menu-btn" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 관리</button>
-            <!-- [B] edit by smsong - #3 [프로필 수정] 제거, [멤버 보기] 추가(휴지통 위) -->
-            <button type="button" id="btn-member-view" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 보기</button>
-            <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
-            <!-- [B] edit by smsong - #3 방 알림 켜기/끄기 (휴지통 아래, 방 목록 위) -->
-            <button type="button" id="btn-room-notif-toggle" class="rooms-menu-btn setting-toggle" aria-pressed="true">
-                <span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
-                <span class="st-label">방 알림</span>
-                <span class="ui-switch" aria-hidden="true"><span class="sw-knob"><span class="sw-on">ON</span><span class="sw-off">OFF</span></span></span>
-            </button>
-            <!-- [smsong] 방 목록으로 (다른 방으로 이동) -->
-            <button type="button" id="btn-rooms" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> 방 목록</button>
-            <!-- [B] edit by smsong - #3 [알림 켜기] 제거 (설정 정리) -->
-            <button type="button" id="btn-profile-logout" class="logout-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> 로그아웃</button>
-            <!-- [E] edit by smsong -->
+            <!-- [B] edit by smsong - 설정 버튼들은 헤더 톱니(설정) 모달로 이동. [멤버 보기]는 하단 설정 탭이 대체하여 제거 -->
 
             <p class="version-text">Daylog v2.0.0</p>
         </div>
@@ -279,6 +264,27 @@
 
 <!-- [B] edit by smsong - 권한 설정 모달 (관리자 전용) -->
 <!-- [B] edit by smsong - #3 멤버 보기 모달 -->
+<!-- [B] edit by smsong - 헤더 톱니(설정) 모달: 방 설정 액션 버튼 모음 -->
+<div id="settings-modal" class="modal hidden">
+    <div class="modal-content settings-modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">설정</h2>
+            <button type="button" class="close-btn" id="settings-modal-close">&times;</button>
+        </div>
+        <div class="settings-modal-body">
+            <button type="button" id="btn-perm-admin" class="perm-menu-btn" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 관리</button>
+            <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
+            <button type="button" id="btn-room-notif-toggle" class="rooms-menu-btn setting-toggle" aria-pressed="true">
+                <span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
+                <span class="st-label">방 알림</span>
+                <span class="ui-switch" aria-hidden="true"><span class="sw-knob"><span class="sw-on">ON</span><span class="sw-off">OFF</span></span></span>
+            </button>
+            <button type="button" id="btn-rooms" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> 방 목록</button>
+            <button type="button" id="btn-profile-logout" class="logout-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> 로그아웃</button>
+        </div>
+    </div>
+</div>
+
 <div id="member-modal" class="modal hidden">
     <div class="modal-content member-modal-content">
         <div class="modal-header">
@@ -727,7 +733,7 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.24"></script>
+<script src="main.js?v=1.0.28"></script>
 <script src="push.js?v=1.0.24"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>
