@@ -455,13 +455,7 @@ function applyRoomNotifToggle() {
     var muted = !!(window.Daylog && Daylog.myPerm && Daylog.myPerm.notifyMuted);
     var on = !muted;
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    btn.classList.toggle('off', !on);
-    var st = btn.querySelector('.rnt-state');
-    if (st) st.textContent = on ? '켜짐' : '꺼짐';
-    var ico = btn.querySelector('.rnt-ico');
-    if (ico) ico.innerHTML = on
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    btn.classList.toggle('on', on); // CSS 스위치가 ON/OFF 표시
 }
 function toggleRoomNotif() {
     if (!(window.Daylog && Daylog.api)) return;

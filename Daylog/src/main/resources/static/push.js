@@ -85,6 +85,41 @@
         });
     }
 
+    // [B] edit by smsong - 전체 알림 on/off 토글 스위치
+    var _pushOn = false;
+    function applyPushSwitch() {
+        var btn = document.getElementById('btn-enable-push');
+        if (!btn) return;
+        btn.classList.toggle('on', !!_pushOn);
+        btn.setAttribute('aria-pressed', _pushOn ? 'true' : 'false');
+    }
+    function refreshPushState() {
+        if (!supported() || Notification.permission !== 'granted') { _pushOn = false; applyPushSwitch(); return Promise.resolve(false); }
+        return (swReg ? Promise.resolve(swReg) : navigator.serviceWorker.getRegistration())
+            .then(function (reg) { return reg ? reg.pushManager.getSubscription() : null; })
+            .then(function (sub) { _pushOn = !!sub; applyPushSwitch(); return _pushOn; })
+            .catch(function () { _pushOn = false; applyPushSwitch(); return false; });
+    }
+    function disablePush() {
+        return (swReg ? Promise.resolve(swReg) : navigator.serviceWorker.getRegistration())
+            .then(function (reg) { return reg ? reg.pushManager.getSubscription() : null; })
+            .then(function (sub) {
+                if (!sub) return false;
+                var endpoint = sub.endpoint;
+                return sub.unsubscribe().then(function () {
+                    try {
+                        fetch(API + '/api/push/unsubscribe', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ endpoint: endpoint }) }).catch(function () {});
+                    } catch (e) {}
+                    return true;
+                });
+            })
+            .then(function () { _pushOn = false; applyPushSwitch(); toast('알림을 껐어요'); return true; })
+            .catch(function () { return false; });
+    }
+    function togglePush() {
+        if (_pushOn) { disablePush(); return; }
+        enablePush().then(function (ok) { _pushOn = !!ok; applyPushSwitch(); });
+    }
 
     // ===== 로그인 후 최초 1회: 알림 동의 안내 모달 (A안) =====
     var CONSENT_KEY = 'daylog_perm_prompt_seen';
@@ -175,11 +210,12 @@
         registerSW();
         try {
             if (supported() && Notification.permission === 'granted' && localStorage.getItem('accessToken')) {
-                subscribe();
+                subscribe().then(function () { refreshPushState(); });
             }
         } catch (e) {}
         var btn = document.getElementById('btn-enable-push');
-        if (btn) btn.addEventListener('click', enablePush);
+        if (btn) btn.addEventListener('click', togglePush); // [B] edit by smsong - on/off 토글
+        refreshPushState(); // [B] 현재 구독 상태로 스위치 표시
 
         // [A안] 로그인 후 최초 1회 알림 동의 안내 (약간의 지연 후, 다른 모달과 겹치지 않게)
         setTimeout(maybeShowConsent, 1200);

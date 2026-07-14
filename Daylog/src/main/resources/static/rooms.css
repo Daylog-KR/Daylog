@@ -249,10 +249,26 @@ html, body {
 /* [B] edit by smsong - #2 로그아웃 강조: 빨간 테두리 */
 #btn-profile-logout { border: 1.5px solid #e05a4a; color: #d34a3c; background: var(--white); }
 #btn-profile-logout:hover { background: #fdf0ee; border-color: #d9433a; color: #d9433a; }
-/* [B] edit by smsong - #6 다크모드 토글 버튼 / #1 라벨 중앙 정렬 */
-.dark-toggle-btn { display: flex; align-items: center; justify-content: center; position: relative; }
-.dark-toggle-btn .dt-state { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.82rem; font-weight: 700; color: var(--gray-500); background: var(--gray-100); border-radius: 999px; padding: 3px 12px; }
-.dark-toggle-btn.on .dt-state { color: #f0d9b5; background: #4a3f34; }
+/* [B] edit by smsong - 설정 토글 스위치 (다크모드/알림 공용) */
+.setting-toggle { display: flex; align-items: center; gap: 10px; text-align: left; }
+.setting-toggle .st-ico { flex-shrink: 0; display: inline-flex; color: var(--gray-500); }
+.setting-toggle .st-label { flex: 1 1 auto; font-weight: 600; color: var(--gray-700); }
+.ui-switch { position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: var(--gray-300, #d1cbc1); transition: background .22s ease; }
+.ui-switch .sw-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); transition: transform .22s cubic-bezier(.2,.8,.3,1); display: flex; align-items: center; justify-content: center; }
+.ui-switch .sw-txt { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 0.58rem; font-weight: 800; color: #fff; letter-spacing: .4px; }
+.ui-switch .sw-on { left: 9px; opacity: 0; }
+.ui-switch .sw-off { right: 8px; opacity: 1; color: #fff; }
+.ui-switch .sw-sun { display: block; }
+.ui-switch .sw-moon { display: none; }
+/* ON 상태 */
+.setting-toggle.on .ui-switch { background: #3b5bdb; }
+.setting-toggle.on .ui-switch .sw-knob { transform: translateX(22px); }
+.setting-toggle.on .ui-switch .sw-on { opacity: 1; }
+.setting-toggle.on .ui-switch .sw-off { opacity: 0; }
+/* 다크모드 변형: 노브에 해/달 */
+.setting-toggle.dark.on .ui-switch { background: #5847a6; }
+.setting-toggle.dark.on .ui-switch .sw-sun { display: none; }
+.setting-toggle.dark.on .ui-switch .sw-moon { display: block; }
 
 /* [smsong] 방 대표 이미지 픽커 */
 .room-img-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }

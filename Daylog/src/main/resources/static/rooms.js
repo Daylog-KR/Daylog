@@ -1031,16 +1031,12 @@ if (_btnOpenPe) _btnOpenPe.addEventListener('click', openProfileEdit);
 function _isDark() { try { return localStorage.getItem('daylog_theme') === 'dark'; } catch (e) { return false; } }
 function applyDarkToggle() {
     var btn = document.getElementById('btn-dark-toggle');
-    if (!btn) return;
     var dark = _isDark();
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
-    btn.classList.toggle('on', dark);
-    var st = btn.querySelector('.dt-state'); if (st) st.textContent = dark ? '켜짐' : '꺼짐';
-    var ico = btn.querySelector('.dt-ico');
-    if (ico) ico.innerHTML = dark
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    if (btn) {
+        btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        btn.classList.toggle('on', dark); // CSS 스위치가 해/달 + 노브 슬라이드 처리
+    }
 }
 function toggleDark() {
     var dark = !_isDark();

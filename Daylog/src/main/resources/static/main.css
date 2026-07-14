@@ -1984,11 +1984,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .logout-btn:hover { background: #fdf0ee; color: #d9433a; border-color: #d9433a; }
 .logout-menu-btn { border-color: #e05a4a; color: #d34a3c; }
 .logout-menu-btn:hover { background: #fdf0ee; border-color: #d9433a; }
-/* [B] edit by smsong - #3 방 알림 토글 버튼 / 라벨 중앙 정렬 (상태 뱃지는 오른쪽 절대배치) */
-.room-notif-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; position: relative; }
-.room-notif-toggle .rnt-state { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.82rem; font-weight: 700; color: #2e9e5b; background: #e8f3ec; border-radius: 999px; padding: 3px 12px; }
-.room-notif-toggle.off .rnt-state { color: #a8a29a; background: var(--gray-100); }
-.room-notif-toggle.off .rnt-ico { color: #a8a29a; }
+/* [B] edit by smsong - 설정 토글 스위치 (방 알림 등 공용) */
+.setting-toggle { display: flex; align-items: center; gap: 10px; text-align: left; }
+.setting-toggle .st-ico { flex-shrink: 0; display: inline-flex; color: var(--gray-500); }
+.setting-toggle .st-label { flex: 1 1 auto; font-weight: 600; color: var(--gray-700, #45413c); }
+.ui-switch { position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: var(--gray-200, #e5e0d8); transition: background .22s ease; }
+.ui-switch .sw-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); transition: transform .22s cubic-bezier(.2,.8,.3,1); display: flex; align-items: center; justify-content: center; }
+.ui-switch .sw-txt { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 0.58rem; font-weight: 800; color: #fff; letter-spacing: .4px; }
+.ui-switch .sw-on { left: 9px; opacity: 0; }
+.ui-switch .sw-off { right: 8px; opacity: 1; }
+.setting-toggle.on .ui-switch { background: #3b5bdb; }
+.setting-toggle.on .ui-switch .sw-knob { transform: translateX(22px); }
+.setting-toggle.on .ui-switch .sw-on { opacity: 1; }
+.setting-toggle.on .ui-switch .sw-off { opacity: 0; }
 
 /* ---- 검색어(제목/내용/위치) 검색 행 (타임라인 · 가볼곳 공용) ---- */
 .filter-search-row { display: flex; gap: 8px; align-items: center; }
