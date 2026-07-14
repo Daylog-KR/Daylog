@@ -326,6 +326,7 @@ html, body {
 /* [B] edit by smsong - 헤더 프로필(사람 아이콘) 버튼 : 기존 로그아웃 버튼과 동일 크기 */
 .rooms-icon-btn {
     flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; cursor: pointer;
+    position: relative;
     background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-600);
     display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
     transition: all 0.15s ease;

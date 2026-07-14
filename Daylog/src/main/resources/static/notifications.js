@@ -58,7 +58,7 @@
             '.ni-time{font-size:0.76rem;color:#a99e90;margin-top:4px;}' +
             '.ni-empty{padding:48px 20px;text-align:center;color:#a99e90;font-size:0.92rem;}' +
             '.notif-btn{position:relative;}' +
-            '.notif-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:#c0392b;color:#fff;font-size:0.66rem;font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px #fff;}' +
+            '.notif-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e5322d;color:#fff;font-size:0.68rem;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px #fff;z-index:3;pointer-events:none;}' +
             '.notif-badge.hidden{display:none;}' +
             '@keyframes niFade{from{opacity:0}to{opacity:1}}' +
             '@keyframes niSlide{from{transform:translateX(100%)}to{transform:none}}';
@@ -148,6 +148,7 @@
     }
 
     function init() {
+        injectStyle(); // [B] edit by smsong - 배지 CSS를 처음부터 주입(빨간 원 배지가 로드 즉시 보이도록)
         var btn = document.getElementById('btn-notif');
         if (btn) btn.addEventListener('click', function (e) { e.preventDefault(); openPanel(); });
         refreshBadge();
