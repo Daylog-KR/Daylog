@@ -1985,9 +1985,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .logout-menu-btn { border-color: #e05a4a; color: #d34a3c; }
 .logout-menu-btn:hover { background: #fdf0ee; border-color: #d9433a; }
 /* [B] edit by smsong - 설정 토글 스위치 (방 알림 등 공용) */
-.setting-toggle { display: flex; align-items: center; gap: 10px; text-align: left; }
+.setting-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; }
 .setting-toggle .st-ico { flex-shrink: 0; display: inline-flex; color: var(--gray-500); }
-.setting-toggle .st-label { flex: 1 1 auto; font-weight: 600; color: var(--gray-700, #45413c); }
+.setting-toggle .st-label { font-weight: 600; color: var(--gray-700, #45413c); }
+.setting-toggle .ui-switch { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
 .ui-switch { position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: var(--gray-200, #e5e0d8); transition: background .22s ease; }
 .ui-switch .sw-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); transition: transform .22s cubic-bezier(.2,.8,.3,1); display: flex; align-items: center; justify-content: center; }
 .ui-switch .sw-txt { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 0.58rem; font-weight: 800; color: #fff; letter-spacing: .4px; }
