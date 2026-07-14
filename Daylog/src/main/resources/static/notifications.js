@@ -88,6 +88,7 @@
         var pn = document.getElementById('ni-panel');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
         if (pn && pn.parentNode) pn.parentNode.removeChild(pn);
+        try { refreshBadge(); } catch (e) {} // [B] edit by smsong - 닫을 때 배지 갱신
     }
 
     function renderList(items) {
@@ -151,7 +152,7 @@
         if (btn) btn.addEventListener('click', function (e) { e.preventDefault(); openPanel(); });
         refreshBadge();
         // 주기적/포커스 시 배지 갱신
-        setInterval(refreshBadge, 60000);
+        setInterval(refreshBadge, 30000);
         document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshBadge(); });
         window.addEventListener('focus', refreshBadge);
     }
