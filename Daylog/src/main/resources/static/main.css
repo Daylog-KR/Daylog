@@ -123,12 +123,6 @@ body[data-active-tab="tab-map"] .header-map-controls,
 body[data-active-tab="tab-timeline"] .header-timeline-controls,
 body[data-active-tab="tab-checklist"] .header-checklist-controls { order: 51; margin-left: 0; }
 .navbar #btn-logout { order: 51; }
-/* [B] edit by smsong - 헤더 설정(톱니) 버튼: 알림 오른쪽 + 필터 오른쪽 = [알림][필터][설정] 모두 붙어서 우측 */
-.navbar .notif-btn.settings-hdr-btn { order: 52; margin-left: 0; }
-/* 설정 모달: 액션 버튼 세로 스택 */
-.settings-modal-content { max-width: 460px; }
-.settings-modal-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 2px; }
-.settings-modal-body > button { width: 100%; margin: 0; }
 /* 위치 선택 모드 동안에는 헤더 컨트롤 숨김 */
 body.picking .header-map-controls { display: none !important; }
 
@@ -1464,8 +1458,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .member-modal-content { max-width: 480px; max-height: 80dvh; overflow: hidden; display: flex; flex-direction: column; }
 .member-modal-content .modal-header { flex-shrink: 0; }
 .member-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-/* [B] edit by smsong - 하단 설정 탭 멤버 목록 컨테이너 */
-#member-view.member-view { display: flex; flex-direction: column; gap: 10px; }
 .mm-card { display: flex; align-items: center; gap: 12px; background: var(--gray-50, #faf7f2); border: 1px solid var(--gray-200, #eee); border-radius: 16px; padding: 12px 13px; }
 .mm-card .member-avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--primary-light); display: flex; align-items: center; justify-content: center; }
 .mm-card .member-avatar-img { width: 100%; height: 100%; object-fit: cover; }
