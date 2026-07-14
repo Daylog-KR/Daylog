@@ -1,40 +1,43 @@
-const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE);
+// ==========================================
+// 1. JWT 인증 및 공통 유틸 (부동산 프로젝트 패턴 동일)
+// ==========================================
 
-// 공통 fetch 응답 처리
-async function handleResponse(res) {
-    // 인증 만료/실패 → 로그인 페이지로
-    if (res.status === 401 || res.status === 403) {
-        redirectToLogin('세션이 만료되었습니다. 다시 로그인해주세요.');
-        throw new Error('인증이 만료되었습니다');
-    }
-    // 서버가 500을 내려주면 무조건 토큰 만료로 간주 → 로그아웃 후 로그인 페이지로
-    if (res.status === 500) {
-        redirectToLogin('토큰이 만료되었습니다. 다시 로그인해주세요.');
-        throw new Error('서버 오류(500) — 다시 로그인이 필요합니다');
-    }
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        // JWT/인증 관련 오류가 500 등으로 와도 로그인 페이지로 유도
-        if (/jwt|token|expired|signature|malformed|unauthor|forbidden|authentication/i.test(text)) {
-            redirectToLogin('세션이 만료되었습니다. 다시 로그인해주세요.');
-            throw new Error('인증이 만료되었습니다');
-        }
-        // JSON 에러 본문이면 message/error 필드만 추출해 깔끔한 메시지로
-        let msg = text;
-        try { const j = JSON.parse(text); if (j && (j.message || j.error)) msg = j.message || j.error; } catch (_) { }
-        throw new Error(msg || (res.status + ' ' + res.statusText));
-    }
-    if (res.status === 204) return null;
-    return res.json();
-}
+// 뒤로가기로 oauth-redirect.html 등 이전 페이지로 빠져나가 OAuth 절차가 꼬이는 것 방지:
+// main.html 진입 시 히스토리에 가드 항목을 넣고, 뒤로가기를 가로채 현재 페이지에 머무르게 한다.
+(function preventBackToOAuth() {
+    try {
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', function () {
+            history.pushState(null, '', location.href);
+        });
+    } catch (e) { /* noop */ }
+})();
 
-// ★ login.js / oauth-redirect.html 이 토큰을 저장하는 키와 동일하게 맞춤
+// [B] edit by smsong - bfcache(뒤로가기 캐시) 복원 시 로딩 오버레이가 켜진 채 남아 '무한 로딩'되는 것 방지.
+//  (핵심 원인은 rooms.js 이지만 main.html 로 되돌아오는 경로에서도 안전하게 오버레이를 끈다.)
+window.addEventListener('pageshow', function () {
+    try {
+        var ov = document.getElementById('loading-overlay');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    } catch (e) {}
+});
+// [E] edit by smsong
+
+const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
-// 저장된 JWT 토큰
+// SNS 기본 프로필 이미지 (회색 실루엣) — 외부 파일 없이 SVG 데이터 URI 사용
+const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
+    '<rect width="100" height="100" fill="#e7e0d6"/>' +
+    '<circle cx="50" cy="40" r="17" fill="#b9afa1"/>' +
+    '<path d="M50 61c-17 0-29 11-29 27v12h58V88c0-16-12-27-29-27z" fill="#b9afa1"/>' +
+    '</svg>'
+);
+
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
-// JWT payload 디코드 (base64url) — 서버 호출 없이 토큰 내용을 읽음
+// JWT payload 디코드 (base64url)
 function decodeJwt(token) {
     try {
         const part = token.split('.')[1];
@@ -48,16 +51,12 @@ function decodeJwt(token) {
     } catch { return null; }
 }
 
-// 현재 로그인된 사용자 uid
-// 1) JWT 토큰의 subject 에서 추출  2) 저장된 currentUser 객체에서 추출
 function getUid() {
     const t = getToken();
     if (t) {
         const p = decodeJwt(t);
-        // 백엔드 JwtTokenProvider가 uid를 subject(sub)에 넣음. 다르면 후보 조정.
         if (p && (p.sub || p.uid || p.username)) return p.sub || p.uid || p.username;
     }
-    // oauth-redirect.html 이 저장한 사용자 객체(UserDTO)에서 uid 추출
     try {
         const cu = JSON.parse(localStorage.getItem('currentUser') || 'null');
         if (cu && cu.uid) return cu.uid;
@@ -65,1954 +64,4403 @@ function getUid() {
     return '';
 }
 
-// 토큰 존재 + 만료 여부 검사
+// 토큰 존재 + 만료 검사
 function isTokenValid() {
     const t = getToken();
     if (!t) return false;
     const p = decodeJwt(t);
     if (!p) return false;
-    if (p.exp && Date.now() >= p.exp * 1000) return false; // 만료됨
+    if (p.exp && Date.now() >= p.exp * 1000) return false; // 만료
     return true;
 }
 
-// 인증 헤더 (JWT를 Authorization 헤더로 전송)
 function authHeaders(withJson) {
     const h = {};
     if (withJson) h['Content-Type'] = 'application/json';
     const t = getToken();
     if (t) h['Authorization'] = 'Bearer ' + t;
+    const rid = localStorage.getItem('selectedRoomId'); // [smsong] 방 스코프 — 모든 요청에 현재 방 첨부
+    if (rid) h['X-Room-Id'] = rid;
     return h;
+}
+
+// 토큰/사용자 정보 제거 (로그인 루프 방지)
+function logout() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('auth');
 }
 
 // 로그인 페이지로 이동 (토큰 없음/만료 시)
 let _authRedirecting = false;
 function redirectToLogin(msg) {
-    if (_authRedirecting) return;   // 같은 페이지 안에서 중복 알림 방지
+    if (_authRedirecting) return;          // 같은 페이지 내 중복 알림 방지
     _authRedirecting = true;
-    alert(msg || '토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주세요.');
-    logout();                       // accessToken 제거 → login.js가 되튕기지 않음 (루프 방지)
+    alert(msg || '토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주십시오.');
+    logout();                              // accessToken 제거 → login.js 되튕김 방지
     location.href = 'login.html';
 }
 
-// 토큰이 유효하지 않으면 로그인 페이지로 보냄. 유효하면 true 반환
+// 유효하지 않으면 로그인 페이지로 보냄
 function requireAuthOrRedirect() {
     if (!isTokenValid()) { redirectToLogin(); return false; }
+    // [smsong] 방 미선택 시 방 목록으로 (방 스코프 진입 강제)
+    if (!localStorage.getItem('selectedRoomId')) { location.replace('rooms.html'); return false; }
     return true;
 }
 
-// 로그인(아이디/비번) — 소셜 로그인을 쓰면 사용 안 함. 콘솔 테스트용으로만 유지.
-async function login(uid, password) {
-    const res = await fetch(`${API_BASE_URL}/user/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, password })
-    });
-    if (!res.ok) throw new Error('로그인 실패 (' + res.status + ')');
-    const jwt = await res.json(); // JWTDTO: { token, user ... }
-    if (!jwt.token) throw new Error('토큰을 받지 못했습니다 (JWTDTO 필드명 확인)');
-    localStorage.setItem(TOKEN_KEY, jwt.token);
-    if (jwt.user) localStorage.setItem('currentUser', JSON.stringify(jwt.user));
-    return jwt;
-}
-
-// 로그아웃 확인 — "로그아웃을 진행하시겠습니까?" 후 진행
-function confirmLogout() {
-    if (!confirm('로그아웃을 진행하시겠습니까?')) return;
-    logout();
-    location.href = 'login.html';
-}
-
-// 로그아웃: 저장된 인증 정보 전부 제거 (login.js가 토큰 존재만 보고 되돌리는 루프 방지)
-function logout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('auth');
-    localStorage.removeItem('pushAsked');   // 다음 로그인 사용자에게 알림 안내 다시 노출
-}
-
-// ★ 메인 페이지 진입 즉시 토큰 확인 — 없거나 만료면 안내 후 login.html로 이동
-requireAuthOrRedirect();
-
-// 백엔드 API 호출 모음 (모든 요청에 uid + JWT 포함)
-const Api = {
-    // 건물 (/building)
-    getBuildings: () =>
-        fetch(`${API_BASE_URL}/building/all/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    getBuilding: (id) =>
-        fetch(`${API_BASE_URL}/building/id/${getUid()}/${id}`, { headers: authHeaders() }).then(handleResponse),
-    createBuilding: (dto, mediaFiles, vacancyFiles) => {
-        const fd = new FormData();
-        fd.append('uid', getUid());                       // @RequestPart("uid") String
-        fd.append('buildingData', JSON.stringify(dto));   // @RequestPart("buildingData") String
-        (mediaFiles || []).forEach(f => fd.append('mediaData', f));      // 호실 사진
-        (vacancyFiles || []).forEach(f => fd.append('vacancyData', f));  // 공실표
-        // FormData 전송 시 Content-Type은 브라우저가 boundary와 함께 자동 설정 → authHeaders()만 사용
-        return fetch(`${API_BASE_URL}/building`, { method: 'POST', headers: authHeaders(), body: fd }).then(handleResponse);
-    },
-    updateBuilding: (dto, mediaFiles, vacancyFiles) => {
-        const fd = new FormData();
-        fd.append('uid', getUid());
-        fd.append('buildingData', JSON.stringify(dto));   // dto.mediaURLs = 유지할 호실사진, dto.vacancyURLs = 유지할 공실표, dto.id 포함
-        (mediaFiles || []).forEach(f => fd.append('mediaData', f));      // 새로 추가할 호실 사진
-        (vacancyFiles || []).forEach(f => fd.append('vacancyData', f));  // 새로 추가할 공실표
-        return fetch(`${API_BASE_URL}/building`, { method: 'PUT', headers: authHeaders(), body: fd }).then(handleResponse);
-    },
-    deleteBuilding: (id) =>
-        fetch(`${API_BASE_URL}/building/delete/${getUid()}/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-    // 휴지통 (소프트 삭제 / 복원 / 영구삭제)
-    getTrash: () =>
-        fetch(`${API_BASE_URL}/building/trash/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    restoreBuilding: (id) =>
-        fetch(`${API_BASE_URL}/building/restore/${getUid()}/${id}`, { method: 'PUT', headers: authHeaders() }).then(handleResponse),
-    permanentlyDeleteBuilding: (id) =>
-        fetch(`${API_BASE_URL}/building/trash/${getUid()}/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-    searchBuildings: (keyword) =>
-        fetch(`${API_BASE_URL}/building/search/${getUid()}?keyword=${encodeURIComponent(keyword)}`, { headers: authHeaders() }).then(handleResponse),
-
-    // 찜(관심 매물) (/favorite)
-    getFavorites: () =>
-        fetch(`${API_BASE_URL}/favorite/${getUid()}`, { headers: authHeaders() }).then(handleResponse),          // 찜한 건물 목록(BuildingDTO[])
-    getFavoriteIds: () =>
-        fetch(`${API_BASE_URL}/favorite/ids/${getUid()}`, { headers: authHeaders() }).then(handleResponse),      // 찜한 건물 id 목록
-    toggleFavorite: (buildingId) =>
-        fetch(`${API_BASE_URL}/favorite/${getUid()}/${buildingId}`, { method: 'POST', headers: authHeaders() }).then(handleResponse), // { favorited: bool }
-
-    // 호실 (/unit)
-    createUnit: (buildingId, dto) =>
-        fetch(`${API_BASE_URL}/unit/${getUid()}/building/${buildingId}`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    updateUnit: (id, dto) =>
-        fetch(`${API_BASE_URL}/unit/${getUid()}/${id}`, { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    deleteUnit: (id) =>
-        fetch(`${API_BASE_URL}/unit/delete/${getUid()}/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-
-    // 사용자 (/user)
-    // 공개 프로필 카드 조회 — 매물 등록자 등 "다른 사용자"의 이름/프로필을 가져옴
-    getUserProfile: (uid) =>
-        fetch(`${API_BASE_URL}/user/profile/${encodeURIComponent(uid)}`, { headers: authHeaders() }).then(handleResponse),
-    // 회원 수정 (프로필 사진 변경) — userData(JSON 문자열) + 선택적 mediaData(파일) 멀티파트 전송
-    updateUser: (userDTO, file) => {
-        const fd = new FormData();
-        fd.append('userData', JSON.stringify(userDTO));   // @RequestPart("userData") String
-        if (file) fd.append('mediaData', file);           // @RequestPart(value="mediaData", required=false)
-        return fetch(`${API_BASE_URL}/user`, { method: 'PUT', headers: authHeaders(), body: fd }).then(handleResponse);
-    },
-
-    // 권한 (권한 관리 기능)
-    myPermission: () =>
-        fetch(`${API_BASE_URL}/user/permission/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    listPermissions: () =>
-        fetch(`${API_BASE_URL}/user/admin/permissions/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    updatePermission: (targetId, dto) =>
-        fetch(`${API_BASE_URL}/user/admin/permissions/${getUid()}/${targetId}`, { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-
-    // 사무소 공유(같은 코드 = 매물 공유 그룹)
-    getOffice: () =>
-        fetch(`${API_BASE_URL}/user/office/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    createOffice: () =>
-        fetch(`${API_BASE_URL}/user/office/${getUid()}`, { method: 'POST', headers: authHeaders() }).then(handleResponse),
-    joinOffice: (code) =>
-        fetch(`${API_BASE_URL}/user/office/${getUid()}/join`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ code }) }).then(handleResponse),
-    leaveOffice: () =>
-        fetch(`${API_BASE_URL}/user/office/${getUid()}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-
-    // 푸시 알림 (Web Push / VAPID)
-    getPushPublicKey: () =>
-        fetch(`${API_BASE_URL}/push/public-key`, { headers: authHeaders() }).then(handleResponse),
-    pushSubscribe: (sub) =>
-        fetch(`${API_BASE_URL}/push/subscribe/${getUid()}`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify(sub) }).then(handleResponse),
-    pushUnsubscribe: (endpoint) =>
-        fetch(`${API_BASE_URL}/push/unsubscribe/${getUid()}`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ endpoint }) }).then(handleResponse),
-    pushTest: () =>
-        fetch(`${API_BASE_URL}/push/test/${getUid()}`, { method: 'POST', headers: authHeaders() }).then(handleResponse),
-    getNotifications: () =>
-        fetch(`${API_BASE_URL}/push/notifications/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    getUnreadCount: () =>
-        fetch(`${API_BASE_URL}/push/notifications/${getUid()}/unread-count`, { headers: authHeaders() }).then(handleResponse),
-    readAllNotifications: () =>
-        fetch(`${API_BASE_URL}/push/notifications/${getUid()}/read-all`, { method: 'POST', headers: authHeaders() }).then(handleResponse),
-    clearNotifications: () =>
-        fetch(`${API_BASE_URL}/push/notifications/${getUid()}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-    getNotiSettings: () =>
-        fetch(`${API_BASE_URL}/push/settings/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    saveNotiSettings: (dto) =>
-        fetch(`${API_BASE_URL}/push/settings/${getUid()}`, { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-
-    // 계약자·임차인 관리 (중개사 전용)
-    getTenants: () =>
-        fetch(`${API_BASE_URL}/tenant/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    createTenant: (dto) =>
-        fetch(`${API_BASE_URL}/tenant/${getUid()}`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    updateTenant: (id, dto) =>
-        fetch(`${API_BASE_URL}/tenant/${getUid()}/${id}`, { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    deleteTenant: (id) =>
-        fetch(`${API_BASE_URL}/tenant/${getUid()}/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-
-    // 고객(리드) 관리 (중개사 전용)
-    getCustomers: () =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}`, { headers: authHeaders() }).then(handleResponse),
-    createCustomer: (dto) =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    updateCustomer: (id, dto) =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}/${id}`, { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(dto) }).then(handleResponse),
-    deleteCustomer: (id) =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}/${id}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-    attachCustomerBuilding: (id, buildingId) =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}/${id}/building/${buildingId}`, { method: 'POST', headers: authHeaders() }).then(handleResponse),
-    detachCustomerBuilding: (id, buildingId) =>
-        fetch(`${API_BASE_URL}/customer/${getUid()}/${id}/building/${buildingId}`, { method: 'DELETE', headers: authHeaders() }).then(handleResponse),
-
-    // 장소 검색 (/api/search/place) — 네이버 지역검색 프록시. 지도 중심(lat/lng)을 주면 가까운 순으로 정렬됨
-    searchPlace: (query, lat, lng) => {
-        let qs = `query=${encodeURIComponent(query)}`;
-        if (lat != null && lng != null) qs += `&lat=${lat}&lng=${lng}`;
-        return fetch(`${API_BASE_URL}/api/search/place?${qs}`, { headers: authHeaders() }).then(handleResponse);
-    },
-};
-
-// 전역 상태 (서버에서 불러온 건물 목록 캐시)
-let state = { buildings: [], favorites: new Set(), officeUids: new Set(), officeMembers: [], officeCode: null };   // favorites: 찜한 건물 id / officeUids·officeMembers: 사무소 공유 그룹
-
-// =====================================================
-// 사용자 프로필 헬퍼 (설정 화면 · 매물 등록자 표시 공용)
-// =====================================================
-// 로그인 시 저장된 사용자 객체(UserDTO) 읽기/쓰기 — name, profileURL, provider 등 포함
-function getCurrentUser() {
-    try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch (_) { return null; }
-}
-function setCurrentUser(u) {
-    try { localStorage.setItem('currentUser', JSON.stringify(u)); } catch (_) {}
-}
-
-// =====================================================
-// 권한 (생성/조회/수정/삭제) — 관리자 uid 고정, 그 외는 서버에서 받은 권한으로 게이팅
-// =====================================================
-const ADMIN_UID = '4979532269';
-let _myPerms = null;   // { admin, canCreate, canRead, canUpdate, canDelete }
-
-function isAdminUser() {
-    const u = getCurrentUser();
-    return !!(u && u.uid === ADMIN_UID);
-}
-// 중개사 여부 — 관리자이거나 역할이 broker (권한 로드 전에는 사무소 정보로 임시 판정)
-function isBroker() {
-    const u = getCurrentUser();
-    if (u && u.uid === ADMIN_UID) return true;
-    if (_myPerms && _myPerms.role) return _myPerms.role === 'broker';
-    return !!(u && u.agencyName && String(u.agencyName).trim());
-}
-// 현재 로그인 유저의 유효 권한. 관리자는 항상 전체 허용. 로드 전 기본값은 조회만 허용.
-function myPerms() {
-    if (isAdminUser()) return { admin: true, canCreate: true, canRead: true, canUpdate: true, canDelete: true };
-    if (_myPerms) return _myPerms;
-    return { admin: false, canCreate: false, canRead: true, canUpdate: false, canDelete: false };
-}
-async function loadMyPermission() {
-    const u = getCurrentUser();
-    if (!u || !u.uid) { _myPerms = null; return; }
-    if (u.uid === ADMIN_UID) { _myPerms = { admin: true, canCreate: true, canRead: true, canUpdate: true, canDelete: true }; return; }
-    try { _myPerms = await Api.myPermission(); } catch (_) { /* 실패 시 기본값 유지 */ }
-}
-
-// 사무소 공유 그룹 로드 — 같은 코드를 가진 멤버들의 uid 집합
-async function loadOffice() {
-    state.officeUids = new Set();
-    state.officeCode = null;
-    if (!isBroker()) return;
-    try {
-        const o = await Api.getOffice();
-        applyOfficeState(o);
-    } catch (_) { /* 미소속/실패 시 빈 상태 유지 */ }
-}
-function applyOfficeState(o) {
-    state.officeCode = (o && o.code) ? o.code : null;
-    const members = (o && o.members) || [];
-    state.officeUids = new Set(members.map(m => String(m.uid)));
-    state.officeMembers = members;
-}
-
-// 권한에 따라 전역 UI(건물 추가 버튼 등) 반영
-function applyPermUI() {
-    const p = myPerms();
-    const add = document.getElementById('add-btn-float');
-    if (add) add.style.display = p.canCreate ? '' : 'none';
-    const broker = isBroker();
-    // '내 목록' · '임차인 관리' 탭은 중개인/관리자에게만 노출 (일반유저는 숨김)
-    const mylistTab = document.querySelector('.nav-tab[data-tab="mylist"]');
-    if (mylistTab) mylistTab.style.display = broker ? '' : 'none';
-    const adminTab = document.querySelector('.nav-tab[data-tab="stats"]');
-    if (adminTab) adminTab.style.display = broker ? '' : 'none';
-    // '찜' 탭은 모든 로그인 사용자에게 노출 (별도 처리 불필요)
-}
-
-// =====================================================
-// 찜(관심 매물) — 하트 버튼 / 토글 / 목록
-// =====================================================
-function isFav(id) { return !!(state.favorites && state.favorites.has(String(id))); }
-
-function heartSvg(filled) {
-    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" `
-        + `stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
-        + `<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>`;
-}
-
-// 하트 버튼 마크업. opts.detail=true 면 라벨 있는 큰 버튼(상세보기용)
-function favBtnHTML(b, opts) {
-    opts = opts || {};
-    const on = isFav(b.id);
-    const label = opts.detail ? `<span class="fav-label">${on ? '찜함' : '찜'}</span>` : '';
-    const cls = 'fav-btn' + (opts.detail ? ' fav-detail' : '') + (on ? ' on' : '');
-    return `<button type="button" class="${cls}" data-fav="${b.id}" title="${on ? '찜 해제' : '찜하기'}" `
-        + `aria-label="찜" onclick="event.stopPropagation(); toggleFavorite('${b.id}', event)">${heartSvg(on)}${label}</button>`;
-}
-
-function _cssEsc(v) { return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v); }
-
-// 화면에 떠 있는 같은 건물의 모든 하트 버튼 상태를 갱신
-function updateFavButtons(id) {
-    const on = isFav(id);
-    document.querySelectorAll(`[data-fav="${_cssEsc(id)}"]`).forEach(btn => {
-        btn.classList.toggle('on', on);
-        btn.title = on ? '찜 해제' : '찜하기';
-        const label = btn.classList.contains('fav-detail') ? `<span class="fav-label">${on ? '찜함' : '찜'}</span>` : '';
-        btn.innerHTML = heartSvg(on) + label;
-    });
-}
-
-async function toggleFavorite(id, ev) {
-    if (ev) { ev.stopPropagation(); }
-    id = String(id);
-    if (!state.favorites) state.favorites = new Set();
-    const wasFav = state.favorites.has(id);
-    // 낙관적 업데이트
-    if (wasFav) state.favorites.delete(id); else state.favorites.add(id);
-    updateFavButtons(id);
-    try {
-        const r = await Api.toggleFavorite(id);
-        if (r && typeof r.favorited === 'boolean') {   // 서버 확정값으로 동기화
-            if (r.favorited) state.favorites.add(id); else state.favorites.delete(id);
-            updateFavButtons(id);
-        }
-        showToast(state.favorites.has(id) ? '찜에 추가했습니다' : '찜을 해제했습니다');
-    } catch (e) {
-        // 실패 시 롤백
-        if (wasFav) state.favorites.add(id); else state.favorites.delete(id);
-        updateFavButtons(id);
-        showToast('찜 처리 실패: ' + (e.message || ''));
-        return;
+// 공통 fetch 응답 처리
+async function handleResponse(res) {
+    // 업로드 용량 초과 → 로그인 튕김 대신 친절한 안내
+    if (res.status === 413) {
+        throw new Error('이미지 용량이 너무 큽니다. 사진 수를 줄이거나 더 작은 이미지를 사용해주십시오.');
     }
-    // 참고: '찜' 화면에서 해제해도 즉시 목록에서 없애지 않는다(하트만 빈 모양으로 표시).
-    //       실수 방지를 위해 현재 화면엔 그대로 두고, 메뉴를 다시 열 때(switchTab('fav')) 새로고침되며 빠진다.
-}
-
-// '찜' 메뉴 화면 — 하트로 저장한 관심 매물 목록
-function showFavoritesView() {
-    hideSheetBack('sheet');
-    document.getElementById('sheet-title').textContent = '찜';
-    document.getElementById('sheet-subtitle').textContent = '하트로 저장한 관심 매물';
-    const body = document.getElementById('sheet-body');
-    const favs = (state.buildings || []).filter(b => isFav(b.id));
-    if (favs.length === 0) {
-        body.innerHTML = `<div class="empty-state"><div class="empty-state-icon" style="color:#f3a3a3;">${heartSvg(false)}</div>`
-            + `<div class="empty-state-title">찜한 매물이 없습니다</div>`
-            + `<div class="empty-state-sub">건물의 하트를 눌러 관심 매물을 저장하세요</div></div>`;
-    } else {
-        body.innerHTML = favs.map(buildingListItemHTML).join('');
-        if (typeof hydrateOwnerNames === 'function') hydrateOwnerNames(body);
+    // [B] edit by smsong - 403(서비스 접근 권한 없음)은 로그인 튕김 대신 '권한 없음' 화면(요청 버튼) 표시
+    if (res.status === 403) {
+        try { if (typeof blockUnauthorizedUser === 'function') blockUnauthorizedUser(); } catch (e) {}
+        throw new Error('서비스 접근 권한이 없습니다');
     }
-}
-
-// 하트 버튼 스타일 자체 주입 (main.css 수정 불필요)
-function ensureFavStyles() {
-    if (document.getElementById('fav-styles')) return;
-    const css = `
-.fav-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-    width: 34px; height: 34px; flex-shrink: 0;
-    border-radius: 10px; border: 1px solid var(--gray-200, #e5e7eb);
-    background: #fff; color: #9ca3af; cursor: pointer;
-    transition: background .15s, color .15s, border-color .15s, transform .12s;
-}
-.fav-btn:hover { border-color: #fecaca; color: #f87171; }
-.fav-btn:active { transform: scale(0.9); }
-.fav-btn.on { color: #ef4444; border-color: #fecaca; background: #fef2f2; }
-.fav-btn.fav-detail { width: auto; height: auto; padding: 7px 12px; font-size: 13px; font-weight: 700; }
-.fav-btn .fav-label { line-height: 1; }
-/* 공용 세그먼트 탭 — 흰 인디케이터가 부드럽게 미끄러짐 (N개 지원: --seg-n 개수 / --seg-i 활성 index) */
-.seg {
-    position: relative; display: flex; padding: 4px; margin: 0 0 12px;
-    background: var(--gray-100, #f3f4f6); border-radius: 10px;
-}
-.seg-ind {
-    position: absolute; top: 4px; bottom: 4px; left: 4px;
-    width: calc((100% - 8px) / var(--seg-n, 2));
-    transform: translateX(calc(var(--seg-i, 0) * 100%));
-    background: #fff; border-radius: 7px;
-    box-shadow: 0 1px 4px rgba(17,24,39,0.12), 0 0 1px rgba(17,24,39,0.06);
-    transition: transform .5s cubic-bezier(0.22, 1, 0.36, 1);   /* 길고 부드러운 글라이드 */
-    z-index: 0; pointer-events: none;
-}
-.seg-btn {
-    position: relative; z-index: 1; flex: 1;
-    padding: 8px 10px; border: none; background: transparent; border-radius: 7px;
-    cursor: pointer; font-family: inherit;
-    font-size: 12.5px; font-weight: 700; color: var(--gray-500, #6b7280);
-    letter-spacing: -0.2px; white-space: nowrap;
-    transition: color .3s ease;
-}
-.seg-btn.active { color: #1a56db; }
-.seg-btn:active { transform: scale(0.98); }
-`;
-    const style = document.createElement('style');
-    style.id = 'fav-styles';
-    style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
-}
-ensureFavStyles();
-
-// 공용 세그먼트 탭 인디케이터 이동 (id=컨테이너(.seg), idx=활성 index)
-function segMove(id, idx) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.setProperty('--seg-i', idx);
-    el.querySelectorAll('.seg-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
-}
-
-// HTML/속성 이스케이프 (이름에 <, ", & 등이 들어가도 마크업이 깨지지 않게)
-function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// [B] edit by smsong - 라인 스타일 SVG 아이콘 (하단 네비와 동일한 stroke 라인 톤)
-// 기본 이모지(✏️🔒📷✕✓👤 등) 대신 사용. currentColor 상속 → 텍스트 색을 그대로 따름.
-const ICON_PATHS = {
-    trash:   '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
-    info:    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
-    restore: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
-    edit:    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>',
-    lock:    '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
-    camera:  '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
-    check:   '<polyline points="20 6 9 17 4 12"/>',
-    close:   '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-    plus:    '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
-    user:    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-    back:    '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
-    pin:     '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
-    building:'<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="22" x2="9" y2="18"/><line x1="15" y1="22" x2="15" y2="18"/><line x1="8" y1="6" x2="10" y2="6"/><line x1="14" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/>',
-    map:     '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
-    agency:  '<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/><path d="M3 9h18"/>',
-    phone:   '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7A2 2 0 0 1 22 16.9z"/>',
-    bell:    '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
-    meeting: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-    contract: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/>',
-    money:   '<circle cx="12" cy="12" r="9"/><path d="M15 9.5a2.5 2.5 0 0 0-2.5-1.5h-1a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4h-1A2.5 2.5 0 0 1 9 14.5"/><path d="M12 6.5v11"/>',
-    key:     '<path d="M21 2l-2 2"/><path d="M18.5 4.5L15 8"/><path d="M16.5 6.5l2 2"/><circle cx="9.5" cy="14.5" r="5.5"/><path d="M13.4 10.6L15 8"/>',
-    // 건물 유형 아이콘 (단독&다중 / 다세대 / 오피스텔 / 상가)
-    house:      '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
-    multiplex:  '<path d="M3 21V9l5-4 5 4v12"/><path d="M13 21V11l4-3 4 3v10"/><path d="M6 13h1.5M6 16.5h1.5M9.5 13h1.5M9.5 16.5h1.5"/>',
-    officetel:  '<rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>',
-    commercial: '<path d="M4 9l1.2-4h13.6L20 9"/><path d="M5 9v11h14V9"/><path d="M3.5 9h17"/><path d="M9.5 20v-5h5v5"/>'
-};
-// icon(name, size, extraStyle) → inline SVG 문자열
-function icon(name, size, extraStyle) {
-    const sz = size || 16;
-    const sw = sz <= 18 ? 2 : 1.8;
-    return `<svg class="ic ic-${name}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" `
-        + `stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" `
-        + `style="vertical-align:middle;flex-shrink:0;${extraStyle || ''}" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;
-}
-// 건물 유형 → 라인 아이콘 (기본 이모지 대체)
-const TYPE_ICON_NAME = { house: 'house', multiplex: 'multiplex', officetel: 'officetel', apartment: 'officetel', neighborhood: 'commercial', commercial: 'commercial' };
-function typeIcon(type, size, color) {
-    return `<span style="display:inline-flex;align-items:center;color:${color || '#1a56db'};">`
-        + icon(TYPE_ICON_NAME[type] || 'building', size || 22) + `</span>`;
-}
-// [E] edit by smsong
-
-// 소셜 로그인 제공자 → 표시 정보(라벨/색상)
-function providerInfo(p) {
-    switch (String(p || '').toLowerCase()) {
-        case 'kakao':  return { label: '카카오', color: '#191600', bg: '#FEE500', border: '' };
-        case 'naver':  return { label: '네이버', color: '#ffffff', bg: '#03C75A', border: '' };
-        case 'google': return { label: '구글',  color: '#374151', bg: '#ffffff', border: '#e5e7eb' };
-        default:        return { label: '이메일', color: '#374151', bg: '#f3f4f6', border: '' };
-    }
-}
-function providerBadge(p) {
-    const i = providerInfo(p);
-    return `<span class="provider-badge" style="background:${i.bg};color:${i.color};${i.border ? `border:1px solid ${i.border};` : ''}">${i.label}</span>`;
-}
-function providerLoginText(p) {
-    return `${providerInfo(p).label} 계정으로 로그인됨`;
-}
-
-// 아바타(프로필 원형) — 이미지가 있으면 사진, 없거나 로드 실패하면 이름 첫 글자
-function avatarHTML(profile, sizePx) {
-    const url = profile && profile.profileURL ? profile.profileURL : '';
-    const name = (profile && (profile.name || profile.nickname)) || '';
-    // [B] edit by smsong - 이름이 없으면 기본 이모지(👤) 대신 라인 SVG 유저 아이콘 사용
-    const initial = name ? escapeHtml(name.trim().charAt(0)) : icon('user', Math.round((sizePx || 40) * 0.5));
     // [E] edit by smsong
-    const sz = sizePx || 40;
-    // 이미지는 실패해도 영구 제거하지 않고 retryAvatarImg() 로 재시도 (GCS 일시 오류/동시요청 대응).
-    // 성공하면 onload 로 이니셜을 가리고, 끝내 실패하면 이미지가 숨겨져 밑에 깔린 이니셜이 보인다.
-    return `<div class="avatar" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz * 0.42)}px;">
-        <span class="avatar-initial">${initial}</span>
-        ${url ? `<img class="avatar-img" src="${escapeHtml(url)}" alt="" decoding="async" onerror="retryAvatarImg(this)">` : ''}
-    </div>`;
-}
-
-// 프로필 이미지 로드 실패 시: 제거하지 말고 캐시버스터로 몇 번 재시도. 계속 실패할 때만 숨김(이니셜 노출).
-function retryAvatarImg(img) {
-    const MAX = 3;
-    if (!img.dataset.base) img.dataset.base = (img.getAttribute('src') || '').split('?_r=')[0];
-    const n = parseInt(img.dataset.retry || '0', 10);
-    if (n >= MAX) { img.style.display = 'none'; return; }
-    img.dataset.retry = String(n + 1);
-    const base = img.dataset.base;
-    setTimeout(() => {
-        img.style.display = '';                       // 재시도 위해 다시 표시
-        img.src = base + (base.indexOf('?') >= 0 ? '&' : '?') + '_r=' + Date.now();  // GCS는 알 수 없는 쿼리 무시
-    }, 200 * (n + 1));
-}
-
-// 매물 등록자 프로필 캐시 (uid -> {name, profileURL, provider, agency...})
-const _ownerCache = {};
-
-// [B] edit by smsong - 소유자 식별자 추출/비교 견고화
-// 백엔드가 등록자 식별자를 어떤 필드명(ownerUid/uid/ownerId/writerUid/owner/user_id)으로,
-// 또 uid(문자열) 혹은 id(숫자) 중 무엇으로 내려도 "내 매물"을 올바르게 판별하도록 함.
-function ownerIdOf(obj) {
-    if (!obj) return '';
-    const v = obj.ownerUid ?? obj.uid ?? obj.userUid ?? obj.ownerId ?? obj.writerUid ?? obj.owner ?? obj.user_id ?? obj.userId;
-    return v == null ? '' : String(v);
-}
-function myIds() {
-    const me = getCurrentUser() || {};
-    return [getUid(), me.uid, me.id, me.userId, me.name]
-        .filter(v => v != null && v !== '')
-        .map(String);
-}
-// 현재 로그인 사용자가 이 오브젝트(건물/호실)의 작성자인지 확인
-// (isMine = 관리 권한 판정용 → 본인 + 같은 사무소)
-function isMine(obj) {
-    const owner = ownerIdOf(obj);
-    if (!owner) return false;
-    if (myIds().includes(owner)) return true;
-    // 같은 사무소(공유 그룹) 소유 매물도 '내 것'처럼 관리 가능
-    return !!(state.officeUids && state.officeUids.has(String(owner)));
-}
-
-// ===== 표시용 소유 구분 (배지) =====
-// 내가 직접 등록한 것인지 (사무소 공유 제외)
-function isOwnedByMe(obj) {
-    const owner = ownerIdOf(obj);
-    return !!owner && myIds().includes(owner);
-}
-// 내가 아닌, 같은 사무소 동료가 등록한 것인지
-function isOfficeMates(obj) {
-    const owner = ownerIdOf(obj);
-    if (!owner || myIds().includes(owner)) return false;
-    return !!(state.officeUids && state.officeUids.has(String(owner)));
-}
-// 같은 사무소 동료 이름 (없으면 '사무소')
-function officeMemberName(obj) {
-    const owner = ownerIdOf(obj);
-    const m = (state.officeMembers || []).find(x => String(x.uid) === String(owner));
-    if (!m) return '사무소';
-    return m.name || m.nickname || '사무소';
-}
-// 소유 배지 HTML — 내 매물 / 동료 이름
-function ownerBadgeHTML(obj) {
-    if (isOwnedByMe(obj)) {
-        return '<span style="font-size:10.5px;color:#1a56db;background:#e8f0fe;font-weight:700;padding:1px 7px;border-radius:10px;">내 매물</span>';
+    // 1. 401(Unauthorized) 또는 500(Internal Server Error)이 발생하면 튕겨냄
+    if (res.status === 401 || res.status === 500) {
+        redirectToLogin('토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주십시오.');
+        throw new Error('인증 만료 또는 서버 에러 발생');
     }
-    if (isOfficeMates(obj)) {
-        return `<span style="font-size:10.5px;color:#7c3aed;background:#f1ebfe;font-weight:700;padding:1px 7px;border-radius:10px;">${escapeHtml(officeMemberName(obj))}</span>`;
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        // 2. 에러 텍스트 내부에 토큰 관련 키워드가 있거나 500 에러 오브젝트 구조가 보이면 튕겨냄
+        if (/jwt|token|expired|signature|malformed|unauthor|forbidden|authentication|Internal Server Error/i.test(text)) {
+            redirectToLogin('토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주십시오.');
+            throw new Error('인증이 만료되었습니다');
+        }
+        throw new Error(text || (res.status + ' ' + res.statusText));
     }
+    if (res.status === 204) return null;
+    // 본문이 빈 200 응답(휴지통 이동/삭제 등) 안전 처리
+    const text = await res.text();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (e) { return text; }
+}
+
+// ==========================================
+// 1-b. 접근 권한은 '방별' 관리 — 관리자 = 각 방의 방장 (하드코딩 uid 없음)
+// ==========================================
+const ME_ALIAS = ['송성민', 's s'];             // (표시용) '송성민'으로 정규화할 이름
+
+// [smsong] 방(공유 공간) 컨텍스트 헬퍼
+function getRoomId() { return localStorage.getItem('selectedRoomId') || ''; }
+// [B] edit by smsong - #2 방 타입은 서버에서 받은 roomInfo.type(권위) 우선, 없으면 localStorage.
+//  (알림 딥링크로 진입 시 localStorage 가 비어/오래돼 COUPLE 로 오판하던 버그 해결)
+function getRoomType() {
+    var t = (window.Daylog && Daylog.roomInfo && Daylog.roomInfo.type)
+        ? Daylog.roomInfo.type
+        : localStorage.getItem('selectedRoomType');
+    return (t || '').toUpperCase();
+}
+function getRoomOwnerUid() { return localStorage.getItem('selectedRoomOwnerUid') || ''; }
+function isRoomOwner() { return !!(getUid() && getUid() === getRoomOwnerUid()); }
+function isCoupleRoom() { return getRoomType() === 'COUPLE'; }
+
+// 여러 소스(localStorage / JWT)에서 로그인 사용자 name 을 최대한 확보 (표시용)
+function readLocalName() {
+    try {
+        const cu = JSON.parse(localStorage.getItem('currentUser') || 'null');
+        if (cu && (cu.name || cu.username)) return cu.name || cu.username;
+    } catch (_) {}
+    try {
+        const a = JSON.parse(localStorage.getItem('auth') || 'null');
+        if (a) {
+            if (a.user && (a.user.name || a.user.username)) return a.user.name || a.user.username;
+            if (a.name) return a.name;
+        }
+    } catch (_) {}
+    const p = decodeJwt(getToken());
+    if (p && (p.name || p.username)) return p.name || p.username;
     return '';
 }
-// [E] edit by smsong
 
-async function fetchOwnerProfile(obj) {
-    // [B] edit by smsong - uid 문자열 또는 건물/호실 객체 모두 허용
-    const uid = (obj && typeof obj === 'object') ? ownerIdOf(obj) : (obj || '');
-    // [E] edit by smsong
-    if (!uid) return null;
-    if (_ownerCache[uid]) return _ownerCache[uid];
-    const me = getCurrentUser();
-    if (me && myIds().includes(String(uid))) { _ownerCache[uid] = me; return me; }   // 본인이면 로컬 정보 사용
-    try {
-        const p = await Api.getUserProfile(uid);
-        _ownerCache[uid] = p || { uid };
-        return _ownerCache[uid];
-    } catch (_) {
-        return { uid };   // 실패 시 uid 만으로 표시
-    }
+
+// 표시용 정규화: 송성민/s s -> '송성민', 그 외 -> '강미르'
+function normalizeDisplayName(name) {
+    const n = String(name || '').trim().toLowerCase();
+    if (ME_ALIAS.map(s => s.toLowerCase()).includes(n)) return '송성민';
+    return '송성민';
 }
 
-// 서버에서 전체 건물(+호실)을 불러와 state에 저장
-async function loadData(isInitial) {
-    if (isInitial) { try { await loadMyPermission(); } catch (_) {} }   // 내 권한 먼저 로드(버튼 게이팅용)
-    if (isInitial) { try { await loadOffice(); } catch (_) {} }         // 사무소 공유 그룹 로드
-    try {
-        const buildings = await Api.getBuildings();
-        // 백엔드 id(Long) -> 문자열로 정규화 (기존 '=== id' 비교 로직 그대로 동작)
-        (buildings || []).forEach(b => {
-            b.id = String(b.id);
-            b.units = (b.units || []).map(u => ({ ...u, id: String(u.id) }));
-            // 계약 만료일이 지난(당일 포함) 임차중/만기임박 호실은 자동으로 '공실' 처리
-            b.units.forEach(u => { u.status = effectiveStatus(u); });
-        });
-        state.buildings = buildings || [];
-        // 찜 목록 id 로드(실패해도 무시) — 하트 상태 표시용
-        try {
-            const favIds = await Api.getFavoriteIds();
-            state.favorites = new Set((favIds || []).map(String));
-        } catch (_) { /* 찜 로드 실패는 무시 */ }
-    } catch (e) {
-        state.buildings = [];
-        if (_authRedirecting) return state;   // 이미 로그인 페이지로 이동 중
-        if (isInitial) {
-            // 메인 진입 시 데이터 로드 실패(서버가 토큰 거부/500/연결 실패) → 로그인으로
-            redirectToLogin('세션이 만료되었거나 서버에 연결할 수 없습니다. 다시 로그인해주세요.');
-        } else if (typeof showToast === 'function') {
-            showToast('서버 연결 실패: ' + e.message);
-        }
-    }
-    return state;
-}
+let _blocked = false;
+function blockUnauthorizedUser() {
+    if (_blocked) return;
+    _blocked = true;
+    // 토큰은 '권한 요청'에 필요하므로 즉시 폐기하지 않고, 화면 이동 시 폐기
 
-// =====================================================
-// MAP
-// =====================================================
-let map; // 네이버는 geocoder 객체를 따로 선언할 필요가 없습니다.
-let markers = [];
-let overlays = [];
-let pickerMode = false;
-let pickerLatlng = null;
-let currentBuilding = null;
-let activeFilter = 'all';
-let activeTab = 'map';
-let listMineOnly = false;   // '내 목록' 탭이면 내 건물만 표시
-
-const STATUS_COLOR = { empty: '#dc2626', occupied: '#0d9451', expiring: '#d97706' };
-const STATUS_LABEL = { empty: '공실', occupied: '임차', expiring: '만기임박' };
-const TYPE_EMOJI = { house: '🏠', multiplex: '🏘️', officetel: '🏢', apartment: '🏬', neighborhood: '🏪', commercial: '🛍️' };
-const TYPE_LABEL = { house: '단독&다중', multiplex: '다세대', officetel: '오피스텔', apartment: '아파트', neighborhood: '근린생활시설', commercial: '상가' };
-
-// 거래유형 (sale=매매 / jeonse=전세 / monthly=월세)
-const DEAL_LABEL = { sale: '매매', jeonse: '전세', monthly: '월세' };
-const DEAL_COLOR = { sale: '#7c3aed', jeonse: '#1a56db', monthly: '#0d9451' }; // 매매 보라 · 전세 블루 · 월세 그린
-const DEAL_CODES = ['sale', 'jeonse', 'monthly'];
-
-// 거래유형 결정: 명시값이 있으면 그대로, 없으면(구 데이터) 가격으로 추정.
-//  · 월세>0  → 월세(monthly)
-//  · 보증금만 → 전세(jeonse)
-//  · 매매는 가격만으론 전세와 구분 불가 → 명시값에만 의존
-function inferDeal(o) {
-    if (o && o.dealType && DEAL_LABEL[o.dealType]) return o.dealType;
-    const rent = (o && o.rent) || 0, dep = (o && o.deposit) || 0;
-    if (rent > 0) return 'monthly';
-    if (dep > 0) return 'jeonse';
-    return 'monthly';
-}
-// 거래유형 배지(작은 색상 칩)
-function dealBadge(o, sizePx) {
-    const d = inferDeal(o);
-    const fs = sizePx || 10.5;
-    return `<span class="deal-badge" style="--dc:${DEAL_COLOR[d]};font-size:${fs}px;">${DEAL_LABEL[d]}</span>`;
-}
-
-// 계약 만료일이 지나면(만기일 당일 포함) 자동으로 '공실'로 간주.
-//  · 저장값을 바꾸지 않고 "표시상" 자동 전환 → 새로고침/cron 없이 항상 최신.
-function effectiveStatus(u) {
-    if (!u) return 'empty';
-    if (u.status !== 'empty' && u.contractEnd) {
-        const end = new Date(u.contractEnd);
-        if (!isNaN(end)) {
-            const today = new Date();
-            const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-            const e0 = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-            if (e0 <= t0) return 'empty';   // 만기일이 되면(=오늘 이상이면) 공실
-        }
-    }
-    return u.status || 'empty';
-}
-
-// 역지오코딩 v2 응답으로 "지번 주소"를 만든다. (도로명 미사용)
-//  예) "서울특별시 강남구 역삼동 681-1"
-//  · address.jibunAddress 우선, 비어 있으면 results 의 'addr' 결과로 직접 조합.
-//  · 지번이 정말 없는 위치에서만 최후로 도로명을 반환(빈 주소 방지).
-function buildFullAddress(v2) {
-    if (!v2) return '';
-    const a = v2.address || {};
-    let jibun = (a.jibunAddress || '').trim();
-    if (!jibun && Array.isArray(v2.results)) {
-        v2.results.forEach(r => { if (r.name === 'addr' && !jibun) jibun = composeAddrFromResult(r); });
-    }
-    if (jibun) return jibun;
-
-    // 지번이 없을 때만 도로명 폴백
-    let road = (a.roadAddress || '').trim();
-    if (!road && Array.isArray(v2.results)) {
-        v2.results.forEach(r => { if (r.name === 'roadaddr' && !road) road = composeAddrFromResult(r); });
-    }
-    return road;
-}
-
-// reverseGeocode results 한 건(region+land)으로 주소 문자열 조합
-function composeAddrFromResult(r) {
-    if (!r) return '';
-    const rg = r.region || {}, land = r.land || {};
-    const region = [rg.area1, rg.area2, rg.area3, rg.area4]
-        .map(x => x && x.name).filter(Boolean).join(' ');
-    const num = land.number1
-        ? land.number1 + (land.number2 && land.number2 !== '0' ? '-' + land.number2 : '')
-        : '';
-    if (r.name === 'roadaddr') {
-        // 도로명: 시/도 구 + 도로명(land.name) + 건물번호
-        const head = [rg.area1, rg.area2].map(x => x && x.name).filter(Boolean).join(' ');
-        let s = [head, land.name, num].filter(Boolean).join(' ').trim();
-        if (land.addition0 && land.addition0.value) s += ' (' + land.addition0.value + ')'; // 건물명
-        return s;
-    }
-    // 지번
-    return [region, num].filter(Boolean).join(' ').trim();
-}
-
-async function initMap() {
-    if (!requireAuthOrRedirect()) return;
-    const container = document.getElementById('map');
-
-    // Fallback center: Seoul (네이버 좌표계)
-    const center = new naver.maps.LatLng(37.5665, 126.9780);
-
-    // 네이버 지도 생성 (줌 레벨 14가 카카오의 7 정도와 비슷합니다)
-    map = new naver.maps.Map(container, {
-        center: center,
-        zoom: 14,
-        zoomControl: false // 커스텀 버튼을 쓰므로 기본 컨트롤은 숨김
-    });
-
-    naver.maps.Event.addListener(map, 'click', function(e) {
-        if (pickerMode) {
-            pickerLatlng = e.coord; // 네이버는 e.coord에 좌표가 담깁니다.
-            togglePickerImmersive(); // 위치 설정 중에도 탭하면 상단(검색/안내)·하단 메뉴가 숨고 버튼이 내려감
-            return;
-        }
-        // 시트가 펼쳐져 있으면 peek로 내리고, 아니면(어느 탭이든) 상/하단 메뉴 토글(몰입 모드)
-        if (Sheet.isOpen()) { Sheet.dismiss(); return; }
-        toggleImmersive();
-    });
-
-    // 사용자가 직접 지도를 움직이면, 뒤늦게 도착한 현재위치로 화면이 튀지 않도록 자동 센터링 취소
-    naver.maps.Event.addListener(map, 'dragstart', function () { _suppressAutoCenter = true; });
-
-    // 줌/이동이 멈출 때마다 픽셀 거리 기준으로 다시 묶음 → 확대하면 자동으로 풀림
-    naver.maps.Event.addListener(map, 'idle', scheduleRenderMarkers);
-
-    await loadData(true);
-    renderMarkers();
-    updateStats();
-    showBuildingList();
-    applyPermUI();
-    showSheet('');
-
-    // Zoom controls (네이버는 숫자가 클수록 확대됩니다. 카카오와 반대)
-    document.getElementById('zoom-in-btn').onclick = () => map.setZoom(map.getZoom() + 1);
-    document.getElementById('zoom-out-btn').onclick = () => map.setZoom(map.getZoom() - 1);
-    document.getElementById('my-location-btn').onclick = gotoMyLocation;
-    document.getElementById('add-btn-float').onclick = toggleMapPicker;
-    document.getElementById('map-picker-confirm').onclick = confirmPickerLocation;
-
-    // 현재 위치 추적 시작(파란 점). iOS가 아니면 나침반도 바로 연결
-    startGeolocationTracking();
-    if (!(typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function')) {
-        ensureOrientationPermission();
-    }
-
-    // 처음 진입 시: 현재 위치로 지도 중심 이동 (권한 거부/실패 시 기본 서울 중심 유지)
-    centerOnCurrentLocationOnce();
-}
-
-function gotoMyLocation() {
-    ensureOrientationPermission();           // iOS: 사용자 제스처에서 나침반 권한 요청
-    _suppressAutoCenter = true;              // 버튼으로 직접 이동하면 자동 센터링은 더 이상 불필요
-    if (!navigator.geolocation) { showToast('위치 권한이 필요합니다'); return; }
-    navigator.geolocation.getCurrentPosition(pos => {
-        const latlng = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        updateGeoMarker(latlng, pos.coords.heading);
-        map.setCenter(latlng);
-        map.setZoom(16); // 내 위치는 확대해서 보여줌
-    }, () => showToast('위치 권한이 필요합니다'), { enableHighAccuracy: true });
-    if (geoWatchId == null) startGeolocationTracking();
-}
-
-// 처음 지도 로드 시 1회: 현재 위치를 받아 지도 중심을 그 위치로 이동.
-// 사용자가 이미 지도를 움직였다면(_suppressAutoCenter) 화면을 가로채지 않는다.
-function centerOnCurrentLocationOnce() {
-    if (!navigator.geolocation || !map) return;
-    navigator.geolocation.getCurrentPosition(pos => {
-        if (_suppressAutoCenter) return;     // 그 사이 사용자가 지도를 조작했으면 중단
-        const latlng = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        updateGeoMarker(latlng, pos.coords.heading);
-        map.setCenter(latlng);
-        map.setZoom(16);
-    }, () => { /* 거부/실패 → 기본 서울 중심 유지 */ },
-       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
-}
-
-// =====================================================
-// 현재 위치 + 방향(나침반) — 네이버 지도앱 스타일
-// =====================================================
-let geoMarker = null;
-let geoWatchId = null;
-let geoHeading = 0;
-let _oriAsked = false;
-let _suppressAutoCenter = false;   // 사용자가 지도를 직접 움직이면 초기 자동 센터링 취소
-
-// 지도 로드시 현재 위치 추적 시작 → 파란 점 + 방향 부채꼴 표시
-function startGeolocationTracking() {
-    if (!navigator.geolocation || !map) return;
-    if (geoWatchId != null) return;
-    geoWatchId = navigator.geolocation.watchPosition(pos => {
-        const latlng = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        updateGeoMarker(latlng, pos.coords.heading);
-    }, () => {}, { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 });
-}
-
-function geoMarkerContent() {
-    return '' +
-        '<div class="geo-loc-marker">' +
-        '  <div class="geo-loc-beam" id="geo-loc-beam"></div>' +
-        '  <div class="geo-loc-pulse"></div>' +
-        '  <div class="geo-loc-dot"></div>' +
+    const ov = document.createElement('div');
+    ov.id = 'auth-block-overlay';
+    ov.innerHTML =
+        '<div class="abx-card">' +
+        '<div class="abx-icon">' + icon('lock',40) + '</div>' +
+        '<p class="abx-msg">아직 접근 권한이 없습니다.<br>관리자 승인 후 이용할 수 있습니다.</p>' +
+        '<button type="button" id="abx-request-btn" class="abx-request-btn">권한 요청하기</button>' +
+        '<button type="button" id="abx-login-btn" class="abx-login-btn">방 화면으로</button>' +
+        '<div class="abx-sub">권한을 요청하면 관리자에게 전달됩니다.</div>' +
         '</div>';
+    document.body.appendChild(ov);
+
+    var rq = document.getElementById('abx-request-btn');
+    if (rq) rq.addEventListener('click', requestAccessFromBlock);
+    var lg = document.getElementById('abx-login-btn');
+    // 방 화면으로: 토큰을 유지한 채 방 목록으로 이동 (logout 호출 X → rooms.js 가 로그인으로 되튕기지 않음)
+    if (lg) lg.addEventListener('click', function () { location.replace('rooms.html'); });
 }
 
-function updateGeoMarker(latlng, gpsHeading) {
-    if (!map) return;
-    if (!geoMarker) {
-        geoMarker = new naver.maps.Marker({
-            position: latlng,
-            map: map,
-            zIndex: 1000,
-            clickable: false,
-            icon: {
-                content: geoMarkerContent(),
-                size: new naver.maps.Size(44, 44),
-                anchor: new naver.maps.Point(22, 22)
-            }
-        });
-    } else {
-        geoMarker.setPosition(latlng);
-    }
-    // GPS 이동방향이 있으면 그것도 반영(걷는 중)
-    if (typeof gpsHeading === 'number' && !isNaN(gpsHeading)) {
-        geoHeading = gpsHeading;
-        applyGeoHeading();
-    }
-}
-
-function applyGeoHeading() {
-    const beam = document.getElementById('geo-loc-beam');
-    if (beam) beam.style.transform = 'rotate(' + geoHeading + 'deg)';
-}
-
-// 기기 방향(나침반) 핸들러 — iOS의 webkitCompassHeading 우선, 그 외엔 alpha 변환
-function _onDeviceOrientation(e) {
-    let hd = null;
-    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
-        hd = e.webkitCompassHeading;                       // iOS: 이미 북=0, 시계방향
-    } else if (e.alpha != null && !isNaN(e.alpha)) {
-        hd = (360 - e.alpha) % 360;                        // Android 등: 북 기준으로 변환
-    }
-    if (hd != null) { geoHeading = hd; applyGeoHeading(); }
-}
-
-function _attachOrientation() {
-    window.addEventListener('deviceorientationabsolute', _onDeviceOrientation, true);
-    window.addEventListener('deviceorientation', _onDeviceOrientation, true);
-}
-
-// iOS 13+ 는 사용자 제스처에서 권한 요청 필요
-function ensureOrientationPermission() {
-    if (_oriAsked) return;
-    _oriAsked = true;
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-            .then(state => { if (state === 'granted') _attachOrientation(); })
-            .catch(() => {});
-    } else {
-        _attachOrientation();
-    }
-}
-
-// 금액(만원) → "X.X억" / "X천만" 표기. 불필요한 .0 은 제거.
-function formatEok(manwon) {
-    if (!manwon || manwon <= 0) return '';
-    if (manwon >= 10000) {                       // 1억 이상 → 억 단위
-        const eok = Math.round((manwon / 10000) * 10) / 10;   // 소수 1자리 반올림
-        return (Number.isInteger(eok) ? String(eok) : eok.toFixed(1)) + '억';
-    }
-    return manwon.toLocaleString() + '만';        // 1억 미만 → 만원 그대로
-}
-
-// 등록일 표시 — DB의 datetime을 받아 날짜만 (YYYY.MM.DD)
-function formatDate(ms) {
-    if (!ms) return '';
-    const d = new Date(ms);
-    if (isNaN(d)) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}.${m}.${dd}`;
-}
-
-// 마커/요약용 가격 라벨. 거래유형에 따라 "매매 16억" / "전세 2.4억" / "월세 2.4억/50".
-// 관리비(manage)는 표시하지 않는다.
-function formatPriceLabel(b) {
-    const deal = inferDeal(b);
-    const dep = b.deposit || 0;
-    const rent = b.rent || 0;
-    const depStr = formatEok(dep);
-    if (deal === 'sale')   return depStr ? `매매 ${depStr}` : '';
-    if (deal === 'jeonse') return depStr ? (rent > 0 ? `전세 ${depStr}/${rent}` : `전세 ${depStr}`) : '';
-    // monthly
-    if (rent > 0) return depStr ? `월세 ${depStr}/${rent}` : `월세 ${rent}`;
-    return depStr ? `전세 ${depStr}` : '';   // 월세인데 월세액이 0이면 사실상 전세로 표기
-}
-
-// 매물(건물) 마커 2번째 줄 — 매물엔 가격이 없으므로 호실 요약을 표시
-function buildingMarkerSub(b) {
-    const s = getUnitStats(b);
-    if (s.total === 0) return '';
-    return s.empty > 0 ? `호실 ${s.total} · 공실 ${s.empty}` : `호실 ${s.total}`;
-}
-
-// 마커용 약식 가격 — 매매:"매 12.4억" / 월세:"월 30/78" / 전세:"전 2.4억"
-function formatMarkerPrice(b) {
-    const deal = inferDeal(b);
-    const dep = b.deposit || 0, rent = b.rent || 0;
-    const depStr = formatEok(dep);
-    if (deal === 'sale')   return depStr ? `매 ${depStr}` : '매';
-    if (deal === 'jeonse') return depStr ? (rent > 0 ? `전 ${depStr}/${rent}` : `전 ${depStr}`) : '전';
-    // monthly
-    if (rent > 0) return depStr ? `월 ${depStr}/${rent}` : `월 ${rent}`;
-    return depStr ? `전 ${depStr}` : '';   // 월세인데 월세액이 0이면 사실상 전세
-}
-
-// =====================================================
-// MARKER + CLUSTERING
-//  · 화면 픽셀 거리(CLUSTER_PX) 기준으로 가까운 매물을 한 개의 동그라미(숫자) 마커로 묶는다.
-//  · 픽셀 거리 기준이므로 "확대할수록" 점들이 화면에서 멀어져 자동으로 풀린다(declustering).
-//  · 클러스터 마커를 누르면 그 안의 매물들이 하단 시트에 목록으로 펼쳐진다.
-// =====================================================
-const CLUSTER_PX = 64;          // 이 픽셀 거리 안에 있으면 한 덩어리로 묶음(매물 간 최소 간격 기준점)
-let clusterGroups = {};         // { 키: [건물id, ...] } — 클러스터 클릭 시 목록 복원용
-let _markerRaf = 0;             // idle 연타 디바운스용
-
-// 단일 건물 → 가격 말풍선 마커 (제목 1줄 + 가격 1줄, 각 줄은 가로로만 — 절대 줄바꿈 안 됨)
-function addBuildingMarker(b) {
-    const unitStats = getUnitStats(b);
-    const dominant = unitStats.empty > 0 ? 'empty' : (unitStats.expiring > 0 ? 'expiring' : 'occupied');
-    const color = STATUS_COLOR[dominant];
-    const priceLabel = formatMarkerPrice(b);          // 매 12.4억 / 월 30/78 / 전 2.4억
-    const priceColor = DEAL_COLOR[inferDeal(b)] || '#1a56db';
-
-    const content = `
-      <div onclick="selectBuilding('${b.id}')" style="
-        position:relative; cursor:pointer;
-        background:white; border:2px solid ${color};
-        border-radius:9px; padding:3px 8px;
-        box-shadow:0 2px 7px rgba(0,0,0,0.16);
-        font-family:-apple-system,sans-serif;
-        width:max-content; max-width:200px; text-align:center;
-        transform:translateX(-50%) translateY(-100%);
-        margin-bottom:7px;
-      ">
-        <div style="font-size:10.5px;font-weight:700;color:#111;line-height:1.25;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(b.name)}</div>
-        ${priceLabel ? `<div style="font-size:11px;color:${priceColor};font-weight:800;margin-top:1px;letter-spacing:-0.2px;line-height:1.25;white-space:nowrap;">${escapeHtml(priceLabel)}</div>` : ''}
-        <div style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
-          width:0;height:0;border-left:6px solid transparent;
-          border-right:6px solid transparent;border-top:6px solid ${color};">
-        </div>
-      </div>
-    `;
-
-    const overlay = new naver.maps.Marker({
-        position: new naver.maps.LatLng(b.lat, b.lng),
-        map: map,
-        icon: {
-            content: content,
-            size: new naver.maps.Size(52, 34),
-            anchor: new naver.maps.Point(0, 0) // CSS transform으로 중심을 맞췄으므로 0,0
-        }
-    });
-    overlays.push(overlay);
-}
-
-// 여러 건물 → 숫자 동그라미(클러스터) 마커
-function addClusterMarker(key, members) {
-    // 묶인 매물의 상태를 합쳐 대표 색상 결정 (공실>만기>임차 우선)
-    let anyEmpty = false, anyExpiring = false;
-    members.forEach(b => {
-        const s = getUnitStats(b);
-        if (s.empty > 0) anyEmpty = true;
-        if (s.expiring > 0) anyExpiring = true;
-    });
-    const color = anyEmpty ? STATUS_COLOR.empty : (anyExpiring ? STATUS_COLOR.expiring : STATUS_COLOR.occupied);
-
-    // 묶인 매물 개수에 따라 동그라미 크기 살짝 키움
-    const n = members.length;
-    const size = n >= 100 ? 54 : (n >= 10 ? 48 : 42);
-
-    // 중심 좌표 = 멤버 좌표 평균
-    let lat = 0, lng = 0;
-    members.forEach(b => { lat += b.lat; lng += b.lng; });
-    lat /= n; lng /= n;
-
-    const content = `
-      <div onclick="openCluster('${key}')" class="cluster-marker"
-           style="--c:${color}; width:${size}px; height:${size}px; font-size:${n >= 100 ? 13 : 14}px;">
-        <span class="cluster-count">${n}</span>
-      </div>`;
-
-    const overlay = new naver.maps.Marker({
-        position: new naver.maps.LatLng(lat, lng),
-        map: map,
-        zIndex: 50,
-        icon: {
-            content: content,
-            size: new naver.maps.Size(size, size),
-            anchor: new naver.maps.Point(0, 0) // CSS transform: translate(-50%,-50%) 로 중심 정렬
-        }
-    });
-    overlays.push(overlay);
-}
-
-// 현재 줌/화면 기준으로 건물들을 픽셀 거리로 묶는다(그리디).
-// 투영을 못 구하면(아주 이른 시점 등) 클러스터 없이 개별 마커로 폴백.
-function clusterBuildings(list) {
-    const proj = map && map.getProjection && map.getProjection();
-    if (!proj || typeof proj.fromCoordToOffset !== 'function') {
-        return list.map(b => ({ members: [b] }));
-    }
-    const pts = list.map(b => {
-        let p = null;
-        try { p = proj.fromCoordToOffset(new naver.maps.LatLng(b.lat, b.lng)); } catch (_) {}
-        return { b, x: p ? p.x : null, y: p ? p.y : null };
-    });
-    if (!pts.every(p => p.x != null && p.y != null)) {
-        return list.map(b => ({ members: [b] }));   // 투영 실패 → 폴백
-    }
-    const R2 = CLUSTER_PX * CLUSTER_PX;
-    const used = new Array(pts.length).fill(false);
-    const clusters = [];
-    for (let i = 0; i < pts.length; i++) {
-        if (used[i]) continue;
-        used[i] = true;
-        const group = [pts[i].b];
-        for (let j = i + 1; j < pts.length; j++) {
-            if (used[j]) continue;
-            const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-            if (dx * dx + dy * dy <= R2) { used[j] = true; group.push(pts[j].b); }
-        }
-        clusters.push({ members: group });
-    }
-    return clusters;
-}
-
-function renderMarkers() {
-    overlays.forEach(o => o.setMap(null));
-    overlays = [];
-    clusterGroups = {};
-    if (!map) return;
-    if (!myPerms().canRead) { applyPermUI(); return; }   // 조회 권한 없으면 마커 표시 안 함
-
-    const visible = state.buildings.filter(matchesFilter);
-    const clusters = clusterBuildings(visible);
-    clusters.forEach((c, idx) => {
-        if (c.members.length === 1) {
-            addBuildingMarker(c.members[0]);
-        } else {
-            const key = 'cl' + idx;
-            clusterGroups[key] = c.members.map(b => b.id);
-            addClusterMarker(key, c.members);
-        }
-    });
-}
-
-// idle(이동/줌 멈춤) 마다 다시 클러스터링 — 같은 프레임 연타는 1회로 합침
-function scheduleRenderMarkers() {
-    if (_markerRaf) return;
-    _markerRaf = requestAnimationFrame(() => { _markerRaf = 0; renderMarkers(); });
-}
-
-// 클러스터 동그라미 클릭 → 그 안의 매물들을 하단 시트에 목록으로 펼침
-function openCluster(key) {
-    const ids = clusterGroups[key] || [];
-    const items = ids.map(id => state.buildings.find(b => b.id === id)).filter(Boolean);
-    if (!items.length) return;
-
-    // 클러스터 중심으로 살짝 이동(목록과 위치 감각을 맞춤)
-    if (map && items.length) {
-        let lat = 0, lng = 0;
-        items.forEach(b => { lat += b.lat; lng += b.lng; });
-        map.panTo(new naver.maps.LatLng(lat / items.length, lng / items.length));
-    }
-    showClusterList(items);
-    markTab('map');
-    Sheet.open('building', 'full');
-}
-
-// 클러스터 안의 매물 목록 — 하단 메뉴 '목록'과 동일한 카드 스타일 재사용
-function showClusterList(items) {
-    hideSheetBack('sheet');
-    document.getElementById('sheet-title').textContent = '이 위치의 매물';
-    document.getElementById('sheet-subtitle').textContent = `${items.length}개 매물이 모여 있습니다`;
-    const body = document.getElementById('sheet-body');
-    body.innerHTML = items.map(buildingListItemHTML).join('');
-    hydrateOwnerNames(body);
-}
-
-function matchesFilter(b) {
-    if (activeFilter === 'all') return true;
-    // 거래유형 필터: 매물의 대표 거래유형 기준
-    if (DEAL_CODES.includes(activeFilter)) {
-        return inferDeal(b) === activeFilter;
-    }
-    if (['house', 'multiplex', 'officetel', 'apartment', 'neighborhood', 'commercial'].includes(activeFilter)) {
-        return b.type === activeFilter;
-    }
-    const s = getUnitStats(b);
-    if (activeFilter === 'empty') return s.empty > 0;
-    if (activeFilter === 'occupied') return s.occupied > 0;
-    if (activeFilter === 'expiring') return s.expiring > 0;
-    return true;
-}
-
-function getUnitStats(b) {
-    const units = b.units || [];
-    const eff = units.map(effectiveStatus);   // 만기일 지난 호실은 자동 공실 처리
-    return {
-        empty: eff.filter(s => s === 'empty').length,
-        occupied: eff.filter(s => s === 'occupied').length,
-        expiring: eff.filter(s => s === 'expiring').length,
-        total: units.length
-    };
-}
-
-// =====================================================
-// 웹(데스크톱) 상세 패널 — 네이버 지도 웹처럼 목록 패널 오른쪽에 같은 크기로 슬라이드인
-// =====================================================
-function isWebMode() {
-    return document.documentElement.classList.contains('mode-web');
-}
-
-// 상세 패널 + 헤더 '목록' 버튼용 스타일 자체 주입 (main.css 수정 불필요)
-function ensureWebDetailStyles() {
-    if (document.getElementById('web-detail-styles')) return;
-    const css = `
-/* 상세보기 헤더 맨 위(제목 위) '목록' 버튼 */
-.sheet-back-btn {
-    display: inline-flex; align-items: center; gap: 4px;
-    margin: 2px 0 10px; padding: 7px 12px;
-    border-radius: 8px; border: 1px solid var(--gray-200, #e5e7eb);
-    background: #fff; color: var(--gray-500, #6b7280);
-    font-size: 13px; font-weight: 600; cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.sheet-back-btn:hover { background: var(--gray-50, #f9fafb); color: var(--gray-700, #374151); }
-.sheet-back-btn:active { transform: scale(0.97); }
-
-/* 상세 패널 — 기본(모바일)에서는 사용 안 함 */
-#detail-panel { display: none; }
-
-/* 웹 모드에서만: 목록 패널(#bottom-sheet) 바로 오른쪽에 동일한 폭으로 배치 */
-html.mode-web #detail-panel {
-    display: flex; flex-direction: column;
-    position: absolute;
-    top: var(--web-header-h); bottom: 0;
-    left: calc(var(--web-rail-w) + var(--web-panel-w));   /* 목록 패널 바로 오른쪽 */
-    width: var(--web-panel-w); min-width: var(--web-panel-w); max-width: var(--web-panel-w);
-    background: var(--white, #fff);
-    border-right: 1px solid var(--gray-200, #e5e7eb);
-    box-shadow: 8px 0 24px rgba(17,24,39,0.06);
-    z-index: 190;                       /* 지도 위, 모달 아래 */
-    transform: translateX(-100%);       /* 목록 패널 뒤에 숨어 있다가 */
-    opacity: 0; pointer-events: none;
-    transition: transform 0.32s cubic-bezier(0.32,0.72,0,1), opacity 0.2s ease;
-}
-html.mode-web #detail-panel.open {
-    transform: translateX(0);           /* 오른쪽으로 슬라이드인 */
-    opacity: 1; pointer-events: auto;
-}
-/* 상세 패널이 열리면 지도 좌측 컨트롤을 패널 오른쪽으로 밀어 가리지 않게 */
-html.mode-web #app.web-detail-open .map-float-controls { left: calc(var(--web-panel-w) + 18px); }
-
-/* ── 좌측 목록 패널 접기/펼치기 토글 (네이버 부동산 스타일) ── */
-html.mode-web #bottom-sheet { transition: transform .34s cubic-bezier(0.32,0.72,0,1); }
-html.mode-web #map-wrap { transition: left .34s cubic-bezier(0.32,0.72,0,1); }
-#web-panel-toggle { display: none; }
-html.mode-web #web-panel-toggle {
-    display: flex; align-items: center; justify-content: center;
-    position: absolute;
-    top: calc(50% + (var(--web-header-h) / 2));
-    left: calc(var(--web-rail-w) + var(--web-panel-w));
-    transform: translate(-50%, -50%);
-    width: 22px; height: 48px;
-    background: #fff; color: var(--gray-500, #6b7280);
-    border: 1px solid var(--gray-200, #e5e7eb); border-left: none;
-    border-radius: 0 9px 9px 0;
-    box-shadow: 3px 0 8px rgba(17,24,39,0.08);
-    cursor: pointer; z-index: 210;
-    transition: left .34s cubic-bezier(0.32,0.72,0,1), opacity .2s ease, color .15s, background .15s;
-}
-html.mode-web #web-panel-toggle:hover { color: var(--blue, #1a56db); background: #f8faff; }
-html.mode-web #web-panel-toggle svg { transition: transform .34s cubic-bezier(0.32,0.72,0,1); }
-/* 접힌 상태: 목록 패널 숨김 + 지도 왼쪽으로 확장 + 토글은 지도 왼쪽 끝으로 + 화살표 반전 */
-/* (모바일 Sheet 가 웹에서도 인라인 transform 을 걸므로 !important 로 우선 적용) */
-html.mode-web #app.web-panel-collapsed #bottom-sheet {
-    transform: translateX(-100%) !important;
-    transition: transform .34s cubic-bezier(0.32,0.72,0,1) !important;
-}
-html.mode-web #app.web-panel-collapsed #map-wrap { left: var(--web-rail-w); }
-html.mode-web #app.web-panel-collapsed #web-panel-toggle { left: var(--web-rail-w); }
-html.mode-web #app.web-panel-collapsed #web-panel-toggle svg { transform: rotate(180deg); }
-/* 상세 패널이 열려 있을 땐 토글 숨김(겹침 방지) */
-html.mode-web #app.web-detail-open #web-panel-toggle { opacity: 0; pointer-events: none; }
-`;
-    const style = document.createElement('style');
-    style.id = 'web-detail-styles';
-    style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
-}
-
-// 상세 패널 DOM 1회 생성 (#bottom-sheet 와 동일한 구조/클래스로 스타일 일치)
-function ensureDetailPanel() {
-    let panel = document.getElementById('detail-panel');
-    if (panel) return panel;
-    const app = document.getElementById('app');
-    if (!app) return null;
-    panel = document.createElement('div');
-    panel.id = 'detail-panel';
-    panel.innerHTML = `
-      <div class="sheet-header" id="detail-header">
-        <div class="sheet-title" id="detail-title"></div>
-        <div class="sheet-subtitle" id="detail-subtitle"></div>
-      </div>
-      <div class="sheet-body" id="detail-body"></div>`;
-    app.appendChild(panel);
-    return panel;
-}
-
-// 헤더 맨 위(제목 위)에 '목록' 버튼을 넣는다. prefix: 'sheet'(모바일) | 'detail'(웹 패널)
-function ensureSheetBack(prefix, onClick) {
-    const header = document.getElementById(prefix + '-header');
-    if (!header) return;
-    let back = document.getElementById(prefix + '-back');
-    if (!back) {
-        back = document.createElement('button');
-        back.id = prefix + '-back';
-        back.type = 'button';
-        back.className = 'sheet-back-btn';
-        header.insertBefore(back, header.firstChild);   // 제목 위(헤더 맨 앞)에 배치
-    }
-    back.innerHTML = `${icon('back', 15)} 목록`;
-    back.onclick = onClick;
-    back.style.display = 'inline-flex';
-}
-function hideSheetBack(prefix) {
-    const back = document.getElementById((prefix || 'sheet') + '-back');
-    if (back) back.style.display = 'none';
-}
-
-// 웹 좌측 패널 접기/펼치기 토글 버튼 생성 (1회)
-function ensureWebPanelToggle() {
-    if (document.getElementById('web-panel-toggle')) return;
-    const app = document.getElementById('app');
-    if (!app) return;
-    const btn = document.createElement('button');
-    btn.id = 'web-panel-toggle';
-    btn.type = 'button';
-    btn.title = '목록 접기/펼치기';
-    btn.setAttribute('aria-label', '목록 접기/펼치기');
-    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
-    btn.onclick = toggleWebPanel;
-    app.appendChild(btn);
-}
-
-function toggleWebPanel() {
-    const app = document.getElementById('app');
-    if (!app) return;
-    const collapsing = !app.classList.contains('web-panel-collapsed');
-    if (collapsing) closeWebDetail();          // 전체 지도 보기 → 열린 상세 패널 닫기
-    app.classList.toggle('web-panel-collapsed');
-    // 지도 영역 크기가 바뀌므로 네이버 지도 리사이즈 (전환 애니메이션 후)
-    setTimeout(() => {
-        try { if (typeof naver !== 'undefined' && typeof map !== 'undefined' && map) naver.maps.Event.trigger(map, 'resize'); } catch (_) {}
-    }, 360);
-}
-
-// 웹: 오른쪽 상세 패널을 채우고 슬라이드인
-function openWebDetail(b) {
-    ensureWebDetailStyles();
-    ensureDetailPanel();
-    const app = document.getElementById('app');
-    if (app) app.classList.remove('web-panel-collapsed');   // 접혀 있었으면 펼쳐서 정상 배치로
-    showBuildingDetail(b, 'detail');
-    const panel = document.getElementById('detail-panel');
-    if (panel) panel.classList.add('open');
-    if (app) app.classList.add('web-detail-open');
-    const db = document.getElementById('detail-body');
-    if (db) db.scrollTop = 0;
-}
-function closeWebDetail() {
-    const panel = document.getElementById('detail-panel');
-    if (panel) panel.classList.remove('open');
-    const app = document.getElementById('app');
-    if (app) app.classList.remove('web-detail-open');
-    currentBuilding = null;
-}
-
-// 상세보기 진입 공통 — 웹은 오른쪽 패널, 모바일은 기존 바텀시트
-function openBuildingDetail(b) {
-    if (!b) return;
-    currentBuilding = b;
-    if (isWebMode()) {
-        openWebDetail(b);
-    } else {
-        showBuildingDetail(b);
-        showSheet('center');
-    }
-}
-
-// 로드 시 스타일 미리 주입(모바일 '목록' 버튼 스타일 포함)
-ensureWebDetailStyles();
-ensureWebPanelToggle();
-
-// =====================================================
-// 서비스워커 등록 + 푸시 알림(Web Push)
-// =====================================================
-let _swReg = null;
-let _pushEnabled = false;
-
-function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const raw = atob(base64);
-    const arr = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-    return arr;
-}
-
-async function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return null;
-    try { _swReg = await navigator.serviceWorker.register('sw.js'); return _swReg; }
-    catch (e) { console.error('서비스워커 등록 실패', e); return null; }
-}
-
-async function pushIsEnabled() {
-    try {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (!reg) return false;
-        return !!(await reg.pushManager.getSubscription());
-    } catch (_) { return false; }
-}
-
-async function enablePush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        alert('이 브라우저는 푸시 알림을 지원하지 않습니다.'); return false;
-    }
-    const perm = await Notification.requestPermission();   // ← OS/브라우저 알림 권한 요청
-    if (perm !== 'granted') {
-        alert('알림 권한이 허용되지 않았습니다.\n브라우저(또는 휴대폰) 설정에서 알림을 허용해주세요.');
-        refreshPushCard();
-        return false;
-    }
-    showLoading('푸시 알림을 설정하는 중…');
-    try {
-        const reg = (await navigator.serviceWorker.getRegistration()) || await registerServiceWorker();
-        await navigator.serviceWorker.ready;
-        const { publicKey } = await Api.getPushPublicKey();
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
-        }
-        await Api.pushSubscribe(sub.toJSON());
-        _pushEnabled = true;
-        showToast('푸시 알림이 켜졌습니다');
-        refreshPushCard();
-        return true;
-    } catch (e) {
-        alert('푸시 설정 실패\n\n' + (e.message || e));
-        return false;
-    } finally { hideLoading(); }
-}
-
-async function disablePush() {
-    showLoading('푸시 알림을 끄는 중…');
-    try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        const sub = reg && await reg.pushManager.getSubscription();
-        if (sub) {
-            try { await Api.pushUnsubscribe(sub.endpoint); } catch (_) {}
-            await sub.unsubscribe();
-        }
-        _pushEnabled = false;
-        showToast('푸시 알림이 꺼졌습니다');
-        refreshPushCard();
-    } catch (e) {
-        alert('해제 실패\n\n' + (e.message || e));
-    } finally { hideLoading(); }
-}
-
-async function testPush() {
-    try { await Api.pushTest(); showToast('테스트 알림을 보냈습니다'); }
-    catch (e) { alert('테스트 발송 실패\n\n' + (e.message || e)); }
-}
-
-async function refreshPushCard() {
-    _pushEnabled = await pushIsEnabled();
-    const el = document.getElementById('push-card');
-    if (el) el.innerHTML = pushCardHTML();
-}
-
-function pushCardHTML() {
-    const bell = icon('bell', 15);
-    const on = !!_pushEnabled;
-    return `
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:#111827;margin-bottom:3px;display:flex;align-items:center;gap:6px;">${bell} 푸시 알림</div>
-          <div style="font-size:12.5px;color:#6b7280;line-height:1.55;">미팅·본계약 1시간 전, 잔금·입주 당일 오전 11시에 알림을 받습니다.</div>
-        </div>
-        <button type="button" role="switch" aria-checked="${on}" onclick="togglePush()" title="알림 ${on ? '끄기' : '켜기'}"
-          style="flex-shrink:0;position:relative;width:50px;height:29px;border:none;border-radius:999px;cursor:pointer;padding:0;
-                 background:${on ? '#1a56db' : '#d1d5db'};transition:background .25s ease;">
-          <span style="position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;
-                       box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .25s cubic-bezier(0.32,0.72,0,1);
-                       transform:translateX(${on ? '21px' : '0'});"></span>
-        </button>
-      </div>
-      ${on ? `<button class="btn-secondary" style="width:100%;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;" onclick="openNotiSettings()">${icon('edit', 15)} 알림 시점 설정</button>
-              <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="testPush()">테스트 알림 보내기</button>` : ''}
-    `;
-}
-
-// 토글 — 켜져 있으면 끄고, 꺼져 있으면 켠다
-async function togglePush() {
-    if (_pushEnabled) await disablePush();
-    else await enablePush();
-}
-
-// =====================================================
-// 최초 접속 시 알림 켜기 안내 (1회만)
-// =====================================================
-const PUSH_ASKED_KEY = 'pushAsked';
-
-async function maybeAskPushOnFirstVisit() {
-    try {
-        if (localStorage.getItem(PUSH_ASKED_KEY)) return;                    // 이미 물어봤음
-        if (!getUid()) return;                                               // 로그인 상태에서만
-        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
-        if (Notification.permission === 'denied') return;                    // 이미 차단 → 묻지 않음
-        if (await pushIsEnabled()) return;                                   // 이미 구독됨
-
-        // iOS 는 홈 화면에 추가된 PWA 에서만 웹푸시 지원 → 브라우저 탭이면 안내 생략
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-            || window.navigator.standalone === true;
-        if (isIOS && !standalone) return;
-
-        setTimeout(showPushOptInModal, 1500);   // 앱이 뜨고 잠깐 뒤에 노출
-    } catch (_) {}
-}
-
-function showPushOptInModal() {
-    if (localStorage.getItem(PUSH_ASKED_KEY)) return;
-    document.getElementById('modal-title').textContent = '알림 받기';
-    document.getElementById('modal-body').innerHTML = `
-      <div style="text-align:center;padding:8px 4px 4px;">
-        <div style="width:64px;height:64px;margin:0 auto 14px;border-radius:18px;background:#e8effd;color:#1a56db;display:flex;align-items:center;justify-content:center;">${icon('bell', 30)}</div>
-        <div style="font-size:15px;font-weight:800;color:#111827;margin-bottom:8px;">중요한 일정을 놓치지 마세요</div>
-        <div style="font-size:13px;color:#6b7280;line-height:1.7;">
-          고객 <b style="color:#374151;">미팅·본계약 1시간 전</b>,<br>
-          <b style="color:#374151;">잔금·입주 당일 오전 11시</b>에 알림을 보내드립니다.
-        </div>
-        <div style="margin-top:14px;padding:10px 12px;background:#f8faff;border-radius:10px;font-size:12px;color:#6b7280;line-height:1.6;">
-          ‘알림 켜기’를 누르면 브라우저 알림 권한을 요청합니다.<br>나중에 설정에서 언제든 끌 수 있어요.
-        </div>
-      </div>`;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="declinePushOptIn()">나중에</button>
-      <button class="btn-primary" onclick="acceptPushOptIn()">알림 켜기</button>`;
-    showModal();
-}
-
-async function acceptPushOptIn() {
-    localStorage.setItem(PUSH_ASKED_KEY, '1');
-    closeModal();
-    await enablePush();          // ← 여기서 OS/브라우저 알림 권한 요청이 뜬다
-}
-
-function declinePushOptIn() {
-    localStorage.setItem(PUSH_ASKED_KEY, '1');
-    closeModal();
-}
-
-// =====================================================
-// 알림 시점 설정 (미팅/본계약/잔금/입주 · 1차 필수 + 2차 선택)
-// =====================================================
-// 알림 유형별 아이콘/색 (알림 목록 · 시점 설정 공용)
-const NOTI_ICONS = {
-    meeting:  { icon: 'meeting',  label: '미팅',   fg: '#1a56db', bg: '#e8effd' },
-    contract: { icon: 'contract', label: '본계약', fg: '#7c3aed', bg: '#f1ebfe' },
-    balance:  { icon: 'money',    label: '잔금',   fg: '#d97706', bg: '#fef3e2' },
-    movein:   { icon: 'key',      label: '입주',   fg: '#16a34a', bg: '#e7f6ec' },
-    test:     { icon: 'bell',     label: '테스트', fg: '#6b7280', bg: '#f3f4f6' }
+// ==========================================
+// 1-c. 상세 모달/리스트 모달에서 공유할 컨텍스트 & 공용 헬퍼
+// ==========================================
+const Daylog = {
+    currentUid: '',
+    api: API_BASE_URL,
+    memories: [],
+    meUid: null,
+    partnerUid: null,
+    reload: function () {},
+    authHeaders: function () { return {}; },
+    handleResponse: async function (r) { return r; },
+    // [B] edit by smsong - 프로필 이미지 즉시 반영용 캐시버스터.
+    //  같은 GCS 경로로 사진을 덮어쓰면 브라우저가 예전 이미지를 캐시해 새 사진이 안 보이는 문제 해결.
+    //  프로필이 바뀔 때마다 _imgVer 를 올려 src 뒤에 ?v= 를 갱신 → 강제 재다운로드.
+    _imgVer: Date.now(),
+    bustImg: function (url) {
+        if (!url) return url;
+        // 서명된 URL(GCS signed 등)에는 쿼리를 덧붙이면 서명이 깨지므로 그대로 둔다.
+        if (/[?&](x-goog-|goog-|signature=|expires=|googleaccessid=|token=)/i.test(url)) return url;
+        var sep = url.indexOf('?') >= 0 ? '&' : '?';
+        return url + sep + 'v=' + Daylog._imgVer;
+    },
+    bumpImgVer: function () { Daylog._imgVer = Date.now(); }
+    // [E] edit by smsong
 };
 
-// 시각이 있는 일정: '몇 분 전'
-const LEAD_OPTS = [
-    { v: 10, t: '10분 전' }, { v: 30, t: '30분 전' }, { v: 60, t: '1시간 전' },
-    { v: 120, t: '2시간 전' }, { v: 180, t: '3시간 전' }, { v: 360, t: '6시간 전' },
-    { v: 1440, t: '1일 전' }, { v: 2880, t: '2일 전' }
-];
-// 날짜만 있는 일정: '며칠 전'
-const DAY_OPTS = [
-    { v: 0, t: '당일' }, { v: 1, t: '1일 전' }, { v: 2, t: '2일 전' },
-    { v: 3, t: '3일 전' }, { v: 7, t: '7일 전' }
-];
-const HOUR_OPTS = Array.from({ length: 24 }, (_, h) => ({
-    v: h, t: (h < 12 ? '오전 ' : '오후 ') + (h % 12 === 0 ? 12 : h % 12) + '시'
-}));
-
-let _notiSettings = null;
-
-async function openNotiSettings() {
-    document.getElementById('modal-title').textContent = '알림 시점 설정';
-    document.getElementById('modal-body').innerHTML =
-        '<div style="padding:26px;text-align:center;color:#9ca3af;font-size:13px;">불러오는 중…</div>';
-    document.getElementById('modal-footer').innerHTML = '';
-    showModal();
-    try {
-        _notiSettings = await Api.getNotiSettings();
-        renderNotiSettings();
-    } catch (e) {
-        document.getElementById('modal-body').innerHTML =
-            `<div style="padding:24px;text-align:center;color:#dc2626;font-size:13px;">불러오기 실패: ${escapeHtml(e.message || '')}</div>`;
-    }
+// ==========================================
+// 라인 아이콘 시스템 — 기본 이모지 대체 (Daylog 웜톤 톤, currentColor 상속)
+// 하단 네비/헤더와 통일된 부드러운 라인 스타일.
+// ==========================================
+const ICON_PATHS = {
+    search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    pin:      '<path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    camera:   '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
+    bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    target:   '<circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/>',
+    book:     '<path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/>',
+    map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+    user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    edit:     '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    trash:    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    logout:   '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    refresh:  '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    rotate:   '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+    maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
+    scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+    check:    '<polyline points="20 6 9 17 4 12"/>',
+    close:    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    heart:    '<path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/>',
+    comment:  '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-4-.9L3 20l1.1-4.9A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    sparkle:  '<path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>',
+    image:    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>',
+    lock:     '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    coffee:   '<path d="M17 8h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><line x1="6" y1="2" x2="6" y2="4.5"/><line x1="10" y1="2" x2="10" y2="4.5"/><line x1="14" y1="2" x2="14" y2="4.5"/>',
+    food:     '<path d="M7 2v8M10 2v8M7 10a1.5 1.5 0 0 0 3 0M8.5 10v12"/><path d="M16 2c-1.4 0-2.5 2.2-2.5 5s1.1 3.8 2.5 3.8V22"/>'
+};
+// icon(name, size, extraStyle, filled) → 인라인 SVG 문자열
+function icon(name, size, extraStyle, filled) {
+    const sz = size || 16;
+    const sw = sz <= 18 ? 1.9 : 1.7;
+    const fill = filled ? 'currentColor' : 'none';
+    const stroke = filled ? 'none' : 'currentColor';
+    return '<svg class="ic ic-' + name + '" width="' + sz + '" height="' + sz + '" viewBox="0 0 24 24" '
+        + 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '" stroke-linecap="round" '
+        + 'stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0;' + (extraStyle || '') + '" '
+        + 'aria-hidden="true">' + (ICON_PATHS[name] || '') + '</svg>';
 }
+// 위치(핀) 텍스트 — 배지/메타용. 동적 텍스트는 escape.
+function pinText(t) { return icon('pin', 14) + ' ' + escapeHtml(t == null ? '' : t); }
 
-function sel(id, opts, val, allowEmpty) {
-    const empty = allowEmpty ? `<option value="">사용 안 함</option>` : '';
-    const cur = (val === null || val === undefined) ? '' : String(val);
-    return `<select id="${id}" class="form-input" style="padding:9px 10px;">
-        ${empty}${opts.map(o => `<option value="${o.v}" ${cur === String(o.v) ? 'selected' : ''}>${o.t}</option>`).join('')}
-    </select>`;
-}
-
-function renderNotiSettings() {
-    const s = _notiSettings || {};
-    const head = (name, title) => {
-        const m = NOTI_ICONS[name];
-        return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
-          <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:${m.bg};color:${m.fg};display:inline-flex;align-items:center;justify-content:center;">${icon(m.icon, 14)}</span>
-          <span style="font-size:13px;font-weight:800;color:#111827;">${title}</span>
-        </div>`;
-    };
-    // 시각 일정 블록 (미팅/본계약)
-    const timeBlock = (name, title, k1, k2) => `
-      <div style="padding:12px 0;border-bottom:1px solid #f1f3f5;">
-        ${head(name, title)}
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span style="flex-shrink:0;width:64px;font-size:12.5px;color:#6b7280;font-weight:700;">1차 <span style="color:#ef4444;">*</span></span>
-          ${sel('ns-' + k1, LEAD_OPTS, s[k1] != null ? s[k1] : 60, false)}
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="flex-shrink:0;width:64px;font-size:12.5px;color:#9ca3af;font-weight:700;">2차</span>
-          ${sel('ns-' + k2, LEAD_OPTS, s[k2], true)}
-        </div>
-      </div>`;
-
-    // 날짜 일정 블록 (잔금/입주) — 며칠 전 + 몇 시
-    const dateBlock = (name, title, d1, h1, d2, h2) => `
-      <div style="padding:12px 0;border-bottom:1px solid #f1f3f5;">
-        ${head(name, title)}
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-          <span style="flex-shrink:0;width:64px;font-size:12.5px;color:#6b7280;font-weight:700;">1차 <span style="color:#ef4444;">*</span></span>
-          ${sel('ns-' + d1, DAY_OPTS, s[d1] != null ? s[d1] : 0, false)}
-          ${sel('ns-' + h1, HOUR_OPTS, s[h1] != null ? s[h1] : 11, false)}
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="flex-shrink:0;width:64px;font-size:12.5px;color:#9ca3af;font-weight:700;">2차</span>
-          ${sel('ns-' + d2, DAY_OPTS, s[d2], true)}
-          ${sel('ns-' + h2, HOUR_OPTS, s[h2] != null ? s[h2] : 11, false)}
-        </div>
-      </div>`;
-
-    document.getElementById('modal-body').innerHTML = `
-      <div style="font-size:12.5px;color:#6b7280;line-height:1.6;margin-bottom:6px;">
-        일정별로 언제 알림을 받을지 정하세요. <b style="color:#374151;">1차는 필수</b>, 2차는 비워두면 보내지 않습니다.
-      </div>
-      ${timeBlock('meeting', '미팅', 'meetingLead1', 'meetingLead2')}
-      ${timeBlock('contract', '본계약', 'contractLead1', 'contractLead2')}
-      ${dateBlock('balance', '잔금', 'balanceDay1', 'balanceHour1', 'balanceDay2', 'balanceHour2')}
-      ${dateBlock('movein', '입주', 'moveInDay1', 'moveInHour1', 'moveInDay2', 'moveInHour2')}
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="backToSettingsFromNoti()">← 뒤로</button>
-      <button class="btn-primary" onclick="saveNotiSettings()">저장</button>`;
-}
-
-function backToSettingsFromNoti() {
-    closeModal();
-    if (activeTab === 'settings') showSettingsView();
-    else switchTab('settings');
-}
-
-async function saveNotiSettings() {
-    const num = id => {
-        const el = document.getElementById(id);
-        if (!el || el.value === '') return null;      // 빈값 = 사용 안 함
-        const n = parseInt(el.value, 10);
-        return isNaN(n) ? null : n;
-    };
-    const dto = {
-        meetingLead1: num('ns-meetingLead1'),
-        meetingLead2: num('ns-meetingLead2'),
-        contractLead1: num('ns-contractLead1'),
-        contractLead2: num('ns-contractLead2'),
-        balanceDay1: num('ns-balanceDay1'),
-        balanceHour1: num('ns-balanceHour1'),
-        balanceDay2: num('ns-balanceDay2'),      // null 이면 2차 미사용
-        balanceHour2: num('ns-balanceHour2'),
-        moveInDay1: num('ns-moveInDay1'),
-        moveInHour1: num('ns-moveInHour1'),
-        moveInDay2: num('ns-moveInDay2'),
-        moveInHour2: num('ns-moveInHour2')
-    };
-    // 1차는 필수
-    if (dto.meetingLead1 == null || dto.contractLead1 == null
-        || dto.balanceDay1 == null || dto.balanceHour1 == null
-        || dto.moveInDay1 == null || dto.moveInHour1 == null) {
-        showToast('1차 알림은 필수입니다');
-        return;
-    }
-    showLoading('알림 설정을 저장하는 중…');
-    try {
-        _notiSettings = await Api.saveNotiSettings(dto);
-        showToast('알림 설정을 저장했습니다');
-        backToSettingsFromNoti();
-    } catch (e) {
-        alert('저장 실패\n\n' + (e.message || ''));
-    } finally { hideLoading(); }
-}
-
-// 로드 시 서비스워커 등록 + 현재 푸시 구독 상태 확인 + 최초 1회 안내
-try {
-    registerServiceWorker().then(async () => {
-        _pushEnabled = await pushIsEnabled();
-        maybeAskPushOnFirstVisit();
+// 가볼곳(체크리스트) 타입 메타 — 라벨/아이콘/색상을 한 곳에서 관리 (emoji → 라인 아이콘)
+const CHECKLIST_TYPES = {
+    CAFE: { label: '카페', iconKey: 'coffee',  color: '#b06a4f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    FOOD: { label: '식당', iconKey: 'food',    color: '#3f7fb0', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    SPOT: { label: '장소', iconKey: 'pin',     color: '#5f9e6f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
+    ETC:  { label: '기타', iconKey: 'sparkle', color: '#7a756e', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } }
+};
+function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
+function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
+// [B] edit by smsong - 권한은 서버(권한 메뉴/DB) 기준. Daylog.myPerm 에 내 '실효' 권한 플래그 보관.
+//  소유자 우회 없이 순수 권한 기준 → 권한이 회수되면 해당 버튼(생성/수정/휴지통/삭제)이 모두 사라짐.
+function _myPerm() { return (Daylog && Daylog.myPerm) ? Daylog.myPerm : null; }
+function isAdminUser() { var p = _myPerm(); return !!(p && p.admin); }
+function canCreateObject() { var p = _myPerm(); return !!(p && (p.admin || p.canCreate)); } // 생성 권한
+function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.canEdit)); }   // (구) 수정 권한
+// [B] edit by smsong - #2 작성자(본인) 또는 관리자(방장)만 수정/휴지통/삭제 가능
+function _isAdminPerm() { var p = _myPerm(); return !!(p && p.admin); }
+function isOwnerOf(item) { return !!(item && item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid); }
+function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canEdit)); }   // 수정 버튼
+function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
+function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
+// 생성 FAB 표시/차단 (권한 없으면 숨김)
+function applyPermButtons() {
+    var show = canCreateObject();
+    ['btn-timeline-add', 'btn-checklist-add'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.style.display = show ? '' : 'none';
     });
-} catch (_) {}
-
-// =====================================================
-// 알림 목록 (상단바 벨 버튼)
-// =====================================================
-
-function notiTimeLabel(ms) {
-    if (!ms) return '';
-    const d = new Date(ms);
-    const diff = Date.now() - ms;
-    if (diff < 60000) return '방금';
-    if (diff < 3600000) return Math.floor(diff / 60000) + '분 전';
-    if (diff < 86400000) return Math.floor(diff / 3600000) + '시간 전';
-    const p = n => String(n).padStart(2, '0');
-    return `${d.getMonth() + 1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-
-// 안 읽은 개수 배지 갱신
-async function refreshNotiBadge() {
-    const badge = document.getElementById('noti-badge');
-    if (!badge) return;
-    try {
-        const r = await Api.getUnreadCount();
-        const n = (r && r.count) ? Number(r.count) : 0;
-        if (n > 0) { badge.style.display = 'block'; badge.textContent = n > 99 ? '99+' : String(n); }
-        else { badge.style.display = 'none'; }
-    } catch (_) { badge.style.display = 'none'; }
+if (Daylog) Daylog.applyPermButtons = applyPermButtons;
+// [E] edit by smsong
+// [B] edit by smsong - 권한 로딩 / 관리자 권한 메뉴 / 접근 요청
+function applyMyPermUI() {
+    var p = (Daylog && Daylog.myPerm) ? Daylog.myPerm : null;
+    var admin = (p && p.admin) || isRoomOwner(); // [smsong] 방장 = 관리자 (하드코딩 uid 제거)
+    var btn = document.getElementById('btn-perm-admin');
+    if (btn) btn.style.display = admin ? '' : 'none';
+    applyPermButtons(); // 생성 FAB 표시/차단 반영
 }
-
-async function openNotifications() {
-    document.getElementById('modal-title').textContent = '알림';
-    document.getElementById('modal-body').innerHTML = `<div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">불러오는 중…</div>`;
-    document.getElementById('modal-footer').innerHTML = '';
-    showModal();
-    try {
-        const list = await Api.getNotifications();
-        renderNotifications(list || []);
-        try { await Api.readAllNotifications(); refreshNotiBadge(); } catch (_) {}
-    } catch (e) {
-        document.getElementById('modal-body').innerHTML =
-            `<div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">알림을 불러오지 못했습니다<br><span style="font-size:12px;">${escapeHtml(e.message || '')}</span></div>`;
-    }
+// 앱 진입 시: 방별 권한을 서버에 등록(upsert)하고 받아와 게이트/관리자 메뉴 결정
+//  관리자 = 방장. 미승인 멤버는 차단 화면(권한 요청 폼) 표시.
+function loadMyPermission() {
+    if (!(Daylog && Daylog.api)) return Promise.resolve(null);
+    return withLoading(fetch(Daylog.api + '/api/permissions/register', { method: 'POST', headers: Daylog.authHeaders(true) })
+        .then(function (res) {
+            if (!res.ok) { console.error('[Daylog] 권한 등록(register) 실패 - HTTP ' + res.status); throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
+        .then(function (p) {
+            Daylog.myPerm = p || null;
+            applyMyPermUI();
+            try { applyRoomNotifToggle(); } catch (e) {} // [B] edit by smsong - #3 방 알림 토글 상태 반영
+            if (p && !p.accessAllowed && !p.admin) { blockUnauthorizedUser(); } // 접근 미허용 → 차단
+            // [B] edit by smsong - 방장(관리자)이면 진입 시 대기중 접근 요청 알림 확인
+            else if ((p && p.admin) || isRoomOwner()) { try { checkPendingAccessRequests(); } catch (e) {} }
+            // [B] edit by smsong - 승인된 일반 멤버 최초 진입: 환영/이용수칙 폼 1회 표시
+            if (p && p.accessAllowed && !p.admin && !isRoomOwner() && p.welcomeSeen === false) {
+                try { showWelcomeModal(); } catch (e) {}
+            }
+            // [E] edit by smsong
+            return p;
+        })
+        .catch(function () {
+            // 서버 확인 불가 → 방장(로컬 판정, 하드코딩 아님)만 전권 폴백, 그 외는 차단
+            if (isRoomOwner()) {
+                Daylog.myPerm = { admin: true, accessAllowed: true, canCreate: true, canEdit: true, canTrash: true, canDelete: true };
+                applyMyPermUI();
+            } else {
+                Daylog.myPerm = null;
+                applyMyPermUI();
+                blockUnauthorizedUser();
+            }
+            return null;
+        }), '방 정보를 불러오는 중...'); // [smsong] 로딩
 }
+if (Daylog) Daylog.loadMyPermission = loadMyPermission;
 
-function renderNotifications(list) {
-    const body = document.getElementById('modal-body');
+// [smsong] ===== 방 멤버 관리 (방장 전용: 목록 + 강퇴) =====
+function _escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function openRoomMembers() {
+    var modal = document.getElementById('room-members-modal');
+    var body = document.getElementById('room-members-body');
+    if (!modal || !body) return;
+    modal.classList.remove('hidden');
+    body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+    var roomId = getRoomId();
+    fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members', { headers: Daylog.authHeaders(true) })
+        .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+        .then(function (room) { renderRoomMembers(room); })
+        .catch(function (err) {
+            body.innerHTML = '<div class="perm-error" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>';
+            console.error('[Daylog] 멤버 조회 실패:', err);
+        });
+}
+function renderRoomMembers(room) {
+    var body = document.getElementById('room-members-body');
     if (!body) return;
-    if (!list.length) {
-        body.innerHTML = `<div style="padding:36px 20px;text-align:center;color:#9ca3af;">
-            <div style="width:56px;height:56px;margin:0 auto 10px;border-radius:16px;background:#f3f4f6;color:#9ca3af;display:flex;align-items:center;justify-content:center;">${icon('bell', 26)}</div>
-            <div style="font-size:13.5px;font-weight:600;color:#6b7280;">아직 알림이 없습니다</div>
-            <div style="font-size:12px;margin-top:6px;line-height:1.6;">고객의 미팅·본계약 1시간 전,<br>잔금·입주 당일 오전 11시에 알림을 보내드립니다.</div>
-        </div>`;
-        document.getElementById('modal-footer').innerHTML = '';
+    var members = (room && room.members) || [];
+    var myUid = getUid();
+    var amOwner = !!(room && room.ownerUid === myUid);
+    var html = '<div class="rm-head">구성원 ' + members.length + '명</div><div class="rm-list">';
+    members.forEach(function (m) {
+        var name = m.nickname || m.name || m.uid;
+        var avatar = m.profileURL
+            ? '<img src="' + _escHtml(m.profileURL) + '" alt="" class="rm-avatar-img">'
+            : '<span class="rm-avatar-fallback">' + icon('user', 20) + '</span>';
+        var badge = m.owner ? '<span class="rm-badge">방장</span>' : '';
+        var action = (amOwner && !m.owner)
+            ? '<button class="rm-kick" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '">강퇴하기</button>'
+            : '';
+        html += '<div class="rm-item">' +
+                    '<span class="rm-avatar">' + avatar + '</span>' +
+                    '<span class="rm-name">' + _escHtml(name) + ' ' + badge + '</span>' +
+                    action +
+                '</div>';
+    });
+    html += '</div>';
+    body.innerHTML = html;
+    body.querySelectorAll('.rm-kick').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            kickRoomMember(btn.getAttribute('data-uid'), btn.getAttribute('data-name'));
+        });
+    });
+}
+function kickRoomMember(targetUid, name) {
+    var nm = name || (((Daylog._permList || []).find(function (x) { return x.uid === targetUid; }) || {}).nickname) || targetUid;
+    // [B] edit by smsong - prompt()는 일부 PWA/웹뷰에서 차단(null 반환)되어 강퇴가 조용히 취소됨.
+    //  → 앱 내부 DOM 모달(promptRejectReason)을 강퇴 사유 입력에도 재사용한다.
+    //  확인=문자열(빈 문자열 허용) → 강퇴 진행, 취소=null → 아무 것도 안 함.
+    if (typeof promptRejectReason !== 'function') return;
+    promptRejectReason({
+        title: '멤버 강퇴',
+        desc: "'" + nm + "' 님을 강퇴합니다. 사유를 남기면 해당 멤버에게 전달돼요. (선택)\n강퇴된 멤버는 다시 입장하면 환영·동의 화면을 처음부터 다시 보게 됩니다.",
+        placeholder: '예: 방 성격과 맞지 않아요.',
+        confirmText: '강퇴하기'
+    }).then(function (reason) {
+        if (reason === null) return; // 취소
+        var roomId = getRoomId();
+        var kickUrl = Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/members/' + encodeURIComponent(targetUid) +
+            '?uid=' + encodeURIComponent(getUid());
+        if (reason && reason.trim()) kickUrl += '&reason=' + encodeURIComponent(reason.trim());
+        withLoading(fetch(kickUrl,
+            { method: 'DELETE', headers: Daylog.authHeaders(true) }), '강퇴하는 중...')
+            .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return true; })
+            .then(function () {
+                showToast('멤버를 강퇴했습니다');
+                if (typeof openPermissionAdmin === 'function') openPermissionAdmin(); // 목록 새로고침
+                if (Daylog.refreshMemberProfile) Daylog.refreshMemberProfile();
+                if (Daylog.loadRoomInfo) Daylog.loadRoomInfo(true);
+            })
+            .catch(function (err) { showToast('강퇴 실패'); console.error(err); });
+    });
+    // [E] edit by smsong
+}
+function closeRoomMembers() {
+    var modal = document.getElementById('room-members-modal');
+    if (modal) modal.classList.add('hidden');
+}
+if (Daylog) { Daylog.openRoomMembers = openRoomMembers; }
+
+
+// 권한 API 전용 fetch: handleResponse(자동 로그아웃/차단 튕김)를 쓰지 않고 상태코드를 그대로 표면화
+// [B] edit by smsong - #3 방 알림 켜기/끄기 토글
+function applyRoomNotifToggle() {
+    var btn = document.getElementById('btn-room-notif-toggle');
+    if (!btn) return;
+    var muted = !!(window.Daylog && Daylog.myPerm && Daylog.myPerm.notifyMuted);
+    var on = !muted;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.classList.toggle('on', on); // CSS 스위치가 ON/OFF 표시
+}
+function toggleRoomNotif() {
+    if (!(window.Daylog && Daylog.api)) return;
+    var curMuted = !!(Daylog.myPerm && Daylog.myPerm.notifyMuted);
+    var newMuted = !curMuted;
+    withLoading(_permFetch('/api/permissions/notify-mute?muted=' + newMuted, { method: 'POST', headers: Daylog.authHeaders(true) }), '변경 중...')
+        .then(function (res) { return res.json ? res.json() : res; })
+        .then(function (d) {
+            if (Daylog.myPerm) Daylog.myPerm.notifyMuted = (d && typeof d.notifyMuted === 'boolean') ? d.notifyMuted : newMuted;
+            applyRoomNotifToggle();
+            showToast(newMuted ? '이 방 알림 꺼짐' : '이 방 알림 켜짐');
+        })
+        .catch(function () { showToast('변경에 실패했어요'); });
+}
+
+function _permFetch(path, opts) {
+    return fetch(Daylog.api + path, opts || { headers: Daylog.authHeaders(true) })
+        .then(function (res) {
+            if (!res.ok) {
+                return res.text().then(function (t) {
+                    var e = new Error('HTTP ' + res.status + (t ? (' · ' + String(t).substring(0, 140)) : ''));
+                    e.status = res.status;
+                    throw e;
+                });
+            }
+            return res.text().then(function (t) { return t ? JSON.parse(t) : null; });
+        });
+}
+
+// [B] edit by smsong - 승인된 멤버 최초 진입: 환영 + 이용수칙 동의 폼
+function showWelcomeModal() {
+    var modal = document.getElementById('welcome-modal');
+    if (!modal) return;
+    var nameEl = document.getElementById('welcome-room-name');
+    if (nameEl) nameEl.textContent = localStorage.getItem('selectedRoomName') || '우리';
+    var chk = document.getElementById('welcome-consent-check');
+    var btn = document.getElementById('welcome-enter-btn');
+    if (chk) chk.checked = false;
+    if (btn) btn.disabled = true;
+    modal.classList.remove('hidden');
+    setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
+}
+// [B] edit by smsong - 폭죽(축포) 연출: 화면 곳곳에서 여러 번 '파바박' 터지는 스파크 + 위에서 떨어지는 색종이.
+//  커다란 원(링)은 제거. 스파크 수를 크게 늘리고, 전체 지속을 약 2.6초로 길게.
+function fireWelcomeBurst() {
+    var fx = document.getElementById('welcome-fx');
+    if (!fx) return;
+    fx.innerHTML = '';
+    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a'];
+
+    var vw = window.innerWidth || 360;
+    var vh = window.innerHeight || 640;
+    var frag = document.createDocumentFragment();
+
+    // ===== 1) 폭죽 터짐: 여러 지점에서 스태거드로 파바박 =====
+    var BURSTS = 9;                       // 터지는 지점 수(여러 번 터짐)
+    var SPARKS_PER_BURST = 34;            // 지점마다 사방으로 튀는 스파크 수
+    for (var b = 0; b < BURSTS; b++) {
+        // 터지는 위치: 화면 상단~중앙(가로 전체, 세로 10~65%)
+        var cx = vw * (0.1 + Math.random() * 0.8);
+        var cy = vh * (0.1 + Math.random() * 0.55);
+        var burstDelay = Math.random() * 1.1;                 // 0~1.1s 사이 스태거 → 연속으로 터짐
+        var reach = Math.min(vw, vh) * (0.22 + Math.random() * 0.18); // 터짐 반경
+        var hue = colors[b % colors.length];
+        for (var s = 0; s < SPARKS_PER_BURST; s++) {
+            var p = document.createElement('span');
+            p.className = 'wfx-spark';
+            var ang = (Math.PI * 2) * (s / SPARKS_PER_BURST) + (Math.random() * 0.4 - 0.2);
+            var dist = reach * (0.55 + Math.random() * 0.6);
+            var size = 5 + Math.random() * 8;
+            var tx = Math.cos(ang) * dist;
+            var ty = Math.sin(ang) * dist + dist * 0.35;      // 중력 느낌(아래로 살짝 처짐)
+            p.style.left = cx + 'px';
+            p.style.top = cy + 'px';
+            p.style.width = size + 'px';
+            p.style.height = size + 'px';
+            // 같은 폭죽은 비슷한 색 계열 + 가끔 다른 색 섞기
+            p.style.background = (s % 5 === 0) ? colors[(b + s) % colors.length] : hue;
+            p.style.setProperty('--tx', tx.toFixed(0) + 'px');
+            p.style.setProperty('--ty', ty.toFixed(0) + 'px');
+            p.style.setProperty('--sc', (0.5 + Math.random() * 0.8).toFixed(2));
+            p.style.setProperty('--rot', ((Math.random() * 360 - 180) | 0) + 'deg');
+            p.style.setProperty('--dur', (1.5 + Math.random() * 0.7).toFixed(2) + 's');
+            p.style.setProperty('--delay', burstDelay.toFixed(2) + 's');
+            if (s % 6 === 0) p.style.borderRadius = '1px'; // 일부는 각진 불꽃
+            frag.appendChild(p);
+        }
+    }
+
+    // ===== 2) 위에서 떨어지는 색종이(축포 리본 느낌) =====
+    var CONFETTI = 70;
+    for (var i = 0; i < CONFETTI; i++) {
+        var c = document.createElement('span');
+        c.className = 'wfx-confetti';
+        var startX = vw * Math.random();
+        var startY = -20 - Math.random() * 60;
+        var w = 6 + Math.random() * 7;
+        var h = 9 + Math.random() * 12;
+        var driftX = (Math.random() * 120 - 60);
+        var fallY = vh * (0.85 + Math.random() * 0.4);
+        c.style.left = startX + 'px';
+        c.style.top = startY + 'px';
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        c.style.background = colors[i % colors.length];
+        c.style.setProperty('--tx', driftX.toFixed(0) + 'px');
+        c.style.setProperty('--ty', fallY.toFixed(0) + 'px');
+        c.style.setProperty('--rot', ((Math.random() * 900 - 450) | 0) + 'deg');
+        c.style.setProperty('--dur', (2.0 + Math.random() * 0.7).toFixed(2) + 's');
+        c.style.setProperty('--delay', (Math.random() * 0.9).toFixed(2) + 's');
+        frag.appendChild(c);
+    }
+
+    fx.appendChild(frag);
+
+    // 애니메이션 종료 후 정리 (스태거 최대 ~1.1s + 지속 ~2.7s 여유)
+    setTimeout(function () { if (fx) fx.innerHTML = ''; }, 3200);
+}
+// [E] edit by smsong
+function closeWelcomeModal() {
+    var modal = document.getElementById('welcome-modal');
+    if (modal) modal.classList.add('hidden');
+}
+function confirmWelcome() {
+    // 서버에 '봤음' 기록(실패해도 방 이용은 진행) 후 닫기
+    if (Daylog && Daylog.api) {
+        _permFetch('/api/permissions/welcome-seen', { method: 'POST', headers: Daylog.authHeaders(true) })
+            .then(function () {}).catch(function () {});
+    }
+    if (Daylog && Daylog.myPerm) Daylog.myPerm.welcomeSeen = true;
+    closeWelcomeModal();
+}
+// [E] edit by smsong
+
+// 차단 화면에서 '권한 요청하기' (실패해도 반드시 화면에 사유 표시)
+function requestAccessFromBlock() {
+    var btn = document.getElementById('abx-request-btn');
+    var sub = document.querySelector('#auth-block-overlay .abx-sub');
+    if (!(Daylog && Daylog.api)) {
+        if (sub) sub.textContent = '요청을 보낼 수 없습니다(설정 미완료). 새로고침 후 다시 시도해 주십시오.';
         return;
     }
-    body.innerHTML = list.map(n => {
-        const meta = NOTI_ICONS[n.type] || { icon: 'bell', label: '', fg: '#6b7280', bg: '#f3f4f6' };
-        const unread = !n.read;
-        const cid = n.customerId;
-        const clickable = cid != null;
-        return `<div ${clickable ? `onclick="openCustomerFromNoti('${cid}')"` : ''}
-            style="display:flex;gap:10px;padding:12px 10px;border-bottom:1px solid #f1f3f5;${unread ? 'background:#f8faff;' : ''}border-radius:8px;${clickable ? 'cursor:pointer;' : ''}">
-          <span style="flex-shrink:0;width:32px;height:32px;border-radius:9px;background:${meta.bg};color:${meta.fg};display:inline-flex;align-items:center;justify-content:center;">${icon(meta.icon, 16)}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13.5px;font-weight:700;color:#111827;line-height:1.5;">${escapeHtml(n.body || '')}</div>
-            <div style="font-size:11.5px;color:#9ca3af;margin-top:3px;">
-              ${meta.label ? `<span style="color:${meta.fg};font-weight:700;">${meta.label}</span> · ` : ''}${notiTimeLabel(n.createdAt)}
-            </div>
-          </div>
-          ${unread ? `<span style="flex-shrink:0;width:7px;height:7px;border-radius:50%;background:#1a56db;margin-top:6px;"></span>` : ''}
-          ${clickable ? `<span style="flex-shrink:0;color:#d1d5db;align-self:center;">${icon('back', 15, 'transform:rotate(180deg);')}</span>` : ''}
-        </div>`;
-    }).join('');
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" style="width:100%;color:#ef4444;" onclick="clearNotifications()">알림 전체 삭제</button>`;
+    if (btn) { btn.disabled = true; btn.textContent = '요청 중...'; }
+    _permFetch('/api/permissions/request', { method: 'POST', headers: Daylog.authHeaders(true) })
+        .then(function () {
+            if (sub) sub.textContent = '권한 요청이 전송되었습니다. 관리자 승인 후 이용할 수 있습니다.';
+            if (btn) { btn.textContent = '요청 완료'; btn.disabled = true; }
+        })
+        .catch(function (err) {
+            if (btn) { btn.disabled = false; btn.textContent = '권한 요청하기'; }
+            var msg = (err && err.message) ? err.message : '알 수 없는 오류';
+            if (sub) sub.textContent = '요청 전송 실패: ' + msg + ' — 관리자에게 문의해 주십시오.';
+            console.error('[Daylog] 권한 요청 실패:', err);
+        });
 }
 
-// 알림 → 해당 고객 상세로 이동 (임차인 관리 > 고객 관리 탭)
-async function openCustomerFromNoti(customerId) {
-    const id = String(customerId);
-    closeModal();
-    if (!isBroker()) { showToast('고객 정보를 볼 권한이 없습니다'); return; }
+// ===== 관리자 권한 메뉴 =====
+function openPermissionAdmin() {
+    var modal = document.getElementById('perm-modal');
+    var body = document.getElementById('perm-modal-body');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+    modal.classList.remove('hidden');
+    withLoading(_permFetch('/api/permissions/users', { headers: Daylog.authHeaders(true) }), '불러오는 중...')
+        .then(function (list) { renderPermissionList(list || []); })
+        .catch(function (err) {
+            var msg = (err && err.message) ? err.message : '';
+            body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.' +
+                '<br><span style="font-size:0.78rem;color:#c0392b;">' + escapeHtml(msg) + '</span>' +
+                '<br><span style="font-size:0.76rem;color:#8a8178;line-height:1.5;">권한 API가 정상 응답하지 않습니다. 서버의 SecurityConfig에서 <b>/api/permissions/**</b> 가 인증 통과되는지, Permission 모듈이 배포됐는지 확인해 주십시오.</span></div>';
+            console.error('[Daylog] 권한 목록 실패:', err);
+        });
+}
+function closePermissionAdmin() {
+    var modal = document.getElementById('perm-modal');
+    if (modal) modal.classList.add('hidden');
+}
+function permStatusLabel(p) {
+    if (p.admin) return '<span class="perm-badge perm-admin">관리자</span>';
+    if (p.accessAllowed) return '<span class="perm-badge perm-ok">접근 허용</span>';
+    if (p.requestStatus === 'PENDING') return '<span class="perm-badge perm-pending">요청 대기</span>';
+    if (p.requestStatus === 'REJECTED') return '<span class="perm-badge perm-rejected">거절됨</span>';
+    return '<span class="perm-badge perm-none">미허용</span>';
+}
+function permToggle(p, key, label, disabled) {
+    var on = !!p[key] || p.admin || p.bootstrap;
+    return '<button type="button" class="perm-chip' + (on ? ' on' : '') + '"' + (disabled ? ' disabled' : '') +
+        ' onclick="togglePerm(\'' + p.uid + '\',\'' + key + '\')">' + label + '</button>';
+}
+function renderPermissionList(list) {
+    var body = document.getElementById('perm-modal-body');
+    if (!body) return;
+    if (!list.length) { body.innerHTML = '<div class="perm-empty">표시할 사용자가 없습니다.</div>'; return; }
+    list.sort(function (a, b) {
+        function rank(x) { if (x.admin) return 0; if (x.requestStatus === 'PENDING') return 1; if (x.accessAllowed) return 2; return 3; }
+        return rank(a) - rank(b);
+    });
+    Daylog._permList = list;
+    var html = '';
+    list.forEach(function (p) {
+        var name = (p.nickname && String(p.nickname).trim()) ? p.nickname : (p.name || p.uid);
+        var avatar = p.profileURL
+            ? '<img src="' + p.profileURL + '" class="perm-ava" alt="">'
+            : '<div class="perm-ava perm-ava-empty">' + icon('user', 18) + '</div>';
+        var lockToggles = (!p.accessAllowed || p.admin || p.bootstrap); // 관리자/부트스트랩(송성민·강미르)은 상시 전권 → 잠금
+        html += '<div class="perm-row" data-uid="' + p.uid + '">' +
+            '<div class="perm-user">' + avatar +
+              '<div class="perm-user-meta"><div class="perm-name">' + escapeHtml(name) + '</div>' + permStatusLabel(p) + '</div>' +
+            '</div>' +
+            '<div class="perm-access">' +
+              (p.admin ? '' :
+                // [B] edit by smsong - '내보내기' 버튼 제거 + '접근 거절'을 '강퇴하기'(실제 강퇴)로 통합.
+                //  강퇴 시 방에서 제거되며, 다시 입장하면 환영/동의 화면을 다시 보게 됨.
+                (p.accessAllowed
+                  ? '<button type="button" class="perm-btn perm-kick-btn" onclick="kickRoomMember(\'' + p.uid + '\')">강퇴하기</button>'
+                  : '<button type="button" class="perm-btn perm-approve" onclick="decideAccess(\'' + p.uid + '\',true)">접근 허용</button>')) +
+                // [E] edit by smsong
+            '</div>' +
+            // [B] edit by smsong - #3 4개 토글 → 역할(일반/멤버) 선택. 관리자는 라벨만.
+            permRoleSelector(p, lockToggles) +
+        '</div>';
+    });
+    body.innerHTML = html;
+    // [B] edit by smsong - #4 저장 후 스크롤 위치 복원
+    if (Daylog._permScrollKeep != null) {
+        var _kp = Daylog._permScrollKeep; Daylog._permScrollKeep = null;
+        body.scrollTop = _kp;
+        requestAnimationFrame(function () { body.scrollTop = _kp; }); // 레이아웃 확정 후 한 번 더
+    }
+}
 
-    _statsSubTab = 'customer';       // '고객 관리' 서브탭으로
-    switchTab('stats');              // 임차인 관리 화면 진입 (고객 목록 렌더)
+// [B] edit by smsong - #3 역할 선택 UI (일반 유저 / 멤버). 관리자(방장)는 잠금 라벨.
+function permRoleSelector(p, lock) {
+    if (p.admin) return '<div class="perm-role-label">관리자</div>';
+    if (!p.accessAllowed) return ''; // 접근 허용 전에는 역할 선택 없음
+    var isMember = !!p.canCreate;    // 멤버 = 생성권한 보유(생성/수정/삭제 가능)
+    var dis = lock ? ' disabled' : '';
+    return '<div class="perm-role">' +
+        '<button type="button" class="perm-role-btn' + (!isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'general\')">일반</button>' +
+        '<button type="button" class="perm-role-btn' + (isMember ? ' active' : '') + '"' + dis + ' onclick="setPermRole(\'' + p.uid + '\',\'member\')">멤버</button>' +
+    '</div>';
+}
+function setPermRole(uid, role) {
+    var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
+    if (!p || p.admin) return;
+    if (!p.accessAllowed) { showToast('먼저 접근을 허용해 주십시오'); return; }
+    var member = (role === 'member');
+    if (member === !!p.canCreate) return; // 변화 없으면 무시
+    // 멤버: 생성/수정/삭제 가능(단, 수정·삭제는 본인 게시글만) · 일반: 조회+댓글만
+    putPermission(uid, { accessAllowed: true, canCreate: member, canEdit: member, canTrash: member, canDelete: member });
+}
+function togglePerm(uid, key) {
+    var p = (Daylog._permList || []).find(function (x) { return x.uid === uid; });
+    if (!p || p.admin) return;
+    if (!p.accessAllowed) { showToast('먼저 접근을 허용해 주십시오'); return; }
+    var patch = { accessAllowed: !!p.accessAllowed, canCreate: !!p.canCreate, canEdit: !!p.canEdit, canTrash: !!p.canTrash, canDelete: !!p.canDelete };
+    patch[key] = !p[key];
+    putPermission(uid, patch);
+}
+// [B] edit by smsong - 사유 입력 모달 (Promise 반환: 확인=문자열(빈 문자열 허용), 취소=null)
+//  거절/강퇴 등 상황별로 title·desc·placeholder·확인버튼 문구를 옵션으로 바꿔 재사용. 옵션 없으면 '입장 요청 거절' 기본.
+var _rejectReasonResolver = null;
+function promptRejectReason(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+        var modal = document.getElementById('reject-reason-modal');
+        var input = document.getElementById('reject-reason-input');
+        if (!modal || !input) { resolve(''); return; } // 모달 없으면 사유 없이 진행
+        var titleEl = document.getElementById('reject-reason-title');
+        var descEl = document.getElementById('reject-reason-desc');
+        var confirmEl = document.getElementById('reject-reason-confirm');
+        if (titleEl) titleEl.textContent = opts.title || '입장 요청 거절';
+        if (descEl) descEl.textContent = opts.desc || '거절 사유를 남기면 요청한 사용자에게 전달됩니다. (선택 사항)';
+        if (confirmEl) confirmEl.textContent = opts.confirmText || '거절하기';
+        input.value = '';
+        input.setAttribute('placeholder', opts.placeholder || '예: 아는 사람만 참여할 수 있는 방이에요.');
+        _rejectReasonResolver = resolve;
+        modal.classList.remove('hidden');
+        setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
+    });
+}
+function _closeRejectReason(result) {
+    var modal = document.getElementById('reject-reason-modal');
+    if (modal) modal.classList.add('hidden');
+    var r = _rejectReasonResolver; _rejectReasonResolver = null;
+    if (r) r(result); // null = 거절 자체를 취소
+}
+// 거절 시 사유를 붙여 /decide 호출 (approve=false 전용)
+function _decideRejectUrl(uid, reason) {
+    var u = '/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=false';
+    if (reason && String(reason).trim()) u += '&reason=' + encodeURIComponent(String(reason).trim());
+    return u;
+}
+// [E] edit by smsong
 
-    // 이미 캐시에 있으면 로딩 없이 바로 연다
-    if (_customers && _customers.find(x => x.id === id)) {
-        showCustomerDetail(id);
+function decideAccess(uid, approve) {
+    // [B] edit by smsong - 거절이면 사유 입력 후 진행 (취소 시 아무 것도 안 함)
+    if (!approve) {
+        promptRejectReason().then(function (reason) {
+            if (reason === null) return; // 사유 모달에서 취소
+            withLoading(_permFetch(_decideRejectUrl(uid, reason),
+                { method: 'POST', headers: Daylog.authHeaders(true) }), '거절하는 중...')
+                .then(function () { openPermissionAdmin(); })
+                .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
+        });
         return;
     }
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=true',
+        { method: 'POST', headers: Daylog.authHeaders(true) }), '허용하는 중...')
+        .then(function () { openPermissionAdmin(); })
+        .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
+}
+function putPermission(uid, patch) {
+    // [B] edit by smsong - #4 권한 변경 후 목록 재렌더 시 스크롤 위치 유지
+    var _pb = document.getElementById('perm-modal-body');
+    Daylog._permScrollKeep = _pb ? _pb.scrollTop : 0;
+    withLoading(_permFetch('/api/permissions/' + encodeURIComponent(uid),
+        { method: 'PUT', headers: Daylog.authHeaders(true), body: JSON.stringify(patch) }), '저장하는 중...')
+        .then(function () { openPermissionAdmin(); })
+        .catch(function (err) { showToast('변경 실패: ' + (err && err.message ? err.message : '')); });
+}
+// [E] edit by smsong
 
-    showLoading('고객 정보를 불러오는 중…');
-    try {
-        await loadCustomers();
-        const c = _customers.find(x => x.id === id);
-        if (!c) { showToast('삭제되었거나 찾을 수 없는 고객입니다'); return; }
-        showCustomerDetail(id);
-    } catch (e) {
-        showToast('불러오기 실패: ' + (e.message || ''));
-    } finally {
-        hideLoading();
+// [B] edit by smsong - 방장 진입 시: 대기중(PENDING) 접근 요청 알림 폼
+//  loadMyPermission 이후 방장/관리자면 checkPendingAccessRequests() 호출 →
+//  요청이 있으면 모달을 띄우고, 각 요청을 즉시 수락/거절(기존 /decide API 재사용).
+function checkPendingAccessRequests() {
+    if (!(Daylog && Daylog.api)) return;
+    _permFetch('/api/permissions/pending', { headers: Daylog.authHeaders(true) })
+        .then(function (list) {
+            if (!list || !list.length) return;         // 대기중 요청 없으면 조용히 종료
+            renderAccessRequests(list);
+            var modal = document.getElementById('access-request-modal');
+            if (modal) modal.classList.remove('hidden');
+        })
+        .catch(function (err) { console.warn('[Daylog] 대기중 접근 요청 조회 실패:', err); });
+}
+function renderAccessRequests(list) {
+    var body = document.getElementById('access-request-body');
+    if (!body) return;
+    if (!list || !list.length) { closeAccessRequestModal(); return; }
+    var html = '';
+    list.forEach(function (p) {
+        var name = (p.nickname && String(p.nickname).trim()) ? p.nickname : (p.name || p.uid);
+        var avatar = p.profileURL
+            ? '<img src="' + escapeHtml(p.profileURL) + '" class="perm-ava" alt="">'
+            : '<div class="perm-ava perm-ava-empty">' + icon('user', 18) + '</div>';
+        var when = p.requestedAt ? fmtDateTime(p.requestedAt) : '';
+        html += '<div class="perm-row areq-row" data-uid="' + escapeHtml(p.uid) + '">' +
+            '<div class="perm-user">' + avatar +
+              '<div class="perm-user-meta">' +
+                '<div class="perm-name">' + escapeHtml(name) + '</div>' +
+                '<span class="perm-badge perm-pending">' + (when ? (when + ' 요청') : '접근 요청') + '</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="perm-access">' +
+              '<button type="button" class="perm-btn perm-approve" onclick="decideAccessRequest(\'' + p.uid + '\',true,this)">수락</button>' +
+              '<button type="button" class="perm-btn perm-revoke" onclick="decideAccessRequest(\'' + p.uid + '\',false,this)">거절</button>' +
+            '</div>' +
+        '</div>';
+    });
+    body.innerHTML = html;
+}
+function decideAccessRequest(uid, approve, btnEl) {
+    var row = btnEl ? btnEl.closest('.areq-row') : null;
+    // [B] edit by smsong - 거절이면 사유 입력 후 진행
+    if (!approve) {
+        promptRejectReason().then(function (reason) {
+            if (reason === null) return; // 취소
+            _sendDecideRequest(uid, false, reason, row);
+        });
+        return;
+    }
+    _sendDecideRequest(uid, true, null, row);
+}
+// [B] edit by smsong - 접근 요청 수락/거절 실제 전송 (거절 시 reason 포함)
+function _sendDecideRequest(uid, approve, reason, row) {
+    var url = approve
+        ? '/api/permissions/' + encodeURIComponent(uid) + '/decide?approve=true'
+        : _decideRejectUrl(uid, reason);
+    withLoading(_permFetch(url, { method: 'POST', headers: Daylog.authHeaders(true) }),
+        approve ? '수락하는 중...' : '거절하는 중...')
+        .then(function () {
+            showToast(approve ? '접근을 수락했습니다' : '접근을 거절했습니다');
+            if (row && row.parentNode) row.parentNode.removeChild(row);
+            var body = document.getElementById('access-request-body');
+            if (body && !body.querySelector('.areq-row')) closeAccessRequestModal(); // 남은 요청 없으면 닫기
+            // 권한 관리 모달이 열려 있으면 목록 동기화
+            var permModal = document.getElementById('perm-modal');
+            if (permModal && !permModal.classList.contains('hidden') && typeof openPermissionAdmin === 'function') openPermissionAdmin();
+        })
+        .catch(function (err) { showToast('처리 실패: ' + (err && err.message ? err.message : '')); });
+}
+function closeAccessRequestModal() {
+    var modal = document.getElementById('access-request-modal');
+    if (modal) modal.classList.add('hidden');
+}
+if (Daylog) { Daylog.checkPendingAccessRequests = checkPendingAccessRequests; }
+// [E] edit by smsong
+// 마지막 수정 일시 포맷 (YYYY.MM.DD HH:mm)
+function fmtDateTime(s) {
+    if (!s) return '';
+    var t = String(s);
+    var d = t.substring(0, 10).replace(/-/g, '.');
+    var hm = (t.length >= 16) ? t.substring(11, 16) : '';
+    return hm ? (d + ' ' + hm) : d;
+}
+// 상세보기 '마지막 수정' 줄 (수정 일시 + 수정자 프로필/닉네임). 2인 전용 usersByUid 에서 조회
+// [B] edit by smsong - 전역 로딩 오버레이 헬퍼 (CRUD API 처리 중 클릭 차단 · 중복 제출 방지)
+var _loadingCount = 0;
+function showLoading(msg) {
+    _loadingCount++;
+    var ov = document.getElementById('loading-overlay');
+    if (ov) {
+        var t = ov.querySelector('.lo-text');
+        if (t) t.textContent = msg || '처리 중입니다...';
+        ov.classList.add('show');
+        ov.setAttribute('aria-hidden', 'false');
     }
 }
+function hideLoading() {
+    _loadingCount = Math.max(0, _loadingCount - 1);
+    if (_loadingCount === 0) {
+        var ov = document.getElementById('loading-overlay');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    }
+}
+// fetch(...) 프로미스를 감싸 로딩 표시/해제. 기존 .then/.catch 체인은 그대로 이어짐.
+function withLoading(promise, msg) {
+    showLoading(msg);
+    return Promise.resolve(promise).finally(hideLoading);
+}
+if (Daylog) { Daylog.showLoading = showLoading; Daylog.hideLoading = hideLoading; Daylog.withLoading = withLoading; }
+// [E] edit by smsong
+// [B] edit by smsong - 휴지통 항목별 '며칠 뒤 자동 삭제' 텍스트 (백엔드 daysUntilAutoDelete 사용)
+function autoDeleteText(o) {
+    if (!o || o.daysUntilAutoDelete == null) return '';
+    var d = o.daysUntilAutoDelete;
+    var label = (d <= 0) ? '곧 자동 삭제됩니다' : (d + '일 뒤 자동 삭제됩니다');
+    return '<div class="trash-autodel">' + label + '</div>';
+}
+// [E] edit by smsong
+function editedByHtml(item) {
+    // [smsong] 실제 수정 이력이 없으면(미수정) 표시하지 않음 → 빈 줄 없이 위치~사진 간격만 유지
+    if (!item || !item.updatedAt) return '';
+    if (item.createdAt && String(item.updatedAt).substring(0,16) === String(item.createdAt).substring(0,16)) return '';
+    var uid = item.lastEditorUid || item.ownerUid;
+    var when = item.updatedAt;
+    var u = (Daylog.usersByUid && uid) ? Daylog.usersByUid[uid] : null;
+    var name = '';
+    if (u) {
+        name = (u.nickname && String(u.nickname).trim()) ? u.nickname
+             : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
+    }
+    var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
+    if (!when && !name) return '';
+    return '<div class="detail-edited">' +
+        '<span class="de-text">' + icon('edit',12) + ' 마지막 수정 ' + escapeHtml(fmtDateTime(when)) + '</span>' +
+        '<span class="de-by"><span class="de-avatar" style="background-image:url(\'' + photo + '\')"></span>' + escapeHtml(name || '알 수 없음') + '</span>' +
+        '</div>';
+}
+// [E] edit by smsong
 
-async function clearNotifications() {
-    if (!confirm('알림을 모두 삭제하시겠습니까?')) return;
+// 카드 썸네일 HTML — 이미지가 있으면 배경이미지, 없으면 같은 크기의 '이미지 없음' 자리표시
+// [B] edit by smsong - 목록 썸네일: CSS background-image(원본 풀사이즈, lazy 불가) → REMS 방식 <img>.
+//  서버 소형 썸네일(thumb_) + loading="lazy"(뷰포트 근처에서만 로드) + decoding="async"(디코딩 비동기)
+//  + onerror 폴백(구버전/HEIC는 원본으로). 목록 스크롤 시 버벅임/멈춤/깜빡임 제거.
+function thumbHtml(mediaURL, cls) {
+    const c = cls || 'tl-thumb';
+    if (mediaURL) {
+        const thumb = Daylog.thumbUrlOf(mediaURL);
+        return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
+            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+    }
+    return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
+}
+// [E] edit by smsong
+
+// [B] edit by smsong - 원본 이미지 URL → 서버가 만든 소형 썸네일(thumb_ 접두) URL 파생.
+//  지도 마커/목록에서 원본(수 MB) 대신 썸네일을 써서 줌 인/아웃 시 재합성 부담 제거.
+Daylog.thumbUrlOf = function (url) {
+    if (!url) return url;
+    var i = url.lastIndexOf('/');
+    if (i < 0) return 'thumb_' + url;
+    return url.substring(0, i + 1) + 'thumb_' + url.substring(i + 1);
+};
+// 썸네일이 아직 없거나(구버전 기록/HEIC 등) 로드 실패하면 원본으로 폴백
+// [B] edit by smsong - 원본 1회 재시도(data-fb 가드) → 서버 썸네일 404 여도 항상 원본이 뜨게. 흰 썸네일 방지.
+Daylog._thumbFallback = function (img) {
     try {
-        await Api.clearNotifications();
-        renderNotifications([]);
-        refreshNotiBadge();
-        showToast('알림을 삭제했습니다');
-    } catch (e) { alert('삭제 실패\n\n' + (e.message || '')); }
+        var full = img.getAttribute('data-full');
+        if (full && img.getAttribute('data-fb') !== '1' && img.src !== full) {
+            img.setAttribute('data-fb', '1');
+            img.src = full;               // onerror 유지 → 원본도 실패하면 다시 호출
+            return;
+        }
+    } catch (e) {}
+    img.onerror = null;                   // 원본까지 실패 → 중단(더 이상 재시도 안 함)
+    img.classList.add('is-loaded');       // fade 클래스 보장(투명 잔상 방지)
+};
+// [B] edit by smsong - 목록(내 목록/댓글 목록 등) lm-thumb 도 동일하게 <img> + 서버 썸네일 + lazy/async.
+Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
+    if (mediaURL) {
+        var thumb = Daylog.thumbUrlOf(mediaURL);
+        return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
+            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+    }
+    return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
+};
+// [E] edit by smsong
+// [E] edit by smsong
+
+// [smsong] 이미지 프리로드: 목록 로드 시 썸네일/마커/상세 첫 이미지를 미리 브라우저 캐시에 적재 → 즉시 표시
+const _preloadedImgs = new Set();
+function preloadImages(urls) {
+    if (!urls) return;
+    urls.forEach(u => {
+        if (!u || _preloadedImgs.has(u)) return;
+        _preloadedImgs.add(u);
+        try { const im = new Image(); im.decoding = 'async'; im.src = u; } catch (e) {}
+    });
 }
 
-// 로드 후 배지 갱신 + 1분마다 폴링
-try {
-    setTimeout(refreshNotiBadge, 1200);
-    setInterval(refreshNotiBadge, 60000);
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (e) => {
-            const d = e.data || {};
-            if (d.type === 'push-received') refreshNotiBadge();
-            // OS 푸시 알림 클릭 → 앱이 이미 열려 있는 경우
-            if (d.type === 'open-customer' && d.customerId) {
-                openCustomerFromNoti(String(d.customerId));
-                refreshNotiBadge();
+// 좌표 → 주소 역지오코딩 (캐시 사용)
+const _geoCache = {};
+// [B] edit by smsong - 사용자 실시간 위치를 10분 단위로 서버(/api/locations)에 저장
+//  ※ 웹(브라우저) 한계: 앱(탭)이 '실행 중'일 때만 동작. 앱을 완전히 종료한 백그라운드 상태에서의
+//    자동 10분 저장은 브라우저 정책상 불가하며, 네이티브(iOS/Android, 예: Capacitor 백그라운드
+//    위치 플러그인) 래핑이 필요함. 아래는 포그라운드 자동 적재 구현.
+var _locTrackTimer = null;
+function postCurrentLocation(source) {
+    if (!(Daylog && Daylog.api && Daylog.currentUid)) return;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+        var c = pos.coords;
+        reverseGeocode(c.latitude, c.longitude, function (addr) {
+            var split = (typeof splitKoreanAddress === 'function') ? splitKoreanAddress(addr) : { placeName: '' };
+            var body = {
+                lat: c.latitude,
+                lng: c.longitude,
+                address: addr || '',           // 도로명 주소까지 상세
+                roadAddress: addr || '',
+                placeName: split.placeName || '',
+                accuracy: (c.accuracy != null ? c.accuracy : null),
+                altitude: (c.altitude != null ? c.altitude : null),
+                speed: (c.speed != null ? c.speed : null),
+                heading: (c.heading != null ? c.heading : null),
+                source: source || 'foreground'
+                // capturedAt 은 서버에서 현재 시각으로 기록
+            };
+            fetch(Daylog.api + '/api/locations', {
+                method: 'POST',
+                headers: Daylog.authHeaders(true),
+                body: JSON.stringify(body)
+            }).catch(function () { /* 적재 실패는 조용히 무시 */ });
+        });
+    }, function () { /* 위치 권한 거부/실패 시 조용히 무시 */ },
+    { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+}
+function startLocationTracking() {
+    if (_locTrackTimer) return;
+    postCurrentLocation('foreground');                                   // 진입 즉시 1회
+    _locTrackTimer = setInterval(function () { postCurrentLocation('foreground'); }, 10 * 60 * 1000); // 10분 주기
+    document.addEventListener('visibilitychange', function () {          // 앱 복귀 시 1회 갱신
+        if (document.visibilityState === 'visible') postCurrentLocation('resume');
+    });
+}
+if (Daylog) Daylog.startLocationTracking = startLocationTracking;
+// [E] edit by smsong
+
+function reverseGeocode(lat, lng, cb) {
+    if (lat == null || lng == null) { cb(''); return; }
+    const key = Number(lat).toFixed(5) + ',' + Number(lng).toFixed(5);
+    if (_geoCache[key] !== undefined) { cb(_geoCache[key]); return; }
+    if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) { cb(''); return; }
+    naver.maps.Service.reverseGeocode({
+        coords: new naver.maps.LatLng(lat, lng),
+        orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+    }, (status, response) => {
+        let addr = '';
+        if (status === naver.maps.Service.Status.OK) {
+            const r = response.v2;
+            addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress || '') : '';
+        }
+        _geoCache[key] = addr;
+        cb(addr);
+    });
+}
+
+// 전체 주소를 큰 영역(시/도 + 시·군·구)과 상세 주소로 분리
+//  예) '경기도 수원시 영통구 법조로 25 광교 SK VIEW Lake'
+//      → placeName: '경기도 수원시', address: '영통구 법조로 25 광교 SK VIEW Lake'
+//  예) '서울특별시 강남구 테헤란로 123' → placeName: '서울특별시 강남구', address: '테헤란로 123'
+function splitKoreanAddress(full) {
+    const s = String(full || '').trim();
+    if (!s) return { placeName: '', address: '' };
+    const parts = s.split(/\s+/);
+    if (parts.length <= 2) return { placeName: parts.join(' '), address: '' };
+    return {
+        placeName: parts.slice(0, 2).join(' '),
+        address: parts.slice(2).join(' ')
+    };
+}
+
+function sortByDateDesc(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }
+
+// ==========================================
+// 2. 메인 앱 로직
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    // 페이지 진입 시 가장 먼저 인증 체크
+    if (!requireAuthOrRedirect()) return;
+
+    // [B] edit by smsong - 접근 권한은 서버(권한 메뉴/DB) 기준으로 판정 (loadMyPermission)
+    //  하드코딩 이름 즉시 차단은 제거 — DB에서 승인된 사용자도 통과해야 하므로 서버 응답으로 게이트.
+    //  (서버 조회 실패 시에만 loadMyPermission 내부에서 이름 기반으로 폴백 차단)
+    // [E] edit by smsong
+
+    let map = null;
+    let selectedFile = null;
+    let currentLatLng = null;
+    let currentLocationMeta = { placeName: '', address: '' }; // 장소명/상세주소 캡처
+    window._pendingPlaceTitle = '';   // 장소 검색으로 고른 상호명(제목 자동입력용 · 추억/체크리스트 공용)
+    let isWaitingForMapClick = false;
+    let mapClickListener = null;
+    let memoryList = [];
+    let markers = []; // 지도 마커 인스턴스 보관 (중복 생성 방지)
+    let cameraMode = false;        // 라이브 카메라로 촬영한 추억인지
+    let pickReturnsToForm = false; // 위치 재설정 후 작성 폼으로 복귀(데이터 유지)
+    let checklistList = [];        // 가볼곳(체크리스트) 목록
+    let mapMode = 'memory';        // 지도 표시 데이터: 'memory' | 'checklist'
+    let _mapMemDate = '';          // 지도 필터: 추억 날짜 (''=전체)
+    let _mapClVisited = 'ALL';     // 지도 필터: 가볼곳 방문여부 (ALL | VISITED | TODO)
+    let _mapClCat = 'ALL';         // 지도 필터: 가볼곳 카테고리 (ALL | CAFE | FOOD | SPOT | ETC)
+    let _suppressDrop = false;     // 위치 클릭(focus) 시 마커 등장(markerDrop) 애니메이션 억제 → 흔들기만
+    let pickTarget = 'memory';     // 위치 선택 후 열 폼: 'memory' | 'checklist'
+    // [B] edit by smsong - '수정' 중 위치 재설정 복귀 컨텍스트
+    let _editLocReturn = null;     // null | 'memory' | 'checklist'
+    let _editLocItem = null;       // 편집 중이던 원본 아이템(시트 닫힘으로 _detailMemory/_detailChecklist 가 비워지므로 보관)
+    let _editFormSnapshot = null;  // 편집 폼 입력값 스냅샷(복원용)
+    // [E] edit by smsong
+    let checklistLoaded = false;   // 체크리스트 최초 로드 여부
+    let profilesLoaded = false;    // 프로필 최초 로드 여부 (탭 전환 시 매번 재요청 방지)
+    let _memSig = null, _clSig = null, _profSig = null; // 변경 감지용 시그니처(같으면 재렌더 생략)
+    function _listSig(v) { try { return JSON.stringify(v); } catch (e) { return String(Math.random()); } }
+    let _clFilter = 'ALL';         // 가볼곳 카테고리 필터
+    let _clVisitedFilter = 'ALL';  // 가볼곳 방문여부 필터 (ALL | VISITED | TODO)
+    let _tlPlaceFilter = '';       // 타임라인 장소(placeName) 필터 (''=전체)
+    let _tlKeyword = '';           // 타임라인 검색어 (제목/내용/위치)
+    let _clKeyword = '';           // 가볼곳 검색어 (제목/내용/위치)
+
+    const currentUid = getUid();
+
+    // 상세/리스트 모달(전역 함수)에서 사용할 컨텍스트 주입
+    Daylog.currentUid = currentUid;
+    Daylog.api = API_BASE_URL;
+    Daylog.authHeaders = authHeaders;
+    Daylog.handleResponse = handleResponse;
+    Daylog.reload = () => loadMemoriesFromServer();
+    Daylog.reloadChecklists = () => loadChecklistsFromServer();
+    // [B] edit by smsong - 로그인 상태면 실시간 위치 10분 단위 적재 시작
+    if (currentUid) { try { startLocationTracking(); } catch (e) { console.warn('위치 추적 시작 실패', e); } }
+    // 서버 권한 로딩 → 접근 게이트 + 관리자 메뉴 노출 (먼저 로컬 이름으로 메뉴 즉시 판정)
+    try { applyPermButtons(); } catch (e) {} // 권한 확인 전엔 생성 FAB 숨김
+    try { applyMyPermUI(); } catch (e) {}
+    if (currentUid) { try { loadMyPermission(); } catch (e) { console.warn('권한 로딩 실패', e); } }
+    // [B] edit by smsong - #4 방 멤버(작성자/수정자 이름)를 초기에 미리 로드 → 상세 진입 시 '작성자' 폴백 방지
+    if (currentUid) { try { ensureRoomInfoThen(function () {}); } catch (e) {} }
+    // [E] edit by smsong
+    Daylog.openChecklistDetailById = (id) => {
+        const c = checklistList.find(x => x.id === id);
+        if (c) openChecklistDetail(c);
+    };
+    // [B] edit by smsong - 푸시 딥링크: 게시글 상세 열고 해당 댓글로 스크롤 (데이터 로드까지 폴링)
+    Daylog.openMemoryDetailById = (id) => {
+        const m = memoryList.find(x => String(x.id) === String(id));
+        if (m) { openDetailModal(m); return true; }
+        return false;
+    };
+    Daylog._openByDeepLink = function (type, id) {
+        if (type === 'memory') {
+            const m = memoryList.find(x => String(x.id) === String(id));
+            if (m) { openDetailModal(m); return true; }
+        } else if (type === 'checklist') {
+            const c = checklistList.find(x => String(x.id) === String(id));
+            if (c) { openChecklistDetail(c); return true; }
+        }
+        return false;
+    };
+    Daylog.handleDeepLink = function () {
+        try {
+            const p = new URLSearchParams(location.search);
+            const type = p.get('type'), id = p.get('id'), comment = p.get('comment');
+            if (!type || !id) return;
+            let tries = 0;
+            (function attempt() {
+                if (Daylog._openByDeepLink(type, id)) {
+                    if (comment) _scrollToComment(comment);
+                    try { history.replaceState(null, '', 'main.html'); } catch (e) {}
+                    return;
+                }
+                if (tries++ < 40) setTimeout(attempt, 250); // 최대 ~10초 데이터 대기
+            })();
+        } catch (e) {}
+    };
+    function _scrollToComment(commentId) {
+        let tries = 0;
+        (function attempt() {
+            const el = document.querySelector('.comment-item[data-id="' + commentId + '"]');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('comment-highlight');
+                setTimeout(function () { el.classList.remove('comment-highlight'); }, 2600);
+                return;
+            }
+            if (tries++ < 30) setTimeout(attempt, 200); // 댓글 로드 대기
+        })();
+    }
+    setTimeout(function () { try { Daylog.handleDeepLink(); } catch (e) {} }, 400);
+
+    // 해당 마커를 잠깐 빠르게 흔들어 "여기입니다" 표시
+    function shakeMarker(memory) {
+        if (!memory) return;
+        const m = markers.find(mk => mk._memoryId === memory.id);
+        if (!m || typeof m.getElement !== 'function') return;
+        const el = m.getElement();
+        if (!el) return;
+        const target = el.querySelector('.custom-marker') || el.querySelector('.marker-heart') || el.firstElementChild || el;
+        target.classList.remove('marker-shake');
+        void target.offsetWidth; // 애니메이션 재시작을 위한 리플로우
+        target.classList.add('marker-shake');
+        setTimeout(() => target.classList.remove('marker-shake'), 900);
+    }
+
+    // 상세보기에서 위치 클릭 → '지도' 탭으로 이동 후 해당 위치로 이동 + 마커 흔들기
+    Daylog.focusOnMap = function (memory) {
+        if (!memory || memory.lat == null || memory.lng == null) return;
+        closeDetailModal();
+        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
+        const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
+        if (mapNav) mapNav.click(); // 탭 전환 + map resize 트리거
+        _suppressDrop = true;       // 등장 애니메이션 끄고 '흔들기'만
+        _mapMemDate = '';           // 날짜 필터로 가려지지 않게
+        // 가볼곳 모드였다면 추억 모드로 전환하며 추억 마커 렌더
+        if (mapMode !== 'memory') setMapMode('memory');
+        else refreshMapMarkers();
+        setTimeout(() => {
+            if (!map) return;
+            // [B] edit by smsong - 현재 지도 위치에서 대상까지 중앙+줌을 한 번에 부드럽게 이동(morph)
+            const target = new naver.maps.LatLng(memory.lat, memory.lng);
+            if (typeof map.morph === 'function') {
+                map.morph(target, 16, { duration: 650, easing: 'easeOutCubic' });
+                setTimeout(() => shakeMarker(memory), 720);
+            } else {
+                map.setZoom(16);
+                map.panTo(target);
+                setTimeout(() => shakeMarker(memory), 460);
+            }
+            // [E] edit by smsong
+        }, 120);
+        setTimeout(() => { _suppressDrop = false; }, 1600);
+    };
+
+    // 가볼곳 상세에서 위치 클릭 → 지도(체크리스트 모드)로 이동 + 마커 흔들기
+    function shakeChecklistMarker(item) {
+        if (!item) return;
+        const m = markers.find(mk => mk._checklistId === item.id);
+        if (!m || typeof m.getElement !== 'function') return;
+        const el = m.getElement();
+        if (!el) return;
+        const target = el.querySelector('.cl-marker') || el.firstElementChild || el;
+        target.classList.remove('marker-shake');
+        void target.offsetWidth;
+        target.classList.add('marker-shake');
+        setTimeout(() => target.classList.remove('marker-shake'), 900);
+    }
+    Daylog.focusChecklistOnMap = function (item) {
+        if (!item || item.lat == null || item.lng == null) return;
+        closeChecklistDetail();
+        try { closeListModal(); } catch (e) {} // [B] edit by smsong - 설정 멤버뷰 등에서 열린 목록 모달도 닫아 지도가 보이게
+        const mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
+        if (mapNav) mapNav.click();
+        _suppressDrop = true;        // 등장 애니메이션 끄고 '흔들기'만
+        _mapClVisited = 'ALL';       // 방문여부 필터로 가려지지 않게
+        _mapClCat = 'ALL';           // 카테고리 필터로 가려지지 않게
+        if (mapMode !== 'checklist') setMapMode('checklist');
+        else refreshMapMarkers();
+        setTimeout(() => {
+            if (!map) return;
+            // [B] edit by smsong - 현재 지도 위치에서 대상까지 중앙+줌을 한 번에 부드럽게 이동(morph)
+            const target = new naver.maps.LatLng(item.lat, item.lng);
+            if (typeof map.morph === 'function') {
+                map.morph(target, 16, { duration: 650, easing: 'easeOutCubic' });
+                setTimeout(() => shakeChecklistMarker(item), 720);
+            } else {
+                map.setZoom(16);
+                map.panTo(target);
+                setTimeout(() => shakeChecklistMarker(item), 460);
+            }
+            // [E] edit by smsong
+        }, 120);
+        setTimeout(() => { _suppressDrop = false; }, 1600);
+    };
+
+    const mapWrapper = document.getElementById('map-wrapper');
+    const locationMode = document.getElementById('location-mode');
+    const fileInput = document.getElementById('memory-file');
+
+    // --- 디데이 (방 커플 기준일로 표시, 커플 방에만) ---
+    applyDdayVisibility();
+
+    // --- 로그아웃 (헤더 버튼은 알림으로 교체됨 → null 가드. 로그아웃은 설정 메뉴 버튼 사용) ---
+    var _btnLogout = document.getElementById('btn-logout');
+    if (_btnLogout) _btnLogout.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
+    });
+
+    // [B] edit by smsong - main 상단 좌측 Daylog 로고 → 확인 후 방 목록으로 이동 (main 페이지 전용)
+    const navLogo = document.querySelector('.navbar .logo');
+    if (navLogo) {
+        navLogo.style.cursor = 'pointer';
+        navLogo.setAttribute('title', '방 목록으로 이동');
+        navLogo.addEventListener('click', () => {
+            if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html';
+        });
+        // [B] edit by smsong - #1 키보드(Enter/Space)도 confirm 경유
+        navLogo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html'; }
+        });
+    }
+    // [E] edit by smsong
+
+    // --- 탭 전환 ---
+    const navItems = document.querySelectorAll('.nav-item');
+    const tabContents = document.querySelectorAll('.tab-content');
+    navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            navItems.forEach(nav => nav.classList.remove('active'));
+            item.classList.add('active');
+            const targetTab = item.getAttribute('data-tab');
+            if (!targetTab) return;
+            // [smsong] 상세보기가 열려 있으면 메뉴 전환 시 자동으로 내려감(닫기)
+            if (_memorySheet && _memorySheet.isOpen()) closeDetailModal();
+            if (_clSheet && _clSheet.isOpen()) closeChecklistDetail();
+            // [smsong] 탭 전환 시 필터 팝오버 닫기
+            ['tl-filter-pop', 'cl-filter-pop'].forEach(id => { var pe = document.getElementById(id); if (pe) pe.classList.add('hidden'); });
+            document.body.setAttribute('data-active-tab', targetTab);
+            tabContents.forEach(tab => {
+                tab.style.display = (tab.id === targetTab) ? 'block' : 'none';
+            });
+            // 메뉴 이동 시 항상 맨 위로 (이전 스크롤 위치 잔존 방지)
+            const containerScroll = document.querySelector('main.container');
+            if (containerScroll) containerScroll.scrollTop = 0;
+            window.scrollTo(0, 0);
+            document.body.classList.remove('map-immersive'); // 지도 몰입모드 해제 → 헤더/하단바 복귀
+            if (targetTab === 'tab-map' && map) {
+                naver.maps.Event.trigger(map, 'resize');
+            }
+            // 즉시 캐시 화면을 보여주고(이미 그려져 있음), 백그라운드에서 조용히 최신화.
+            // 데이터가 실제로 바뀐 경우에만 다시 그리므로 전환 속도 유지 + 깜빡임 없음.
+            if (targetTab === 'tab-profile') loadProfiles();
+            if (targetTab === 'tab-checklist') loadChecklistsFromServer();
+            if (targetTab === 'tab-timeline') loadMemoriesFromServer();
+        });
+    });
+
+    // --- 네이버 지도 초기화 ---
+    if (window.APP_CONFIG && window.APP_CONFIG.NAVER_MAP_CLIENT_ID) {
+        const script = document.createElement('script');
+        script.src = 'https://openapi.map.naver.com/openapi/v3/maps.js?submodules=geocoder&ncpKeyId=' + window.APP_CONFIG.NAVER_MAP_CLIENT_ID;
+        script.async = true;
+        script.onload = () => initMap();
+        script.onerror = () => showMapFallback('지도 조회 실패. 네트워크나 키 설정을 확인해주십시오.');
+        document.head.appendChild(script);
+    } else {
+        showMapFallback('지도 키가 설정되지 않음. config.js의 NAVER_MAP_CLIENT_ID를 확인해주십시오.');
+    }
+
+    function showMapFallback(msg) {
+        const mapEl = document.getElementById('naver-map');
+        if (!mapEl) return;
+        mapEl.innerHTML = '<div class="map-fallback"><span class="mf-icon">' + icon('map',38) + '</span><p>' + escapeHtml(msg) + '</p></div>';
+    }
+
+    let currentLocMarker = null; // 내 현재 위치(파란 점) 마커
+
+    function placeMyLocation(lat, lng) {
+        if (!map || !(window.naver && naver.maps)) return;
+        const pos = new naver.maps.LatLng(lat, lng);
+        if (!currentLocMarker) {
+            currentLocMarker = new naver.maps.Marker({
+                position: pos, map: map, zIndex: 50, clickable: false,
+                icon: {
+                    content: '<div class="my-loc-dot"><span class="my-loc-pulse"></span><span class="my-loc-beam"></span></div>', /* [smsong] 방향 빔 추가 */
+                    anchor: new naver.maps.Point(11, 11)
+                }
+            });
+        } else {
+            currentLocMarker.setPosition(pos);
+            if (!currentLocMarker.getMap()) currentLocMarker.setMap(map);
+        }
+    }
+
+    // [B] edit by smsong - 네이버 지도 앱 스타일: 현재 위치 마커에 방향(나침반) 빔 표시
+    let _compassOn = false, _hdgPrev = null, _hdgAccum = 0, _hdgRaf = 0, _hdgPending = null;
+    function _setMyLocHeading(deg) {
+        const dot = document.querySelector('.my-loc-dot');
+        if (!dot) return;
+        // 0/360 경계에서 한 바퀴 도는 현상 방지: 최단경로 누적각 사용
+        if (_hdgPrev == null) { _hdgPrev = deg; _hdgAccum = deg; }
+        else {
+            let d = deg - _hdgPrev;
+            if (d > 180) d -= 360; else if (d < -180) d += 360;
+            _hdgAccum += d; _hdgPrev = deg;
+        }
+        dot.style.setProperty('--heading', _hdgAccum.toFixed(1) + 'deg');
+        dot.classList.add('has-heading');
+    }
+    function _onOrient(e) {
+        let h = null;
+        if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+            h = e.webkitCompassHeading;                 // iOS: 이미 나침반값(북=0, 시계방향)
+        } else if (e.absolute === true && typeof e.alpha === 'number') {
+            h = (360 - e.alpha) % 360;                  // Android(절대): alpha(반시계) → 나침반(시계)
+        }
+        if (h == null) return;
+        // 화면 회전(가로모드 등) 보정
+        const so = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+        h = (h + so + 360) % 360;
+        _hdgPending = h;
+        if (!_hdgRaf) _hdgRaf = requestAnimationFrame(() => { _hdgRaf = 0; if (_hdgPending != null) _setMyLocHeading(_hdgPending); });
+    }
+    function enableCompass() {
+        if (_compassOn) return;
+        const start = () => {
+            if (_compassOn) return;
+            _compassOn = true;
+            if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', _onOrient, true);
+            window.addEventListener('deviceorientation', _onOrient, true);
+        };
+        const D = window.DeviceOrientationEvent;
+        if (D && typeof D.requestPermission === 'function') {   // iOS 13+: 사용자 제스처에서 권한 요청
+            D.requestPermission().then(s => { if (s === 'granted') start(); }).catch(() => {});
+        } else { start(); }                                     // Android 등: 권한 불필요
+    }
+    window._enableCompass = enableCompass;
+    // [E] edit by smsong
+
+    // 현재 GPS 위치를 가져와 마커 표시 (recenter=true 면 지도 화면도 이동, announce=true 면 실패 시 안내)
+    function locateMe(recenter, announce) {
+        if (!navigator.geolocation) { if (announce) showToast('위치 기능을 사용할 수 없습니다'); return; }
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            placeMyLocation(lat, lng);
+            if (recenter && map) { map.setCenter(new naver.maps.LatLng(lat, lng)); map.setZoom(15); }
+        }, (err) => {
+            console.warn('현재 위치 실패:', err);
+            if (announce) showToast('현재 위치를 가져오지 못했습니다');
+        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+    }
+
+    function initMap() {
+        map = new naver.maps.Map('naver-map', {
+            center: new naver.maps.LatLng(37.5665, 126.9780),
+            zoom: 14
+        });
+        loadMemoriesFromServer();
+        locateMe(true, false); // 지도 처음 진입 시 현재 위치로 이동 + 마커 (실패해도 조용히)
+        enableCompass(); // [B] edit by smsong - 방향(나침반) 빔 시작 (안드로이드는 권한 불필요) / [E] edit by smsong
+
+        // 지도(빈 영역) 탭 → 헤더/하단바 숨김·표시 토글 (마커 클릭은 상세보기라 제외)
+        naver.maps.Event.addListener(map, 'click', () => {
+            if (isWaitingForMapClick) return; // 위치 선택 중에는 토글 안 함
+            document.body.classList.toggle('map-immersive');
+            // [smsong] 몰입모드(헤더/하단바 숨김) 진입 시 상세보기도 함께 닫기
+            if (document.body.classList.contains('map-immersive')) {
+                if (_memorySheet && _memorySheet.isOpen()) closeDetailModal();
+                if (_clSheet && _clSheet.isOpen()) closeChecklistDetail();
+            }
+            // [smsong] 지도는 뷰포트에 고정(fixed)되어 크기가 변하지 않으므로 resize() 불필요 → 버벅임/이동 제거
+        });
+    }
+
+    // 지도 우하단 '내 위치' 버튼 → 현재 위치로 이동
+    const myLocBtn = document.getElementById('btn-my-location');
+    if (myLocBtn) myLocBtn.addEventListener('click', () => { enableCompass(); locateMe(true, true); }); // [smsong] iOS 나침반 권한은 탭(제스처)에서 요청
+
+    // --- 위치 선택 모드 (지도 중앙 점 기준) ---
+    let mapIdleListener = null;
+    let centerLabelTimer = null;
+
+    function enterPickMode() {
+        // [B] edit by smsong - 각 메뉴에서 추가 시작 시 위치 선택을 위해 지도 탭으로 전환
+        if (document.body.getAttribute('data-active-tab') !== 'tab-map') {
+            const _mapNav = document.querySelector('.nav-item[data-tab="tab-map"]');
+            if (_mapNav) _mapNav.click();
+        }
+        // [E] edit by smsong
+        isWaitingForMapClick = true;
+        window._pendingPlaceTitle = '';
+        document.body.classList.remove('map-immersive'); // 헤더(검색창) 필요하므로 몰입모드 해제
+        locationMode.classList.remove('hidden');
+        mapWrapper.classList.add('picking');
+        document.body.classList.add('picking');
+
+        // 지도를 탭하면 그 지점으로 중앙(점)을 이동 — 확정은 버튼으로
+        if (mapClickListener) naver.maps.Event.removeListener(mapClickListener);
+        mapClickListener = naver.maps.Event.addListener(map, 'click', (event) => {
+            if (!isWaitingForMapClick) return;
+            map.panTo(event.coord);
+        });
+
+        // 지도 이동/줌이 멈출 때마다 중앙 점의 주소를 표시
+        if (mapIdleListener) naver.maps.Event.removeListener(mapIdleListener);
+        mapIdleListener = naver.maps.Event.addListener(map, 'idle', () => {
+            clearTimeout(centerLabelTimer);
+            centerLabelTimer = setTimeout(updateCenterLabel, 250);
+        });
+        updateCenterLabel();
+    }
+
+    // 지도 중앙 점의 좌표 → 주소를 배너에 표시
+    function updateCenterLabel() {
+        if (!isWaitingForMapClick || !map) return;
+        const label = document.getElementById('lm-center-label');
+        const c = map.getCenter();
+        if (!c) return;
+        if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> 위치 확인 중…';
+        if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) {
+            if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> 중앙 지점을 선택해주십시오';
+            return;
+        }
+        naver.maps.Service.reverseGeocode({
+            coords: c,
+            orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+        }, (status, response) => {
+            if (!isWaitingForMapClick) return;
+            let addr = '중앙 지점을 선택해주십시오';
+            if (status === naver.maps.Service.Status.OK) {
+                const r = response.v2;
+                addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress || addr) : addr;
+            }
+            if (label) label.innerHTML = '<span class="lm-pin">' + icon('pin',15) + '</span> ' + escapeHtml(addr);
+        });
+    }
+
+    // 좌표를 최종 확정 → 작성 폼으로 (중앙 점 / 현재 위치 공통)
+    function confirmLocation(lat, lng, prefix) {
+        currentLatLng = { lat: lat, lng: lng };
+        // [B] edit by smsong - '수정' 중 위치 재설정이면 편집 폼으로 복귀
+        if (_editLocReturn) { finishEditLocationPick(lat, lng); return; }
+        // [E] edit by smsong
+        reverseGeocodeAndLabel(lat, lng, prefix || icon('pin',14));
+        exitPickMode();
+        pickReturnsToForm = false;
+        if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
+    }
+
+    // [B] edit by smsong - ===== '수정' 중 위치 재설정 흐름 =====
+    // 편집 폼(추억/가볼곳)에서 '위치 다시 설정하기' → 폼 상태 스냅샷 후 위치 선택 모드 진입
+    function startEditLocationPick(kind) {
+        if (kind === 'memory') {
+            if (!_detailMemory) return;
+            const mgr = window._memEditMgr;
+            _editLocItem = _detailMemory;
+            _editFormSnapshot = {
+                date: (document.getElementById('edit-memory-date') || {}).value || '',
+                title: (document.getElementById('edit-memory-title') || {}).value || '',
+                content: (document.getElementById('edit-memory-content') || {}).value || '',
+                order: mgr ? mgr.getMediaOrder() : [],
+                files: mgr ? mgr.getNewFiles() : []
+            };
+            _editLocReturn = 'memory';
+            pickTarget = 'memory';
+            closeDetailModal();
+        } else {
+            if (!_detailChecklist) return;
+            const mgr = window._clEditMgr;
+            _editLocItem = _detailChecklist;
+            _editFormSnapshot = {
+                title: (document.getElementById('cl-edit-title') || {}).value || '',
+                content: (document.getElementById('cl-edit-content') || {}).value || '',
+                type: window._clEditSelectedType || (_detailChecklist && _detailChecklist.type) || 'ETC',
+                visited: !!(document.getElementById('cl-edit-visited') || {}).checked,
+                visitedDate: (document.getElementById('cl-edit-visited-date') || {}).value || '',
+                order: mgr ? mgr.getMediaOrder() : [],
+                files: mgr ? mgr.getNewFiles() : []
+            };
+            _editLocReturn = 'checklist';
+            pickTarget = 'checklist';
+            closeChecklistDetail();
+        }
+        _editLocPicked = null;
+        // 시트가 내려가는 애니메이션이 끝난 뒤 위치 선택 모드 진입
+        setTimeout(function () { enterPickMode(); }, 260);
+    }
+
+    // 위치 확정 → 새 좌표의 주소를 역지오코딩한 뒤 편집 폼 복원
+    function finishEditLocationPick(lat, lng) {
+        exitPickMode();
+        var applyAndReopen = function (meta) {
+            _editLocPicked = {
+                lat: lat, lng: lng,
+                placeName: (meta && meta.placeName) || '',
+                address: (meta && meta.address) || ''
+            };
+            reopenEditWithSnapshot(true);
+        };
+        if (window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode) {
+            naver.maps.Service.reverseGeocode({
+                coords: new naver.maps.LatLng(lat, lng),
+                orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+            }, function (status, response) {
+                var meta = { placeName: '', address: '' };
+                if (status === naver.maps.Service.Status.OK) {
+                    var r = response.v2;
+                    var addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress) : '';
+                    meta = splitKoreanAddress(addr || '');
+                }
+                applyAndReopen(meta);
+            });
+        } else { applyAndReopen({ placeName: '', address: '' }); }
+    }
+
+    // 미디어 매니저를 저장된 순서/새 파일로 재구성(사진 편집 상태 보존)
+    function _rebuildMediaMgr(mgr, order, files) {
+        if (!mgr) return;
+        var f = (files || []).slice();
+        var items = (order || []).map(function (o) {
+            return o === '$NEW$' ? { kind: 'file', file: f.shift() } : { kind: 'url', url: o };
+        }).filter(function (it) { return it.kind === 'url' || it.file; });
+        mgr.reset(items);
+    }
+
+    // 편집 폼 위치 라벨을 새 위치로 갱신
+    function _applyEditLocLabel(elId) {
+        var el = document.getElementById(elId);
+        if (!el || !_editLocPicked) return;
+        var t = [_editLocPicked.placeName, _editLocPicked.address].filter(Boolean).join(' ') || '지정한 위치';
+        el.innerHTML = pinText(t) + ' <span class="loc-changed-tag">변경됨</span>';
+    }
+
+    // 상세 시트를 다시 열고 편집 모드로 진입 → 스냅샷 복원 (changed=true면 새 위치 라벨 적용)
+    function reopenEditWithSnapshot(changed) {
+        var kind = _editLocReturn;
+        var item = _editLocItem;
+        var snap = _editFormSnapshot;
+        _editLocReturn = null; _editLocItem = null; _editFormSnapshot = null; // 소비
+        if (!item) return;
+        window._editLocRestoring = true; // exitDetailEdit/exitChecklistEdit 가 _editLocPicked 를 지우지 않도록
+        try {
+            if (kind === 'memory') {
+                openDetailModal(item);
+                enterDetailEdit(item);
+                if (snap) {
+                    var d = document.getElementById('edit-memory-date'); if (d) d.value = snap.date;
+                    var t = document.getElementById('edit-memory-title'); if (t) t.value = snap.title;
+                    var c = document.getElementById('edit-memory-content'); if (c) c.value = snap.content;
+                    _rebuildMediaMgr(window._memEditMgr, snap.order, snap.files);
+                }
+                if (changed) _applyEditLocLabel('edit-loc');
+            } else {
+                openChecklistDetail(item);
+                enterChecklistEdit(item);
+                if (snap) {
+                    var ct = document.getElementById('cl-edit-title'); if (ct) ct.value = snap.title;
+                    var cc = document.getElementById('cl-edit-content'); if (cc) cc.value = snap.content;
+                    if (snap.type) {
+                        window._clEditSelectedType = snap.type;
+                        document.querySelectorAll('#cl-edit-type-options .cl-type-chip').forEach(function (chip) {
+                            chip.classList.toggle('selected', chip.dataset.type === snap.type);
+                        });
+                    }
+                    var chk = document.getElementById('cl-edit-visited');
+                    var dt = document.getElementById('cl-edit-visited-date');
+                    if (chk) chk.checked = !!snap.visited;
+                    if (dt) { dt.disabled = !snap.visited; dt.value = snap.visitedDate || ''; }
+                    if (chk) { var lbl = chk.closest('.cl-check-label'); if (lbl) lbl.classList.toggle('checked', !!snap.visited); }
+                    _rebuildMediaMgr(window._clEditMgr, snap.order, snap.files);
+                }
+                if (changed) _applyEditLocLabel('cl-edit-loc');
+            }
+        } finally {
+            window._editLocRestoring = false;
+        }
+    }
+
+    // 편집 폼의 '위치 다시 설정하기' 버튼 바인딩
+    var _editResetLoc = document.getElementById('edit-reset-location');
+    if (_editResetLoc) _editResetLoc.addEventListener('click', function () { startEditLocationPick('memory'); });
+    var _clEditResetLoc = document.getElementById('cl-edit-reset-location');
+    if (_clEditResetLoc) _clEditResetLoc.addEventListener('click', function () { startEditLocationPick('checklist'); });
+    // [B] edit by smsong - 위치 텍스트(배지)를 눌러도 바로 위치 변경 열리게
+    var _editLocLine = document.getElementById('edit-loc');
+    if (_editLocLine) {
+        _editLocLine.setAttribute('title', '눌러서 위치 변경');
+        _editLocLine.addEventListener('click', function () { startEditLocationPick('memory'); });
+    }
+    var _clEditLocLine = document.getElementById('cl-edit-loc');
+    if (_clEditLocLine) {
+        _clEditLocLine.setAttribute('title', '눌러서 위치 변경');
+        _clEditLocLine.addEventListener('click', function () { startEditLocationPick('checklist'); });
+    }
+    // [E] edit by smsong
+
+    // 좌표 → 상세 주소 (역지오코딩)로 배지 문구 채우기
+    function setBadgeManual(text) {
+        const b = document.getElementById('location-status-badge');
+        b.innerHTML = text;
+        b.className = 'location-badge manual';
+    }
+    function reverseGeocodeAndLabel(lat, lng, prefix) {
+        const tag = prefix || icon('pin',14);
+        currentLocationMeta = { placeName: '', address: '' };
+        setBadgeManual(tag + ' 위치를 확인하는 중...');
+        if (!(window.naver && naver.maps.Service && naver.maps.Service.reverseGeocode)) {
+            setBadgeManual(tag + ' 지정한 위치로 설정되었습니다');
+            return;
+        }
+        naver.maps.Service.reverseGeocode({
+            coords: new naver.maps.LatLng(lat, lng),
+            orders: [naver.maps.Service.OrderType.ROAD_ADDR, naver.maps.Service.OrderType.ADDR].join(',')
+        }, (status, response) => {
+            if (status !== naver.maps.Service.Status.OK) {
+                setBadgeManual(tag + ' 지정한 위치로 설정되었습니다');
+                return;
+            }
+            const r = response.v2;
+            const addr = (r && r.address) ? (r.address.roadAddress || r.address.jibunAddress) : '';
+            currentLocationMeta = splitKoreanAddress(addr);
+            setBadgeManual(tag + ' ' + escapeHtml(addr || '지정한 위치로 설정되었습니다'));
+        });
+    }
+
+    // --- 위치 다시 설정하기 (작성 폼 내용은 유지) ---
+    const resetLocBtn = document.getElementById('btn-reset-location');
+    function _startMemoryLocationPick() {
+        pickReturnsToForm = true; // 위치만 다시 고르고 폼으로 복귀
+        document.getElementById('memory-modal').classList.add('hidden'); // reset() 호출 안 함 → 입력 유지
+        enterPickMode();
+    }
+    if (resetLocBtn) {
+        resetLocBtn.addEventListener('click', _startMemoryLocationPick);
+    }
+    // [B] edit by smsong - 위치 배지를 눌러도 바로 위치 변경
+    const _memLocBadge = document.getElementById('location-status-badge');
+    if (_memLocBadge) {
+        _memLocBadge.setAttribute('title', '눌러서 위치 변경');
+        _memLocBadge.addEventListener('click', _startMemoryLocationPick);
+    }
+    // [E] edit by smsong
+
+    function exitPickMode() {
+        isWaitingForMapClick = false;
+        locationMode.classList.add('hidden');
+        mapWrapper.classList.remove('picking');
+        document.body.classList.remove('picking');
+        const si = document.getElementById('lm-search-input');
+        if (si) si.value = '';
+        const sg = document.getElementById('lm-suggestions');
+        if (sg) { sg.classList.add('hidden'); sg.innerHTML = ''; }
+        if (mapClickListener) { naver.maps.Event.removeListener(mapClickListener); mapClickListener = null; }
+        if (mapIdleListener) { naver.maps.Event.removeListener(mapIdleListener); mapIdleListener = null; }
+        clearTimeout(centerLabelTimer);
+    }
+
+    // '이 위치로 설정하기' — 지도 중앙 점을 위치로 확정
+    const lmConfirmBtn = document.getElementById('lm-confirm');
+    if (lmConfirmBtn) lmConfirmBtn.addEventListener('click', () => {
+        if (!map) return;
+        const c = map.getCenter();
+        confirmLocation(c.lat(), c.lng(), icon('pin',14));
+    });
+
+    // '현재 위치로 설정' — 현재 GPS 위치로 지도 중앙을 이동
+    const lmCurrentBtn = document.getElementById('lm-current');
+    if (lmCurrentBtn) lmCurrentBtn.addEventListener('click', () => {
+        if (!navigator.geolocation) { showToast('위치 기능을 사용할 수 없습니다'); return; }
+        lmCurrentBtn.disabled = true;
+        const prev = lmCurrentBtn.innerText;
+        lmCurrentBtn.innerText = '현재 위치 찾는 중…';
+        navigator.geolocation.getCurrentPosition((pos) => {
+            lmCurrentBtn.disabled = false; lmCurrentBtn.innerText = prev;
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            if (map) { map.setCenter(new naver.maps.LatLng(lat, lng)); map.setZoom(16); }
+            updateCenterLabel();
+            showToast("현재 위치로 이동했습니다. '이 위치로 설정하기'를 눌러 확정하십시오.");
+        }, (err) => {
+            lmCurrentBtn.disabled = false; lmCurrentBtn.innerText = prev;
+            console.warn('현재 위치 실패:', err);
+            showToast('위치 접근이 거부되었습니다. 지도를 움직여 설정해주십시오.');
+        }, { enableHighAccuracy: true, timeout: 8000 });
+    });
+
+    document.getElementById('lm-cancel').addEventListener('click', () => {
+        // [B] edit by smsong - '수정' 중 위치 재설정 취소 → 위치 변경 없이 편집 폼으로 복귀
+        if (_editLocReturn) {
+            exitPickMode();
+            _editLocPicked = null;
+            reopenEditWithSnapshot(false);
+            showToast('위치 변경을 취소했습니다');
+            return;
+        }
+        // [E] edit by smsong
+        exitPickMode();
+        if (pickReturnsToForm) {
+            // 위치 재설정 취소 → 입력하던 폼 그대로 복귀
+            pickReturnsToForm = false;
+            if (pickTarget === 'checklist') openChecklistModal(); else openMemoryModal();
+            showToast('위치 변경을 취소했습니다');
+        } else if (pickTarget === 'checklist') {
+            pickTarget = 'memory';
+            showToast('가볼곳 추가를 취소함');
+        } else {
+            selectedFile = null;
+            if (fileInput) fileInput.value = '';
+            showToast('위치 선택을 취소함');
+        }
+    });
+
+    // --- 주소/장소 검색 + 연관 검색어 ---
+    const searchInput = document.getElementById('lm-search-input');
+    const searchBtn = document.getElementById('lm-search-btn');
+    const suggestBox = document.getElementById('lm-suggestions');
+    let suggestTimer = null;
+    let lastSuggestions = [];
+
+    function hideSuggestions() {
+        if (!suggestBox) return;
+        suggestBox.classList.add('hidden');
+        suggestBox.innerHTML = '';
+        lastSuggestions = [];
+    }
+
+    function setLocationFromItem(item) {
+        const addr = item.roadAddress || item.jibunAddress || '';
+        const placeName = item.name || '';
+        const finalize = (lat, lng) => {
+            if (isNaN(lat) || isNaN(lng)) { showToast('좌표 조회 실패'); return; }
+            // [B] edit by smsong - 검색 결과는 '즉시 확정'하지 않는다.
+            //  지도를 그 위치로 부드럽게 이동시켜 사용자가 미세 조정한 뒤,
+            //  '이 위치로 설정' 버튼으로 최종 확정하도록 위치 선택 모드를 유지한다.
+            currentLatLng = { lat: lat, lng: lng };
+            currentLocationMeta = splitKoreanAddress(addr);
+            window._pendingPlaceTitle = placeName; // 제목 자동입력용 (추억/체크리스트 공용)
+            hideSuggestions();
+            const si = document.getElementById('lm-search-input');
+            if (si) si.blur();
+            const target = new naver.maps.LatLng(lat, lng);
+            if (map) {
+                if (typeof map.morph === 'function') map.morph(target, 17, { duration: 550, easing: 'easeOutCubic' });
+                else { map.setCenter(target); map.setZoom(17); }
+            }
+            // 이동이 끝나면 중앙(레티클) 기준 주소 배너를 갱신
+            setTimeout(updateCenterLabel, 620);
+            showToast("검색 위치로 이동했어요. 지도를 조정한 뒤 '이 위치로 설정'을 눌러주세요.");
+            // 위치 선택 모드는 그대로 유지 (exitPickMode / 폼 열기 안 함)
+            // [E] edit by smsong
+        };
+        // 도로명 주소를 지오코딩해 정확한 좌표 확보, 실패 시 백엔드가 준 좌표 사용
+        if (addr && window.naver && naver.maps.Service && naver.maps.Service.geocode) {
+            naver.maps.Service.geocode({ query: addr }, (status, response) => {
+                const a = (status === naver.maps.Service.Status.OK && response.v2 && response.v2.addresses && response.v2.addresses[0]) || null;
+                if (a) finalize(parseFloat(a.y), parseFloat(a.x));
+                else if (item.lat != null && item.lng != null) finalize(parseFloat(item.lat), parseFloat(item.lng));
+                else showToast('좌표 조회 실패');
+            });
+        } else if (item.lat != null && item.lng != null) {
+            finalize(parseFloat(item.lat), parseFloat(item.lng));
+        } else { showToast('좌표 조회 실패'); }
+    }
+
+    // 장소(상호명) 검색 결과 렌더 — 이름 + 그 하위에 도로명 주소
+    function renderSuggestions(items) {
+        if (!suggestBox) return;
+        lastSuggestions = items;
+        suggestBox.innerHTML = '';
+        items.forEach((item) => {
+            const name = item.name || '(이름 없음)';
+            const addr = item.roadAddress || item.jibunAddress || '주소 정보 없음';
+            const cat = item.category ? '<span class="sg-cat">' + escapeHtml(item.category) + '</span>' : '';
+            const li = document.createElement('li');
+            li.innerHTML =
+                '<span class="sg-main">' + escapeHtml(name) + cat + '</span>' +
+                '<span class="sg-sub">' + escapeHtml(addr) + '</span>';
+            li.addEventListener('click', () => setLocationFromItem(item));
+            suggestBox.appendChild(li);
+        });
+        suggestBox.classList.remove('hidden');
+    }
+
+    function showEmptySuggestion() {
+        if (!suggestBox) return;
+        suggestBox.innerHTML = '<li class="sg-empty">검색 결과가 없음</li>';
+        suggestBox.classList.remove('hidden');
+        lastSuggestions = [];
+    }
+
+    // 현재 지도 중심의 지역명(시/도 + 시·군·구)을 접두어로 → '그 화면 주변' 검색 효과
+    let _regionCache = { key: '', prefix: '' };
+    function getMapRegionPrefix(cb) {
+        if (!map || !map.getCenter) { cb('', null, null); return; }
+        const c = map.getCenter();
+        const lat = c.lat(), lng = c.lng();
+        const key = lat.toFixed(3) + ',' + lng.toFixed(3); // ~100m 단위 캐시
+        if (_regionCache.key === key) { cb(_regionCache.prefix, lat, lng); return; }
+        reverseGeocode(lat, lng, (addr) => {
+            const prefix = addr ? (splitKoreanAddress(addr).placeName || '') : '';
+            _regionCache = { key: key, prefix: prefix };
+            cb(prefix, lat, lng);
+        });
+    }
+
+    // 백엔드 프록시(네이버 지역검색)로 상호명/장소 검색 — 현재 지도 위치 주변 우선
+    function searchPlaces(query) {
+        return new Promise((resolve) => {
+            getMapRegionPrefix((prefix, lat, lng) => {
+                const callApi = (q) => {
+                    let url = `${API_BASE_URL}/api/search/place?query=${encodeURIComponent(q)}`;
+                    if (lat != null && lng != null) url += `&lat=${lat}&lng=${lng}`;
+                    return fetch(url, { headers: authHeaders(true) })
+                        .then(handleResponse)
+                        .then(items => Array.isArray(items) ? items : []);
+                };
+                if (prefix) {
+                    // 1차: '지역명 + 키워드'로 주변 검색, 결과 없으면 키워드만으로 폴백
+                    callApi(prefix + ' ' + query)
+                        .then(items => items.length ? resolve(items) : callApi(query).then(resolve).catch(() => resolve([])))
+                        .catch(() => callApi(query).then(resolve).catch(() => resolve([])));
+                } else {
+                    callApi(query).then(resolve).catch(() => resolve([]));
+                }
+            });
+        });
+    }
+
+    // 입력 중 연관 검색어 조회 (디바운스)
+    function fetchSuggestions(query) {
+        searchPlaces(query)
+            .then(items => {
+                if ((searchInput.value || '').trim().length < 2) { hideSuggestions(); return; }
+                if (!items.length) { showEmptySuggestion(); return; }
+                renderSuggestions(items);
+            })
+            .catch(() => hideSuggestions());
+    }
+
+    // 검색 버튼/Enter: 떠 있는 후보 중 첫 번째 선택, 없으면 직접 조회
+    function runSearch() {
+        const query = (searchInput.value || '').trim();
+        if (!query) { showToast('검색어를 입력해주십시오'); return; }
+        if (lastSuggestions.length > 0) { setLocationFromItem(lastSuggestions[0]); return; }
+        searchPlaces(query)
+            .then(items => {
+                if (!items.length) { showToast('검색 결과가 없음. 다른 키워드로 시도해보십시오.'); return; }
+                setLocationFromItem(items[0]);
+            })
+            .catch(() => showToast('검색에 실패했습니다.'));
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            const q = (searchInput.value || '').trim();
+            clearTimeout(suggestTimer);
+            if (q.length < 2) { hideSuggestions(); return; }
+            suggestTimer = setTimeout(() => fetchSuggestions(q), 300);
+        });
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+            else if (e.key === 'Escape') { hideSuggestions(); }
+        });
+    }
+    if (searchBtn) searchBtn.addEventListener('click', runSearch);
+
+    // --- 사진 업로드 & 위치 지정 ---
+    async function handlePickedImage(file, fromCamera) {
+        if (!file) return;
+        pickTarget = 'memory';
+        selectedFile = file;
+
+        // 첫 사진을 그리드에 시드 (이후 ＋로 추가, 꾹 눌러 정렬 가능)
+        if (window._memCreateMgr) window._memCreateMgr.reset([{ kind: 'file', file: file }]);
+
+        // 다시 촬영 버튼: 카메라 경유면 노출, 갤러리면 숨김
+        const retake = document.getElementById('btn-retake-photo');
+        if (retake) retake.classList.toggle('hidden', !fromCamera);
+
+        if (!map) {
+            showToast('지도가 아직 준비되지 않음');
+            return;
+        }
+
+        try {
+            // 1) 날짜 메타데이터(촬영일) 자동 적용
+            let metaAll = null;
+            try { metaAll = await exifr.parse(file); } catch (_) { metaAll = null; }
+            if (metaAll) {
+                const shotDate = metaAll.DateTimeOriginal || metaAll.CreateDate || metaAll.ModifyDate;
+                if (shotDate) {
+                    const dObj = (shotDate instanceof Date) ? shotDate : new Date(shotDate);
+                    if (!isNaN(dObj.getTime())) {
+                        const yyyy = dObj.getFullYear();
+                        const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+                        const dd = String(dObj.getDate()).padStart(2, '0');
+                        const dateInput = document.getElementById('memory-date');
+                        if (dateInput) dateInput.value = `${yyyy}-${mm}-${dd}`;
+                    }
+                }
+            }
+
+            // 2) 위치 메타데이터(GPS) 자동 적용
+            const gps = await exifr.gps(file);
+            if (gps && gps.latitude && gps.longitude) {
+                currentLatLng = { lat: gps.latitude, lng: gps.longitude };
+                currentLocationMeta = { placeName: '', address: '' };
+                const badge = document.getElementById('location-status-badge');
+                badge.innerHTML = pinText("사진 위치가 자동으로 설정되었습니다!");
+                badge.className = "location-badge success";
+                reverseGeocode(gps.latitude, gps.longitude, (addr) => {
+                    currentLocationMeta = splitKoreanAddress(addr);
+                    if (addr) badge.innerHTML = pinText(addr);
+                });
+                openMemoryModal();
+            } else if (fromCamera && navigator.geolocation) {
+                // 카메라 촬영 사진은 EXIF 위치가 없으므로 현재 GPS 사용
+                const badge = document.getElementById('location-status-badge');
+                if (badge) { badge.innerHTML = pinText('현재 위치를 가져오는 중…'); badge.className = 'location-badge'; }
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    currentLocationMeta = { placeName: '', address: '' };
+                    if (badge) { badge.innerHTML = pinText('현재 위치로 설정되었습니다!'); badge.className = 'location-badge success'; }
+                    reverseGeocode(currentLatLng.lat, currentLatLng.lng, (addr) => {
+                        currentLocationMeta = splitKoreanAddress(addr);
+                        if (addr && badge) badge.innerHTML = pinText(addr);
+                    });
+                    openMemoryModal();
+                }, () => {
+                    if (badge) { badge.innerHTML = pinText('위치를 가져올 수 없습니다 · 직접 설정'); badge.className = 'location-badge manual'; }
+                    openMemoryModal();
+                }, { enableHighAccuracy: true, timeout: 8000 });
+            } else {
+                // 메타데이터 없음 → 지도 클릭 모드
+                enterPickMode();
+            }
+        } catch (error) {
+            showToast('사진 분석 실패. 지도에서 위치를 골라주십시오.');
+            enterPickMode();
+        }
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files || []);
+            fileInput.value = '';
+            if (!files.length) return;
+            cameraMode = false;
+            // 첫 장으로 위치/날짜(EXIF) 기준을 잡고 그리드 시드 → 나머지는 뒤에 추가
+            handlePickedImage(files[0], false);
+            if (files.length > 1 && window._memCreateMgr) window._memCreateMgr.addFiles(files.slice(1));
+        });
+    }
+
+    // --- 폼 제출 ---
+    const memoryForm = document.getElementById('memory-form');
+    if (memoryForm) {
+        memoryForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!requireAuthOrRedirect()) return;
+            if (!currentLatLng) { showToast('위치 정보가 없습니다'); return; }
+
+            const submitBtn = memoryForm.querySelector('.submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = '기록하는 중...';
+
+            const _dateVal = document.getElementById('memory-date').value;
+            const memoryDTO = {
+                title: document.getElementById('memory-title').value,
+                content: document.getElementById('memory-content').value,
+                lat: currentLatLng.lat,
+                lng: currentLatLng.lng,
+                placeName: (currentLocationMeta && currentLocationMeta.placeName) || '',
+                address: (currentLocationMeta && currentLocationMeta.address) || '',
+                // 날짜 input(yyyy-MM-dd)을 'Z' 없는 로컬 날짜시각으로 전송 → 서버가 그대로 저장(현재 날짜로 덮어쓰지 않음)
+                createdAt: _dateVal ? (_dateVal + 'T00:00:00') : null
+            };
+
+            const mgr = window._memCreateMgr;
+            const files = mgr ? mgr.getNewFiles() : (selectedFile ? [selectedFile] : []);
+            if (!files.length) { showToast('사진을 1장 이상 추가해주십시오'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
+            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
+            memoryDTO.mediaOrder = mgr ? mgr.getMediaOrder() : files.map(() => '$NEW$');
+
+            const formData = new FormData();
+            formData.append("uid", currentUid);
+            formData.append("memoryData", JSON.stringify(memoryDTO));
+            files.forEach(f => formData.append("mediaData", f));
+
+            withLoading(fetch(`${API_BASE_URL}/api/memories`, {
+                method: 'POST',
+                headers: authHeaders(false),
+                body: formData
+            }), '저장 중...')
+                .then(handleResponse)
+                .then(() => {
+                    closeMemoryModal();
+                    showToast('기록 성공');
+                    // [B] edit by smsong - 생성 직후 최신 목록을 받아 지도에 바로 반영.
+                    //  현재 지도가 가볼곳 모드였어도 추억 모드로 전환해 새 추억 마커가 보이도록 함.
+                    loadMemoriesFromServer().then(function () {
+                        if (mapMode !== 'memory') setMapMode('memory');
+                        else refreshMapMarkers();
+                    });
+                    // [E] edit by smsong
+                })
+                .catch(err => {
+                    console.error(err);
+                    showToast('기록 실패. 다시 시도해주십시오.');
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = '기록하기';
+                });
+        });
+    }
+
+    // ==========================================
+    //  라이브 카메라 촬영 (카메라 메뉴 / 다시 촬영하기)
+    // ==========================================
+    const camModal = document.getElementById('camera-modal');
+    const camVideo = document.getElementById('camera-video');
+    const camLoading = document.getElementById('camera-loading');
+    const camFallback = document.getElementById('camera-fallback-file');
+    let camStream = null;
+    let camFacing = 'environment';
+    let cameraReturnToForm = false; // 다시 촬영 중 X 누르면 이전 사진 폼으로 복귀
+
+    async function startCameraStream() {
+        stopCameraStream();
+        if (camLoading) camLoading.classList.remove('hidden');
+        try {
+            camStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: camFacing }, audio: false
+            });
+            if (camVideo) {
+                camVideo.srcObject = camStream;
+                // 전면(셀피) 카메라가 거울처럼 반전되어 보이는 것을 방지 → 일반 방향으로 표시
+                camVideo.style.transform = (camFacing === 'user') ? 'scaleX(-1)' : 'none';
+            }
+            if (camLoading) camLoading.classList.add('hidden');
+        } catch (err) {
+            console.warn('카메라 접근 실패 → 파일 입력으로 대체:', err);
+            if (camLoading) camLoading.classList.add('hidden');
+            closeCameraModal();
+            // getUserMedia 미지원/거부 → 모바일 기본 카메라 호출(대체)
+            if (camFallback) camFallback.click();
+        }
+    }
+
+    function stopCameraStream() {
+        if (camStream) {
+            camStream.getTracks().forEach(t => t.stop());
+            camStream = null;
+        }
+        if (camVideo) camVideo.srcObject = null;
+    }
+
+    function openCameraCapture(returnToForm) {
+        cameraReturnToForm = !!returnToForm;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (camFallback) camFallback.click();
+            return;
+        }
+        // 촬영 중에는 작성 폼을 잠시 숨김(데이터는 유지 — reset 호출 안 함)
+        document.getElementById('memory-modal').classList.add('hidden');
+        if (camModal) camModal.classList.remove('hidden');
+        startCameraStream();
+    }
+
+    function closeCameraModal() {
+        stopCameraStream();
+        if (camModal) camModal.classList.add('hidden');
+        // 다시 촬영 중 촬영하지 않고 닫으면 → 이전 사진으로 작성 폼 복귀 (초기화 X)
+        if (cameraReturnToForm) {
+            cameraReturnToForm = false;
+            if (selectedFile) openMemoryModal();
+        }
+    }
+
+    // 촬영 → 위치(현재 GPS)·날짜(오늘) 자동 설정 → 작성 폼 오픈
+    function capturePhoto() {
+        if (!camVideo || !camVideo.videoWidth) { showToast('카메라가 준비되지 않았습니다'); return; }
+        const canvas = document.getElementById('camera-canvas');
+        canvas.width = camVideo.videoWidth;
+        canvas.height = camVideo.videoHeight;
+        const ctx = canvas.getContext('2d');
+        // 전면 카메라는 미리보기를 반전 해제했으므로, 저장 사진도 동일하게 좌우 반전 적용
+        if (camFacing === 'user') {
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+        }
+        ctx.drawImage(camVideo, 0, 0, canvas.width, canvas.height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        canvas.toBlob((blob) => {
+            if (!blob) { showToast('사진 처리 실패'); return; }
+            const file = new File([blob], 'camera_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+            selectedFile = file;
+            cameraMode = true;
+            cameraReturnToForm = false; // 촬영 성공 → 닫기 복귀 로직 비활성화
+            closeCameraModal();
+
+            // 첫 사진을 그리드에 시드
+            if (window._memCreateMgr) window._memCreateMgr.reset([{ kind: 'file', file: file }]);
+            // 다시 촬영 버튼 노출
+            const retake = document.getElementById('btn-retake-photo');
+            if (retake) retake.classList.remove('hidden');
+
+            // 날짜: 오늘로 자동 설정
+            const dateInput = document.getElementById('memory-date');
+            if (dateInput) dateInput.value = new Date().toISOString().substring(0, 10);
+
+            // 위치: 현재 GPS 자동 설정
+            const badge = document.getElementById('location-status-badge');
+            if (badge) { badge.innerHTML = pinText('현재 위치를 가져오는 중…'); badge.className = 'location-badge'; }
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    currentLocationMeta = { placeName: '', address: '' };
+                    if (badge) { badge.innerHTML = pinText('현재 위치로 설정되었습니다!'); badge.className = 'location-badge success'; }
+                    reverseGeocode(currentLatLng.lat, currentLatLng.lng, (addr) => {
+                        currentLocationMeta = splitKoreanAddress(addr);
+                        if (addr && badge) badge.innerHTML = pinText(addr);
+                    });
+                }, (err) => {
+                    console.warn('위치 가져오기 실패:', err);
+                    if (badge) { badge.innerHTML = pinText('위치를 가져올 수 없습니다 · 아래에서 직접 설정'); badge.className = 'location-badge manual'; }
+                    showToast('위치 접근이 거부되었습니다. 위치를 직접 설정해주십시오.');
+                }, { enableHighAccuracy: true, timeout: 8000 });
+            } else if (badge) {
+                badge.innerHTML = pinText('위치 기능을 사용할 수 없습니다 · 직접 설정');
+                badge.className = 'location-badge manual';
+            }
+
+            openMemoryModal();
+        }, 'image/jpeg', 0.92);
+    }
+
+    if (document.getElementById('camera-shutter'))
+        document.getElementById('camera-shutter').addEventListener('click', capturePhoto);
+    if (document.getElementById('camera-close'))
+        document.getElementById('camera-close').addEventListener('click', closeCameraModal);
+    if (document.getElementById('camera-switch'))
+        document.getElementById('camera-switch').addEventListener('click', () => {
+            camFacing = (camFacing === 'environment') ? 'user' : 'environment';
+            startCameraStream();
+        });
+
+    // 대체 파일(모바일 카메라) 선택 시: 기존 사진 업로드 로직과 동일하게 처리
+    if (camFallback) {
+        camFallback.addEventListener('change', (e) => {
+            const f = e.target.files[0];
+            camFallback.value = '';
+            if (!f) return;
+            cameraMode = true;
+            if (fileInput) {
+                // 기존 change 핸들러를 재사용하기 위해 동일 처리 함수 호출
+                handlePickedImage(f, true);
             }
         });
     }
-    // OS 푸시 알림 클릭으로 앱이 새로 열린 경우 (?customerId=123)
-    const _q = new URLSearchParams(location.search);
-    const _cid = _q.get('customerId');
-    if (_cid) {
-        history.replaceState(null, '', location.pathname);   // 주소창 정리(새로고침 시 재이동 방지)
-        setTimeout(() => openCustomerFromNoti(_cid), 900);   // 초기 로드(권한/목록) 후 이동
+
+    // 다시 촬영하기 → 카메라 재실행 (작성 중 데이터 유지)
+    const retakeBtn = document.getElementById('btn-retake-photo');
+    if (retakeBtn) retakeBtn.addEventListener('click', () => { openCameraCapture(true); });
+
+    // ==========================================
+    //  당겨서 새로고침 (Pull to refresh) — 당긴 만큼 원형 게이지가 채워짐
+    // ==========================================
+    const PTR_C = 2 * Math.PI * 15; // 진행 링 둘레 (r=15)
+    const ptrIndicator = document.createElement('div');
+    ptrIndicator.id = 'ptr-indicator';
+    ptrIndicator.innerHTML =
+        '<svg class="ptr-ring" viewBox="0 0 36 36">' +
+        '<circle class="ptr-bg" cx="18" cy="18" r="15"></circle>' +
+        '<circle class="ptr-fg" cx="18" cy="18" r="15"></circle>' +
+        '</svg>';
+    ptrIndicator.style.display = 'none';
+    document.body.appendChild(ptrIndicator);
+    const ptrFg = ptrIndicator.querySelector('.ptr-fg');
+    ptrFg.style.strokeDasharray = PTR_C;
+    ptrFg.style.strokeDashoffset = PTR_C;
+
+    const PTR_THRESHOLD = 112; // 더 천천히 차도록 임계 거리 증가
+
+    function ptrSetProgress(p) {
+        // p: 0~1 → 링이 그만큼 채워짐
+        ptrFg.style.strokeDashoffset = PTR_C * (1 - Math.max(0, Math.min(1, p)));
     }
-} catch (_) {}
 
-function selectBuilding(id) {
-    if (!myPerms().canRead) { showToast('조회 권한이 없습니다'); return; }
-    currentBuilding = state.buildings.find(b => b.id === id);
-    if (!currentBuilding) return;
+    function attachPullToRefresh(scrollEl, isEnabled, onRefresh, iconInset, lockContent) {
+        if (!scrollEl) return;
+        const inset = (typeof iconInset === 'number') ? iconInset : 12;
+        let startY = 0, pulling = false, dist = 0, busy = false, baseTop = 0;
 
-    if (typeof map !== 'undefined' && map) {
-        // 카카오 LatLng를 네이버 LatLng로 변경
-        map.panTo(new naver.maps.LatLng(currentBuilding.lat, currentBuilding.lng));
+        function setVisual(d, instant) {
+            const t = instant ? 'none' : 'transform 0.32s var(--ease-soft)';
+            ptrIndicator.style.transition = instant ? 'none' : 'transform 0.32s var(--ease-soft), opacity 0.3s ease';
+            // 콘텐츠 고정 모드(lockContent)면 폼/내용은 전혀 움직이지 않고 링만 표시
+            if (!lockContent) {
+                scrollEl.style.transition = t;
+                scrollEl.style.transform = d > 0 ? ('translateY(' + d + 'px)') : '';
+            }
+            // 아이콘(링)은 당긴 만큼 함께 따라 내려옴 (콘텐츠 고정 시에는 이동 폭 축소)
+            const follow = Math.min(d, lockContent ? 56 : 120);
+            ptrIndicator.style.transform = 'translateX(-50%) translateY(' + (baseTop + follow + inset) + 'px)';
+            ptrIndicator.style.opacity = d > 4 ? Math.min(d / 30, 1) : 0;
+            if (!ptrIndicator.classList.contains('spinning')) {
+                ptrSetProgress(d / PTR_THRESHOLD);
+            }
+        }
+
+        scrollEl.addEventListener('touchstart', (e) => {
+            if (busy || !isEnabled() || scrollEl.scrollTop > 0) { pulling = false; return; }
+            startY = e.touches[0].clientY; pulling = true; dist = 0;
+            baseTop = scrollEl.getBoundingClientRect().top + 6;
+            ptrIndicator.style.display = '';
+            ptrIndicator.classList.remove('spinning');
+            ptrFg.style.transition = 'stroke-dashoffset 0.05s linear';
+            ptrFg.style.strokeDasharray = PTR_C;
+        }, { passive: true });
+
+        scrollEl.addEventListener('touchmove', (e) => {
+            if (!pulling || busy) return;
+            const dy = e.touches[0].clientY - startY;
+            if (dy <= 0 || scrollEl.scrollTop > 0) { dist = 0; setVisual(0, true); pulling = (dy > 0); return; }
+            // 제한 없이 당긴 만큼(저항감) 따라옴 — 천천히 차도록 계수 축소
+            dist = dy * 0.5;
+            setVisual(dist, true);
+            if (dy > 5 && e.cancelable) e.preventDefault();
+        }, { passive: false });
+
+        const finish = () => {
+            if (!pulling || busy) return;
+            pulling = false;
+            if (dist >= PTR_THRESHOLD) {
+                // 게이지가 다 찼을 때 놓으면 → 새로고침 (스피너 회전)
+                busy = true;
+                ptrSetProgress(1);
+                if (!lockContent) {
+                    scrollEl.style.transition = 'transform 0.32s var(--ease-soft)';
+                    scrollEl.style.transform = 'translateY(58px)';
+                }
+                ptrIndicator.style.transition = 'transform 0.32s var(--ease-soft)';
+                ptrIndicator.style.transform = 'translateX(-50%) translateY(' + (baseTop + (lockContent ? 40 : 50) + inset) + 'px)';
+                ptrIndicator.style.opacity = 1;
+                ptrIndicator.classList.add('spinning');
+                // 회전 인디케이터용 짧은 호(arc)로 전환
+                ptrFg.style.transition = 'none';
+                ptrFg.style.strokeDasharray = '24 ' + (PTR_C - 24);
+                ptrFg.style.strokeDashoffset = '0';
+                Promise.resolve().then(onRefresh).finally(() => {
+                    setTimeout(() => {
+                        ptrIndicator.classList.remove('spinning');
+                        // 게이지 원복
+                        ptrFg.style.transition = 'stroke-dashoffset 0.05s linear';
+                        ptrFg.style.strokeDasharray = PTR_C;
+                        setVisual(0, false);   // 화면이 다시 위로 올라가며 복귀
+                        setTimeout(() => { ptrIndicator.style.display = 'none'; busy = false; }, 340);
+                    }, 500);
+                });
+            } else {
+                setVisual(0, false);
+                setTimeout(() => { if (!busy) ptrIndicator.style.display = 'none'; }, 340);
+            }
+        };
+        scrollEl.addEventListener('touchend', finish);
+        scrollEl.addEventListener('touchcancel', finish);
     }
 
-    if (isWebMode()) {
-        // 웹: 왼쪽 목록 패널은 그대로 두고, 오른쪽에 상세 패널을 슬라이드인 (네이버 지도 웹 스타일)
-        openWebDetail(currentBuilding);
-    } else {
-        showBuildingDetail(currentBuilding);
-        showSheet('center');
-    }
-}
+    const containerEl = document.querySelector('main.container');
+    attachPullToRefresh(containerEl,
+        () => {
+            const tl = document.getElementById('tab-timeline');
+            const cl = document.getElementById('tab-checklist');
+            const pf = document.getElementById('tab-profile');
+            return (tl && tl.style.display !== 'none')
+                || (cl && cl.style.display !== 'none')
+                || (pf && pf.style.display !== 'none');
+        },
+        () => {
+            const cl = document.getElementById('tab-checklist');
+            const pf = document.getElementById('tab-profile');
+            if (pf && pf.style.display !== 'none') loadProfiles();
+            if (cl && cl.style.display !== 'none') return Promise.resolve(loadChecklistsFromServer());
+            return Promise.resolve(loadMemoriesFromServer());
+        }, 26); // 타임라인/가볼곳/내정보 아이콘을 좀 더 아래로
 
-// =====================================================
-// STATS
-// =====================================================
-function updateStats() {
-    // 상단 통계바는 제거됨 — 해당 요소가 있을 때만 갱신
-    let totalEmpty = 0, totalOccupied = 0, totalExpiring = 0;
-    state.buildings.forEach(b => {
-        const s = getUnitStats(b);
-        totalEmpty += s.empty;
-        totalOccupied += s.occupied;
-        totalExpiring += s.expiring;
+    // 추억 상세 모달 당겨서 새로고침 — 스크롤 영역이 .sheet-body 로 변경됨
+    const detailScroll = document.querySelector('#detail-modal .sheet-body');
+    attachPullToRefresh(detailScroll,
+        () => !document.getElementById('detail-modal').classList.contains('hidden') && _detailMemory != null,
+        () => { if (_detailMemory) loadComments('memory', _detailMemory.id); return Promise.resolve(loadMemoriesFromServer()); },
+        -10, true);
+
+    // '우리의 추억' / '~의 추억' 리스트 모달 당겨서 새로고침 (가로 드래그는 CSS로 잠금)
+    const listScroll = document.querySelector('#list-modal .list-modal-body');
+    attachPullToRefresh(listScroll,
+        () => {
+            const m = document.getElementById('list-modal');
+            return !m.classList.contains('hidden') && !m.classList.contains('dday-mode');
+        },
+        () => Promise.resolve(loadMemoriesFromServer()).then(() => {
+            if (Daylog._openListKind) openStatList(Daylog._openListKind);
+        }),
+        14);
+
+    // --- 데이터 불러오기 및 렌더링 ---
+    function loadMemoriesFromServer() {
+        if (!requireAuthOrRedirect()) return Promise.resolve();
+
+        return withLoading(fetch(`${API_BASE_URL}/api/memories/${currentUid}`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(memories => {
+                const list = memories || [];
+                const sig = _listSig(list);
+                if (sig === _memSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
+                _memSig = sig;
+                memoryList = list;
+                Daylog.memories = memoryList;
+                // [B] edit by smsong - 목록 전체 이미지 사전 로드 제거: <img loading="lazy"> 가 화면에 보이는 것만
+                //  로드하도록 위임 → 목록 진입 프리즈/스크롤 버벅임 해소. (마커 <img> 는 자체 로드)
+                updateProfileStats();
+                if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 친구/가족 멤버뷰 카운트 갱신
+
+                const sorted = [...memoryList].sort(sortByDateDesc);
+                if (mapMode === 'memory') renderActiveMapMarkers();
+                buildTimelinePlaceOptions();
+                applyTimelineFilter();
+            })
+            .catch(err => console.error("데이터 로드 실패:", err)), '추억을 불러오는 중...'); // [smsong] 로딩
+    }
+
+    // ==========================================
+    //  가볼곳(체크리스트) — 로드 / 마커 / 목록 / 지도 전환
+    // ==========================================
+    function loadChecklistsFromServer() {
+        if (!requireAuthOrRedirect()) return Promise.resolve();
+        return withLoading(fetch(`${API_BASE_URL}/api/checklists/${currentUid}`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(list => {
+                const arr = list || [];
+                checklistLoaded = true;
+                const sig = _listSig(arr);
+                if (sig === _clSig) return; // 변경 없음 → 재렌더 생략(깜빡임 방지)
+                _clSig = sig;
+                checklistList = arr;
+                Daylog.checklists = checklistList; // [B] edit by smsong - 멤버 모달 가볼곳 카운트용 (추억처럼 노출)
+                // [B] edit by smsong - 목록 전체 이미지 사전 로드 제거 → lazy 로 위임 (스크롤/전환 성능)
+                applyChecklistFilter();
+                if (typeof updateChecklistStats === 'function') updateChecklistStats();
+                if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
+                if (mapMode === 'checklist') renderActiveMapMarkers();
+            })
+            .catch(err => console.error("가볼곳 로드 실패:", err)), '가볼곳을 불러오는 중...'); // [smsong] 로딩
+    }
+
+    // 가볼곳 마커 — 사진 대신 제목 말풍선, 타입별 색상, 방문 표시
+    function renderChecklistMarkers(list) {
+        if (!map) return;
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+        (list || []).forEach(item => {
+            if (!(item.lat && item.lng)) return;
+            const meta = checklistType(item.type);
+            const visitedCls = item.visited ? ' visited' : '';
+            const check = item.visited ? '<span class="cl-marker-check">' + icon('check',13) + '</span>' : '';
+            const markerHtml =
+                '<div class="cl-marker' + visitedCls + (_suppressDrop ? ' nodrop' : '') + '" style="--cl-color:' + meta.color + '">' +
+                check +
+                '<span class="cl-marker-emoji">' + meta.emoji + '</span>' +
+                '<span class="cl-marker-title">' + escapeHtml(item.title || '가볼곳') + '</span>' +
+                '<span class="cl-marker-tail"></span>' +
+                '</div>';
+            const marker = new naver.maps.Marker({
+                position: new naver.maps.LatLng(item.lat, item.lng),
+                map: map,
+                icon: { content: markerHtml, anchor: new naver.maps.Point(14, 32) }
+            });
+            marker._checklistId = item.id;
+            naver.maps.Event.addListener(marker, 'click', () => openChecklistDetail(item));
+            markers.push(marker);
+        });
+    }
+
+    // 현재 모드 + 지도 필터를 적용해 마커 렌더
+    function renderActiveMapMarkers() {
+        if (mapMode === 'checklist') {
+            let list = [...checklistList];
+            if (_mapClVisited === 'VISITED') list = list.filter(c => c.visited);
+            else if (_mapClVisited === 'TODO') list = list.filter(c => !c.visited);
+            if (_mapClCat !== 'ALL') list = list.filter(c => (c.type || 'ETC') === _mapClCat);
+            renderChecklistMarkers(list);
+        } else {
+            let list = [...memoryList].sort(sortByDateDesc);
+            if (_mapMemDate) list = list.filter(m => (m.createdAt || '').substring(0, 10) === _mapMemDate);
+            renderMarkers(list);
+        }
+    }
+
+    // 현재 모드에 맞춰 지도 마커 재렌더
+    function refreshMapMarkers() {
+        renderActiveMapMarkers();
+    }
+
+    // 지도 표시 데이터 전환 (추억 ↔ 가볼곳)
+    function setMapMode(mode) {
+        mapMode = mode;
+        updateMapButtons();
+        closeMapFilterPop(); // 모드 바뀌면 필터 폼 내용이 달라지므로 닫음
+        if (mode === 'checklist' && !checklistLoaded) {
+            loadChecklistsFromServer(); // 로드 완료 시 내부에서 마커 렌더
+        } else {
+            refreshMapMarkers();
+        }
+    }
+
+    // 우측 원형 아이콘 버튼 갱신 (아이콘만 표시)
+    function updateMapButtons() {
+        const toggle = document.getElementById('btn-map-toggle');
+        const action = document.getElementById('btn-map-action');
+        const isCl = (mapMode === 'checklist');
+        if (toggle) {
+            toggle.innerHTML = isCl ? icon('camera',20) : icon('bookmark',20);
+            toggle.title = isCl ? '추억 보기' : '체크리스트 보기';
+            toggle.classList.toggle('to-memory', isCl);
+            toggle.classList.toggle('to-checklist', !isCl);
+        }
+        if (action) {
+            action.innerHTML = icon('plus',22);
+            action.title = isCl ? '가볼곳 추가' : '기록 남기기';
+            // 추가 버튼은 색이 바뀌지 않도록 모드별 색 클래스를 적용하지 않음
+        }
+    }
+
+    // 가볼곳 목록(탭) 렌더 — 타임라인과 유사한 카드 리스트
+    function renderChecklistFeed(sorted) {
+        const feed = document.getElementById('checklist-feed');
+        if (!feed) return;
+        feed.innerHTML = '';
+        if (!sorted.length) {
+            feed.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>';
+            return;
+        }
+        sorted.forEach(item => {
+            const meta = checklistType(item.type);
+            const card = document.createElement('div');
+            card.className = 'cl-card' + (item.visited ? ' visited' : '');
+            const badge = item.visited
+                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
+                : '<span class="cl-todo-badge">가볼 예정</span>';
+            const loc = [item.placeName, item.address].filter(Boolean).join(' ');
+            card.innerHTML =
+                '<div class="cl-card-main">' +
+                '<div class="cl-card-tags">' +
+                '<span class="cl-type-tag" style="--cl-color:' + meta.color + '">' + meta.emoji + ' ' + meta.label + '</span>' +
+                badge +
+                '</div>' +
+                '<h4 class="cl-card-title">' + escapeHtml(item.title || '') + '</h4>' +
+                (item.content ? '<p class="cl-card-text">' + escapeHtml(item.content) + '</p>' : '') +
+                (loc ? '<div class="cl-card-loc">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</div>' : '') +
+                commentBadgeHtml('checklist', item.id) +
+                '</div>' +
+                thumbHtml(coverUrlOf(item), 'cl-thumb');
+            card.addEventListener('click', () => openChecklistDetail(item));
+            feed.appendChild(card);
+        });
+        applyCommentBadges('checklist');
+        fetchCommentCounts('checklist');
+    }
+
+    // 가볼곳 작성 폼 열기 (위치는 currentLatLng/currentLocationMeta 에서 가져옴)
+    window._openChecklistForm = function () {
+        const badge = document.getElementById('cl-location-badge');
+        const place = (currentLocationMeta && currentLocationMeta.placeName) || '';
+        const addr = (currentLocationMeta && currentLocationMeta.address) || '';
+        const text = [place, addr].filter(Boolean).join(' ');
+        if (badge) {
+            badge.className = 'location-badge success';
+            badge.innerHTML = text ? pinText(text) : pinText('선택한 위치');
+            if (!text && currentLatLng) {
+                reverseGeocode(currentLatLng.lat, currentLatLng.lng, (a) => {
+                    if (a) { currentLocationMeta = splitKoreanAddress(a); badge.innerHTML = pinText(a); }
+                });
+            }
+        }
+        // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력 (사용자가 비워둔 경우에만)
+        const titleEl = document.getElementById('cl-title');
+        if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
+            titleEl.value = window._pendingPlaceTitle;
+        }
+        window._pendingPlaceTitle = '';
+        if (window._clCreateMgr) window._clCreateMgr.reset([]);
+    };
+    function startChecklistCreate() {
+        pickTarget = 'checklist';
+        enterPickMode();
+    }
+    window._startChecklistCreate = startChecklistCreate;
+
+    // 가볼곳 제출 데이터 묶기 (모듈 외부 폼 핸들러에서 호출)
+    window._submitChecklist = function () {
+        if (!requireAuthOrRedirect()) return;
+        if (!currentLatLng) { showToast('위치 정보가 없습니다'); return; }
+        const title = document.getElementById('cl-title').value.trim();
+        if (!title) { showToast('제목을 입력해주십시오'); return; }
+        const visited = document.getElementById('cl-visited').checked;
+        const visitedDate = document.getElementById('cl-visited-date').value;
+        const clMgr = window._clCreateMgr;
+        const clFiles = clMgr ? clMgr.getNewFiles() : [];
+        const hasImage = clFiles.length > 0;
+        // '다녀왔습니다'가 체크된 경우 이미지는 필수
+        if (visited && !hasImage) {
+            showToast('다녀왔습니다로 표시하려면 사진을 첨부해주십시오');
+            alert('다녀온 곳은 사진을 반드시 첨부해야 합니다.');
+            return;
+        }
+        if (clFiles.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); return; }
+        const dto = {
+            title: title,
+            content: document.getElementById('cl-content').value,
+            lat: currentLatLng.lat,
+            lng: currentLatLng.lng,
+            placeName: (currentLocationMeta && currentLocationMeta.placeName) || '',
+            address: (currentLocationMeta && currentLocationMeta.address) || '',
+            type: window._clSelectedType || 'ETC',
+            visited: visited,
+            visitedDate: (visited && visitedDate) ? visitedDate : null,
+            mediaOrder: clMgr ? clMgr.getMediaOrder() : []
+        };
+        const fd = new FormData();
+        fd.append('uid', currentUid);
+        fd.append('checklistData', JSON.stringify(dto));
+        clFiles.forEach(f => fd.append('mediaData', f));
+
+        const submitBtn = document.querySelector('#checklist-form .submit-btn');
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = '추가하는 중...'; }
+
+        withLoading(fetch(`${API_BASE_URL}/api/checklists`, { method: 'POST', headers: authHeaders(false), body: fd }), '저장 중...')
+            .then(handleResponse)
+            .then((created) => {
+                closeChecklistModal();
+                pickTarget = 'memory';
+                // [B] edit by smsong - '다녀왔습니다'로 추가하면 추억으로 기록하고, 가볼곳은 제거(추억으로 이동)
+                if (created && created.visited) {
+                    ensureMemoryForChecklist(created)
+                        .then((made) => { showToast('다녀온 곳이라 추억으로 기록했어요'); })
+                        .then(() => trashChecklistQuietly(created.id)) // 원본 가볼곳 제거
+                        .catch(err => console.warn('추억 이동 실패', err))
+                        .finally(() => {
+                            // [B] edit by smsong - #3 추억/가볼곳 모두 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
+                            Promise.all([loadMemoriesFromServer(), loadChecklistsFromServer()]).then(function () {
+                                if (mapMode !== 'memory') setMapMode('memory'); else refreshMapMarkers();
+                            });
+                        });
+                } else {
+                    showToast('가볼곳을 추가했습니다');
+                    loadChecklistsFromServer().then(function () {
+                        if (mapMode !== 'checklist') setMapMode('checklist');
+                        else refreshMapMarkers();
+                    });
+                }
+                // [E] edit by smsong
+            })
+            .catch(err => { console.error(err); showToast('추가 실패. 다시 시도해주십시오.'); })
+            .finally(() => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '추가하기'; } });
+    };
+
+    // 우측 하단 플로팅 버튼 동작
+    const mapToggleBtn = document.getElementById('btn-map-toggle');
+    if (mapToggleBtn) mapToggleBtn.addEventListener('click', () => {
+        setMapMode(mapMode === 'checklist' ? 'memory' : 'checklist');
     });
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('cnt-all', state.buildings.length);
-    set('cnt-empty', totalEmpty);
-    set('cnt-occupied', totalOccupied);
-    set('cnt-expiring', totalExpiring);
+    const mapActionBtn = document.getElementById('btn-map-action');
+    if (mapActionBtn) mapActionBtn.addEventListener('click', () => {
+        if (mapMode === 'checklist') startChecklistCreate();
+        else { pickTarget = 'memory'; document.getElementById('memory-file').click(); }
+    });
+
+    // [B] edit by smsong - 지도 + 버튼 제거 대체: 각 메뉴(타임라인=추억 / 가볼곳=체크리스트)에서 직접 추가
+    const tlAddBtn = document.getElementById('btn-timeline-add');
+    if (tlAddBtn) tlAddBtn.addEventListener('click', () => {
+        pickTarget = 'memory';
+        document.getElementById('memory-file').click(); // 갤러리 → 사진 위치(EXIF)/현재위치 자동, 없으면 지도에서 선택
+    });
+    const clAddBtn = document.getElementById('btn-checklist-add');
+    if (clAddBtn) clAddBtn.addEventListener('click', () => { startChecklistCreate(); });
+    // [E] edit by smsong
+
+    // ===== 지도 헤더 필터(➕) — 모드별 폼이 아이콘 아래로 살짝 뜨고, 누르면 즉시 적용 =====
+    function closeMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (pop) pop.classList.add('hidden');
+    }
+    function buildMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (!pop) return;
+        if (mapMode === 'checklist') {
+            const vOpts = [['ALL', '전체'], ['VISITED', '가본 곳'], ['TODO', '안 가본 곳']];
+            const cOpts = [['ALL', '전체'], ['CAFE', '카페'], ['FOOD', '식당'], ['SPOT', '장소'], ['ETC', '기타']];
+            pop.innerHTML =
+                '<div class="mfp-group">' +
+                '<div class="mfp-title">방문 여부</div>' +
+                '<div class="mfp-chips" id="mfp-visited">' +
+                vOpts.map(o => '<button type="button" class="mfp-chip' + (_mapClVisited === o[0] ? ' active' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>').join('') +
+                '</div></div>' +
+                '<div class="mfp-group">' +
+                '<div class="mfp-title">카테고리</div>' +
+                '<div class="mfp-chips" id="mfp-cat">' +
+                cOpts.map(o => '<button type="button" class="mfp-chip' + (_mapClCat === o[0] ? ' active' : '') + '" data-c="' + o[0] + '">' + o[1] + '</button>').join('') +
+                '</div></div>';
+            pop.querySelectorAll('#mfp-visited .mfp-chip').forEach(b => b.addEventListener('click', () => {
+                _mapClVisited = b.dataset.v;
+                pop.querySelectorAll('#mfp-visited .mfp-chip').forEach(x => x.classList.toggle('active', x === b));
+                renderActiveMapMarkers();
+            }));
+            pop.querySelectorAll('#mfp-cat .mfp-chip').forEach(b => b.addEventListener('click', () => {
+                _mapClCat = b.dataset.c;
+                pop.querySelectorAll('#mfp-cat .mfp-chip').forEach(x => x.classList.toggle('active', x === b));
+                renderActiveMapMarkers();
+            }));
+        } else {
+            pop.innerHTML = '<div class="mfp-title">추억 날짜</div>' +
+                '<input type="date" id="mfp-date" class="mfp-date" value="' + (_mapMemDate || '') + '">' +
+                '<button type="button" id="mfp-date-all" class="mfp-chip mfp-allbtn' + (!_mapMemDate ? ' active' : '') + '">전체 보기</button>';
+            const d = pop.querySelector('#mfp-date');
+            const all = pop.querySelector('#mfp-date-all');
+            if (d) d.addEventListener('change', () => {
+                _mapMemDate = d.value || '';
+                if (all) all.classList.toggle('active', !_mapMemDate);
+                renderActiveMapMarkers();
+            });
+            if (all) all.addEventListener('click', () => {
+                _mapMemDate = '';
+                if (d) d.value = '';
+                all.classList.add('active');
+                renderActiveMapMarkers();
+            });
+        }
+    }
+    function toggleMapFilterPop() {
+        const pop = document.getElementById('map-filter-pop');
+        if (!pop) return;
+        if (pop.classList.contains('hidden')) { buildMapFilterPop(); pop.classList.remove('hidden'); }
+        else pop.classList.add('hidden');
+    }
+    const mapFilterBtn = document.getElementById('btn-map-filter');
+    if (mapFilterBtn) mapFilterBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMapFilterPop(); });
+    document.addEventListener('click', (e) => {
+        const wrap = document.getElementById('header-map-filter');
+        const pop = document.getElementById('map-filter-pop');
+        if (pop && !pop.classList.contains('hidden') && wrap && !wrap.contains(e.target)) pop.classList.add('hidden');
+    });
+    // 가볼곳 위치 다시 설정
+    const clResetLoc = document.getElementById('cl-reset-location');
+    function _startChecklistLocationPick() {
+        pickReturnsToForm = true;
+        pickTarget = 'checklist';
+        document.getElementById('checklist-modal').classList.add('hidden');
+        enterPickMode();
+    }
+    if (clResetLoc) clResetLoc.addEventListener('click', _startChecklistLocationPick);
+    // [B] edit by smsong - 위치 배지를 눌러도 바로 위치 변경
+    const _clLocBadge = document.getElementById('cl-location-badge');
+    if (_clLocBadge) {
+        _clLocBadge.setAttribute('title', '눌러서 위치 변경');
+        _clLocBadge.addEventListener('click', _startChecklistLocationPick);
+    }
+    // [E] edit by smsong
+    updateMapButtons();
+
+    // ---- 가볼곳 폼 상호작용 (타입 칩 / 방문 체크 / 제출) ----
+    function bindTypeChips(containerId, setSel) {
+        const box = document.getElementById(containerId);
+        if (!box) return;
+        box.querySelectorAll('.cl-type-chip').forEach(chip => {
+            chip.style.setProperty('--cl-color', checklistType(chip.dataset.type).color);
+            chip.addEventListener('click', () => {
+                box.querySelectorAll('.cl-type-chip').forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                setSel(chip.dataset.type);
+            });
+        });
+    }
+    bindTypeChips('cl-type-options', (t) => { window._clSelectedType = t; });
+    bindTypeChips('cl-edit-type-options', (t) => { window._clEditSelectedType = t; });
+
+    // 방문 체크박스 → 날짜 입력 활성/비활성
+    function bindVisitedToggle(checkId, dateId) {
+        const chk = document.getElementById(checkId);
+        const date = document.getElementById(dateId);
+        if (!chk || !date) return;
+        chk.addEventListener('change', () => {
+            date.disabled = !chk.checked;
+            const lbl = chk.closest('.cl-check-label');
+            if (lbl) lbl.classList.toggle('checked', chk.checked);
+            if (chk.checked && !date.value) date.value = new Date().toISOString().substring(0, 10);
+        });
+    }
+    bindVisitedToggle('cl-visited', 'cl-visited-date');
+    bindVisitedToggle('cl-edit-visited', 'cl-edit-visited-date');
+
+    const checklistForm = document.getElementById('checklist-form');
+    if (checklistForm) checklistForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        window._submitChecklist();
+    });
+
+    const clEditForm = document.getElementById('cl-edit-form');
+    if (clEditForm) clEditForm.addEventListener('submit', (e) => { e.preventDefault(); saveChecklistEdit(); });
+    const clEditCancel = document.getElementById('cl-edit-cancel');
+    if (clEditCancel) clEditCancel.addEventListener('click', exitChecklistEdit);
+
+    // 모달 바깥 클릭으로 닫기
+    const clModal = document.getElementById('checklist-modal');
+    if (clModal) clModal.addEventListener('click', (e) => { if (e.target.id === 'checklist-modal') closeChecklistModal(); });
+    const clDetail = document.getElementById('checklist-detail-modal');
+    if (clDetail) clDetail.addEventListener('click', (e) => { if (e.target.id === 'checklist-detail-modal') closeChecklistDetail(); });
+
+    // ---- 타임라인 검색/필터 (장소 라디오 + 날짜) ----
+    // 현재 추억들의 placeName 값으로 장소 콤보박스 옵션 구성
+    function buildTimelinePlaceOptions() {
+        const sel = document.getElementById('tl-filter-place');
+        if (!sel) return;
+        const places = Array.from(new Set(
+            memoryList.map(m => (m.placeName || '').trim()).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b, 'ko'));
+        // 선택 중이던 값이 사라졌으면 전체로 복귀
+        if (_tlPlaceFilter && !places.includes(_tlPlaceFilter)) _tlPlaceFilter = '';
+        let html = '<option value="">전체</option>';
+        places.forEach(p => {
+            html += '<option value="' + escapeHtml(p) + '"' + (_tlPlaceFilter === p ? ' selected' : '') + '>' + escapeHtml(p) + '</option>';
+        });
+        sel.innerHTML = html;
+        sel.value = _tlPlaceFilter;
+        sel.onchange = () => { _tlPlaceFilter = sel.value; applyTimelineFilter(); };
+    }
+
+    function applyTimelineFilter() {
+        const dateEl = document.getElementById('tl-filter-date');
+        const day = (dateEl && dateEl.value) ? dateEl.value : '';
+        const kw = _tlKeyword.trim().toLowerCase();
+        let list = [...memoryList].sort(sortByDateDesc);
+        if (kw) list = list.filter(m => {
+            const hay = ((m.title || '') + ' ' + (m.content || '') + ' ' + (m.placeName || '') + ' ' + (m.address || '')).toLowerCase();
+            return hay.includes(kw);
+        });
+        if (_tlPlaceFilter) list = list.filter(m => (m.placeName || '').trim() === _tlPlaceFilter);
+        if (day) list = list.filter(m => (m.createdAt || '').substring(0, 10) === day);
+        renderTimeline(list);
+        if (_tlView === 'calendar') renderCalendar(); // [B] edit by smsong - 달력 뷰 동기화
+    }
+
+    // ===== [B] edit by smsong - 타임라인/달력 보기 =====
+    var _tlView = 'list';
+    var _calYear = null, _calMonth = null; // month: 0-11
+    // 추억 날짜 테두리 색상 (기기 저장, 로그아웃/재시작 후에도 유지)
+    var CAL_COLORS = ['#2e9e5b', '#3f7fb0', '#d05a4a', '#8a6fbf', '#e08a3c', '#d46a9a', '#b08968', '#333333'];
+    var _calDateColor = (function () { try { return localStorage.getItem('daylog_cal_date_color') || '#2e9e5b'; } catch (e) { return '#2e9e5b'; } })();
+    function _applyCalColor() {
+        try { document.documentElement.style.setProperty('--cal-date-color', _calDateColor); } catch (e) {}
+    }
+    _applyCalColor(); // 초기 1회(버튼 아이콘 색 반영)
+    function _setCalColor(c) {
+        _calDateColor = c;
+        try { localStorage.setItem('daylog_cal_date_color', c); } catch (e) {}
+        _applyCalColor();
+    }
+
+    function _initCalMonthIfNeeded() {
+        if (_calYear != null && _calMonth != null) return;
+        var base;
+        if (memoryList && memoryList.length) {
+            var latest = [...memoryList].sort(sortByDateDesc)[0];
+            base = (latest && latest.createdAt) ? new Date(latest.createdAt) : new Date();
+            if (isNaN(base.getTime())) base = new Date();
+        } else base = new Date();
+        _calYear = base.getFullYear();
+        _calMonth = base.getMonth();
+    }
+
+    function setTimelineView(view) {
+        _tlView = view;
+        var feed = document.getElementById('timeline-feed');
+        var cal = document.getElementById('timeline-calendar');
+        var bList = document.getElementById('tl-view-list');
+        var bCal = document.getElementById('tl-view-cal');
+        var colorWrap = document.getElementById('tl-color-wrap');
+        if (view === 'calendar') {
+            _initCalMonthIfNeeded();
+            if (feed) feed.classList.add('hidden');
+            if (cal) cal.classList.remove('hidden');
+            if (bList) bList.classList.remove('active');
+            if (bCal) bCal.classList.add('active');
+            if (colorWrap) colorWrap.style.display = '';
+            renderCalendar();
+        } else {
+            if (feed) feed.classList.remove('hidden');
+            if (cal) cal.classList.add('hidden');
+            if (bList) bList.classList.add('active');
+            if (bCal) bCal.classList.remove('active');
+            if (colorWrap) colorWrap.style.display = 'none';
+            var pal = document.getElementById('cal-color-palette');
+            if (pal) pal.classList.add('hidden');
+        }
+    }
+
+    // [B] edit by smsong - 색상 팔레트 구성 + 선택
+    function _buildColorPalette() {
+        var pal = document.getElementById('cal-color-palette');
+        if (!pal || pal.getAttribute('data-built') === '1') return;
+        pal.setAttribute('data-built', '1');
+        pal.innerHTML = CAL_COLORS.map(function (c) {
+            return '<button type="button" class="cal-color-sw" data-color="' + c + '" style="background:' + c + ';" aria-label="색상"></button>';
+        }).join('');
+        pal.querySelectorAll('.cal-color-sw').forEach(function (sw) {
+            sw.addEventListener('click', function (e) {
+                e.stopPropagation();
+                _setCalColor(sw.getAttribute('data-color'));
+                pal.classList.add('hidden');
+            });
+        });
+    }
+
+    function renderCalendar() {
+        var cont = document.getElementById('timeline-calendar');
+        if (!cont) return;
+        _initCalMonthIfNeeded();
+        var y = _calYear, mo = _calMonth;
+
+        // 날짜별 추억 그룹 (전체 추억 기준, YYYY-MM-DD)
+        var byDate = {};
+        (memoryList || []).forEach(function (m) {
+            var key = (m.createdAt || '').substring(0, 10);
+            if (key) (byDate[key] = byDate[key] || []).push(m);
+        });
+
+        var startDow = new Date(y, mo, 1).getDay();       // 0=일
+        var daysInMonth = new Date(y, mo + 1, 0).getDate();
+        var chevL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+        var chevR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+        var html = '<div class="cal-head">' +
+            '<button type="button" class="cal-nav" id="cal-prev" aria-label="이전 달">' + chevL + '</button>' +
+            '<div class="cal-month">' + y + '년 ' + (mo + 1) + '월</div>' +
+            '<button type="button" class="cal-nav" id="cal-next" aria-label="다음 달">' + chevR + '</button>' +
+            '</div>';
+        html += '<div class="cal-grid cal-dow">' +
+            ['일', '월', '화', '수', '목', '금', '토'].map(function (d, i) {
+                return '<div class="cal-dow-cell' + (i === 0 ? ' sun' : '') + (i === 6 ? ' sat' : '') + '">' + d + '</div>';
+            }).join('') + '</div>';
+
+        var cells = '';
+        for (var i = 0; i < startDow; i++) cells += '<div class="cal-cell empty"></div>';
+        for (var d = 1; d <= daysInMonth; d++) {
+            var dateKey = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+            var items = byDate[dateKey] || [];
+            var dow = new Date(y, mo, d).getDay();
+            var cls = 'cal-cell' + (items.length ? ' has' : '') + (dow === 0 ? ' sun' : '') + (dow === 6 ? ' sat' : '');
+            var cell = '<div class="' + cls + '" data-date="' + dateKey + '">';
+            cell += '<span class="cal-day">' + d + '</span>';
+            if (items.length) {
+                var cover = coverUrlOf(items[0]);
+                var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+                else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
+                if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
+            }
+            cell += '</div>';
+            cells += cell;
+        }
+        html += '<div class="cal-grid cal-days">' + cells + '</div>';
+        cont.innerHTML = html;
+        _applyCalColor(); // [B] edit by smsong - 저장된 추억 날짜 색상 적용
+
+        var prev = document.getElementById('cal-prev');
+        var next = document.getElementById('cal-next');
+        if (prev) prev.addEventListener('click', function () { _calMonth--; if (_calMonth < 0) { _calMonth = 11; _calYear--; } renderCalendar(); });
+        if (next) next.addEventListener('click', function () { _calMonth++; if (_calMonth > 11) { _calMonth = 0; _calYear++; } renderCalendar(); });
+        cont.querySelectorAll('.cal-cell.has').forEach(function (cell) {
+            cell.addEventListener('click', function () {
+                var key = cell.getAttribute('data-date');
+                var items = byDate[key] || [];
+                if (items.length === 1) openDetailModal(items[0]);
+                else if (items.length > 1) openMemoryListModal(key.replace(/-/g, '.') + ' 추억', items);
+            });
+        });
+    }
+    Daylog._renderCalendar = renderCalendar; // 외부(로드 후)에서 갱신용
+    // 검색어(제목/내용/위치) 검색
+    const tlKw = document.getElementById('tl-filter-keyword');
+    const tlKwBtn = document.getElementById('tl-keyword-search');
+    const runTlKeyword = () => { _tlKeyword = tlKw ? tlKw.value : ''; applyTimelineFilter(); };
+    if (tlKwBtn) tlKwBtn.addEventListener('click', runTlKeyword);
+    if (tlKw) tlKw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runTlKeyword(); } });
+    const tlFilterToggle = document.getElementById('tl-filter-toggle');
+    // [B] edit by smsong - 타임라인/달력 보기 전환 버튼
+    var _tlvList = document.getElementById('tl-view-list');
+    var _tlvCal = document.getElementById('tl-view-cal');
+    if (_tlvList) _tlvList.addEventListener('click', function () { setTimelineView('list'); });
+    if (_tlvCal) _tlvCal.addEventListener('click', function () { setTimelineView('calendar'); });
+    // [B] edit by smsong - 추억 날짜 색상 버튼 → 팔레트 토글
+    var _calColorBtn = document.getElementById('cal-color-btn');
+    if (_calColorBtn) _calColorBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _buildColorPalette();
+        var pal = document.getElementById('cal-color-palette');
+        if (pal) pal.classList.toggle('hidden');
+    });
+    document.addEventListener('click', function (e) {
+        var wrap = document.getElementById('tl-color-wrap');
+        var pal = document.getElementById('cal-color-palette');
+        if (pal && !pal.classList.contains('hidden') && wrap && !wrap.contains(e.target)) pal.classList.add('hidden');
+    });
+    const tlFilterPop = document.getElementById('tl-filter-pop');
+    if (tlFilterToggle && tlFilterPop) {
+        tlFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); tlFilterPop.classList.toggle('hidden'); });
+    }
+    const clFilterToggle = document.getElementById('cl-filter-toggle');
+    const clFilterPop = document.getElementById('cl-filter-pop');
+    if (clFilterToggle && clFilterPop) {
+        clFilterToggle.addEventListener('click', (e) => { e.stopPropagation(); clFilterPop.classList.toggle('hidden'); });
+    }
+    // [smsong] 바깥 클릭 시 필터 팝오버 닫기 (지도 필터와 동일한 동작)
+    document.addEventListener('click', (e) => {
+        const tw = document.getElementById('header-timeline-controls');
+        if (tlFilterPop && !tlFilterPop.classList.contains('hidden') && tw && !tw.contains(e.target)) tlFilterPop.classList.add('hidden');
+        const cw = document.getElementById('header-checklist-controls');
+        if (clFilterPop && !clFilterPop.classList.contains('hidden') && cw && !cw.contains(e.target)) clFilterPop.classList.add('hidden');
+    });
+    const tlFilterSearch = document.getElementById('tl-filter-search');
+    if (tlFilterSearch) tlFilterSearch.addEventListener('click', applyTimelineFilter);
+    const tlFilterReset = document.getElementById('tl-filter-reset');
+    if (tlFilterReset) tlFilterReset.addEventListener('click', () => {
+        _tlPlaceFilter = '';
+        _tlKeyword = '';
+        const kwEl = document.getElementById('tl-filter-keyword'); if (kwEl) kwEl.value = '';
+        const sel = document.getElementById('tl-filter-place'); if (sel) sel.value = '';
+        const d = document.getElementById('tl-filter-date'); if (d) d.value = '';
+        applyTimelineFilter();
+    });
+
+    // ---- 가볼곳 필터 (검색어 + 카테고리 + 방문여부) ----
+    function applyChecklistFilter() {
+        const kw = _clKeyword.trim().toLowerCase();
+        let list = [...checklistList].sort(sortByDateDesc);
+        if (kw) list = list.filter(c => {
+            const hay = ((c.title || '') + ' ' + (c.content || '') + ' ' + (c.placeName || '') + ' ' + (c.address || '')).toLowerCase();
+            return hay.includes(kw);
+        });
+        if (_clFilter && _clFilter !== 'ALL') list = list.filter(c => (c.type || 'ETC') === _clFilter);
+        if (_clVisitedFilter === 'VISITED') list = list.filter(c => c.visited);
+        else if (_clVisitedFilter === 'TODO') list = list.filter(c => !c.visited);
+        renderChecklistFeed(list);
+    }
+    // 검색어(제목/내용/위치) 검색
+    const clKw = document.getElementById('cl-filter-keyword');
+    const clKwBtn = document.getElementById('cl-keyword-search');
+    const runClKeyword = () => { _clKeyword = clKw ? clKw.value : ''; applyChecklistFilter(); };
+    if (clKwBtn) clKwBtn.addEventListener('click', runClKeyword);
+    if (clKw) clKw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runClKeyword(); } });
+    // 초기화 — 검색어/카테고리/방문여부 모두 리셋 후 즉시 전체 표시
+    const clKwReset = document.getElementById('cl-keyword-reset');
+    if (clKwReset) clKwReset.addEventListener('click', () => {
+        _clKeyword = '';
+        _clFilter = 'ALL';
+        _clVisitedFilter = 'ALL';
+        if (clKw) clKw.value = '';
+        document.querySelectorAll('#cl-filter-bar .cl-filter-chip').forEach(c => c.classList.toggle('selected', c.dataset.filter === 'ALL'));
+        document.querySelectorAll('#cl-visited-filter-bar .cl-vfilter-chip').forEach(c => c.classList.toggle('selected', c.dataset.vfilter === 'ALL'));
+        applyChecklistFilter();
+    });
+    const clFilterBar = document.getElementById('cl-filter-bar');
+    if (clFilterBar) {
+        clFilterBar.querySelectorAll('.cl-filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                clFilterBar.querySelectorAll('.cl-filter-chip').forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                _clFilter = chip.dataset.filter || 'ALL';
+                applyChecklistFilter();
+            });
+        });
+    }
+    const clVisitedBar = document.getElementById('cl-visited-filter-bar');
+    if (clVisitedBar) {
+        clVisitedBar.querySelectorAll('.cl-vfilter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                clVisitedBar.querySelectorAll('.cl-vfilter-chip').forEach(c => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                _clVisitedFilter = chip.dataset.vfilter || 'ALL';
+                applyChecklistFilter();
+            });
+        });
+    }
+
+    // --- 지도 마커 (줌 시 깜빡임 방지: 기존 마커 제거 후 재생성, 사진은 배경이미지) ---
+    function renderMarkers(list) {
+        if (!map) return;
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+        list.forEach(memory => {
+            if (!(memory.lat && memory.lng)) return;
+            let markerHtml;
+            const nd = _suppressDrop ? ' nodrop' : '';
+            // [B] edit by smsong - 다중 이미지(mediaUrls) 기록도 대표(첫) 이미지로 마커 썸네일 표시.
+            //  기존엔 단일 필드 memory.mediaURL 만 봐서 여러 장 기록의 마커가 비어 보였음.
+            const _cover = coverUrlOf(memory);
+            if (_cover) {
+                // 지도 마커는 소형 썸네일(<img>)로 그림. 썸네일이 없으면(구버전/HEIC) onerror 로 원본 폴백.
+                const _thumb = Daylog.thumbUrlOf(_cover);
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+                // [E] edit by smsong
+            } else {
+                markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
+            }
+            // [B] edit by smsong - 마커 앵커를 '말풍선 아래 세모(꼬리) 끝'에 맞춰 실제 위치가 정확히 찍히도록 보정
+            //  사진 마커: 56x56(사진46+패딩3*2+테두리2*2) 박스, 아래 세모 끝 ≈ (28, 62)
+            //  하트 마커: 26px 아이콘, 하트 아래 끝 ≈ (13, 24)
+            const _mkAnchor = _cover ? new naver.maps.Point(28, 62) : new naver.maps.Point(13, 24);
+            const marker = new naver.maps.Marker({
+                position: new naver.maps.LatLng(memory.lat, memory.lng),
+                map: map,
+                icon: { content: markerHtml, anchor: _mkAnchor }
+            });
+            // [E] edit by smsong
+            marker._memoryId = memory.id; // 상세보기 → 지도 포커스/흔들기용
+            naver.maps.Event.addListener(marker, 'click', () => openDetailModal(memory));
+            markers.push(marker);
+        });
+    }
+
+    // --- 타임라인 (날짜별 그룹 + 좌측정렬 제목/내용/위치 + 우측 썸네일) ---
+    function renderTimeline(sorted) {
+        const timelineFeed = document.getElementById('timeline-feed');
+        timelineFeed.innerHTML = '';
+
+        if (!sorted.length) {
+            timelineFeed.innerHTML =
+                '<div class="empty-state"><span class="es-icon">' + icon('book',40) + '</span>' +
+                '<p>기록이 존재하지 않음</p></div>';
+            return;
+        }
+
+        const groups = {};
+        sorted.forEach(m => {
+            const key = (m.createdAt || '').substring(0, 10) || '날짜미상';
+            (groups[key] = groups[key] || []).push(m);
+        });
+
+        let idx = 0;
+        Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateKey => {
+            const head = document.createElement('div');
+            head.className = 'tl-date-head';
+            head.innerHTML = '<span class="tl-date-dot"></span>' +
+                '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
+            timelineFeed.appendChild(head);
+
+            groups[dateKey].forEach(memory => {
+                const card = document.createElement('div');
+                card.className = 'tl-card';
+
+                const thumb = thumbHtml(coverUrlOf(memory), 'tl-thumb');
+
+                card.innerHTML =
+                    '<div class="tl-main">' +
+                    '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
+                    '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
+                    '<div class="tl-loc">' +
+                    '<div class="tl-loc-row">' +
+                    '<span class="tl-loc-icon">' + icon('pin',13) + '</span>' +
+                    '<span class="tl-place"></span>' +
+                    '</div>' +
+                    '<span class="tl-addr"></span>' +
+                    '</div>' +
+                    commentBadgeHtml('memory', memory.id) +
+                    '</div>' +
+                    thumb;
+
+                applyCardLocation(card, memory);
+                card.addEventListener('click', () => openDetailModal(memory));
+                timelineFeed.appendChild(card);
+            });
+        });
+        applyCommentBadges('memory');   // 캐시 즉시 반영
+        fetchCommentCounts('memory');   // 최신 수 갱신
+    }
+
+    // ==========================================
+    //  내 정보 (프로필) — 사람 구분 & 프로필 이미지
+    // ==========================================
+    // name 이 아래 값이면 '나', 아니면 상대방으로 인식 (유저 2명 전용)
+    const ME_NAMES = ['송성민', 's s'];
+    function isMe(u) {
+        if (!u || !u.name) return false;
+        const n = String(u.name).trim().toLowerCase();
+        return ME_NAMES.map(s => s.toLowerCase()).includes(n);
+    }
+
+    let meUser = null;
+    let partnerUser = null;
+    let currentUser = null;
+    let editingUser = null;
+    const profileFileInput = document.getElementById('profile-file');
+
+    // [B] edit by smsong - #2 내 프로필: 소셜 로그인 종류(카카오/네이버/구글) + 가입일 표시 (본인만)
+    function renderMySocialInfo() {
+        var wrap = document.getElementById('my-profile-info');
+        var badge = document.getElementById('my-social-badge');
+        var jd = document.getElementById('my-join-date');
+        if (!wrap) return;
+        if (!currentUser) { wrap.style.display = 'none'; return; }
+        var kakao = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>';
+        var naver = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>';
+        var google = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>';
+        var map = {
+            kakao:  { label: '카카오', cls: 'kakao',  icon: kakao },
+            naver:  { label: '네이버', cls: 'naver',  icon: naver },
+            google: { label: '구글',   cls: 'google', icon: google }
+        };
+        var info = map[(currentUser.provider || '').toLowerCase()];
+        var any = false;
+        if (badge) {
+            if (info) { badge.className = 'social-badge sb-' + info.cls; badge.innerHTML = info.icon + '<span>' + info.label + ' 로그인</span>'; badge.style.display = ''; any = true; }
+            else { badge.style.display = 'none'; badge.innerHTML = ''; }
+        }
+        if (jd) {
+            var c = currentUser.createdAt;
+            if (c) {
+                var d = new Date(c);
+                var s = isNaN(d.getTime())
+                    ? String(c).substring(0, 10).replace(/-/g, '.')
+                    : (d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'));
+                jd.textContent = s + ' 가입'; jd.style.display = ''; any = true;
+            } else { jd.style.display = 'none'; jd.textContent = ''; }
+        }
+        wrap.style.display = any ? 'flex' : 'none';
+    }
+
+    function loadProfiles(force) {
+        if (force) _profSig = null; // 명시적 변경(사진/닉네임/프로필 수정) 후엔 강제 재렌더
+        if (!requireAuthOrRedirect()) return;
+        // [B] edit by smsong - #2 커플/멤버 판정 전에 서버 방정보(타입 권위)를 반드시 확보 → 커플 오판/깜빡임 제거
+        ensureRoomInfoThen(function () {
+        withLoading(fetch(`${API_BASE_URL}/user/all/${currentUid}`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(users => {
+                const list = users || [];
+                console.log('[Daylog] /user/all 응답:', list);
+                // [smsong] 커플 '나/상대방'은 이 방에 설정된 커플 슬롯(방 멤버)만 사용
+                const _findU = (uid) => list.find(u => u.uid === uid) || null;
+                const _isCouple = isCoupleRoom(); // [smsong] 커플 방이면 '나/상대방' 카드 표시
+                // [smsong] 커플 슬롯(coupleLeftUid=나, coupleRightUid=상대방)은 '이 방 멤버'만 사용.
+                //  다른 방/비멤버 uid(예: 하드코딩된 A/B)는 절대 접근하지 않음.
+                var _info = Daylog.roomInfo;
+                var _members = (_info && _info.members) || [];
+                var _memberUids = _members.map(function (m) { return m.uid; });
+                var _lu = (_info && _info.coupleLeftUid && _memberUids.indexOf(_info.coupleLeftUid) >= 0) ? _info.coupleLeftUid : null;
+                var _ru = (_info && _info.coupleRightUid && _memberUids.indexOf(_info.coupleRightUid) >= 0) ? _info.coupleRightUid : null;
+                meUser = _lu ? _findU(_lu) : null;
+                partnerUser = _ru ? _findU(_ru) : null;
+                // 프로필 '수정' 대상(currentUser)은 항상 실제 로그인 유저
+                currentUser = _findU(currentUid) || null;
+
+                Daylog.meUid = meUser && meUser.uid;
+                Daylog.partnerUid = partnerUser && partnerUser.uid;
+                // [smsong] 작성자 표시용 맵도 '이 방 멤버'만 포함 (비멤버 노출 방지)
+                Daylog.usersByUid = {};
+                _members.forEach(function (m) { var u = _findU(m.uid); if (u) Daylog.usersByUid[u.uid] = u; });
+                if (currentUser && currentUser.uid) Daylog.usersByUid[currentUser.uid] = currentUser;
+
+                if (!meUser) {
+                    console.warn('[Daylog] 로그인 uid(' + currentUid + ')와 일치하는 사용자가 목록에 없습니다.');
+                }
+                // 이름/아바타는 실제로 바뀌었을 때만 다시 그림(이미지 재로딩 깜빡임 방지)
+                const sig = _listSig(list);
+                if (sig !== _profSig) {
+                    _profSig = sig;
+                    renderProfileBox('me', meUser, icon('user',34), _isCouple ? '나' : '');
+                    renderProfileBox('partner', partnerUser, icon('user',34), _isCouple ? '상대방' : '');
+                }
+                profilesLoaded = true;
+                updateProfileStats(); // 숫자만 갱신(저비용, 깜빡임 없음)
+                applyRoomProfileMode(); // [smsong] 방 타입별(커플/친구·가족) 화면 전환
+                applyCoupleEditButtons(); // [smsong] 방장이면 '나/상대방' 변경 버튼 노출
+                renderMySocialInfo(); // [B] edit by smsong - #2 내 소셜/가입일 표시
+                // 체크리스트 개수/목록도 준비 (이미 로드돼 있으면 라벨만 갱신)
+                if (checklistLoaded) updateChecklistStats(); else loadChecklistsFromServer();
+                maybePromptNickname();
+            })
+            .catch(err => {
+                console.error("프로필 로드 실패(/user/all):", err);
+                showToast('프로필 조회 실패: ' + (err.message || '서버 오류'));
+                loadSelfProfileFallback();
+            }), '프로필을 불러오는 중...'); // [smsong] 로딩
+        }); // [B] edit by smsong - ensureRoomInfoThen 콜백 닫기
+    }
+
+    // /user/all 이 막혔을 때 최소한 본인 정보만이라도 채우는 폴백
+    function loadSelfProfileFallback() {
+        fetch(`${API_BASE_URL}/user/uid/${currentUid}`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(me => {
+                console.log('[Daylog] /user/uid 폴백 응답:', me);
+                if (!me) return;
+                currentUser = me;
+                meUser = me;
+                // [smsong] 접근 권한은 서버(권한 메뉴/DB) 기준 — loadMyPermission 이 게이트 처리
+                Daylog.meUid = me.uid;
+                Daylog.usersByUid = {}; if (me.uid) Daylog.usersByUid[me.uid] = me;
+                renderProfileBox('me', me, icon('user',34), '나');
+                updateProfileStats();
+                maybePromptNickname();
+            })
+            .catch(err => console.error("본인 프로필 폴백 실패(/user/uid):", err));
+    }
+
+    // [B] edit by smsong - 닉네임 최초 설정은 방 목록(rooms.html)에서 진행하도록 이동.
+    //  main.html 에서는 더 이상 닉네임 설정 모달을 띄우지 않는다.
+    function maybePromptNickname() { /* no-op: rooms.html 에서 최초 닉네임 설정 */ }
+    // [E] edit by smsong
+
+    // 공통 사용자 저장 (PUT /user). mediaData 파트는 항상 포함해
+    // 'Required part mediaData is not present' 오류를 방지 (빈 파일이면 백엔드가 기존 프로필 유지)
+    function saveUser(userObj, file) {
+        const fd = new FormData();
+        fd.append('userData', JSON.stringify(userObj));
+        if (file) {
+            fd.append('mediaData', file);
+        } else {
+            fd.append('mediaData', new Blob([], { type: 'application/octet-stream' }), 'empty');
+        }
+        return withLoading(fetch(`${API_BASE_URL}/user`, {
+            method: 'PUT',
+            headers: authHeaders(false),
+            body: fd
+        }), '저장 중...').then(handleResponse);
+    }
+
+    function renderProfileBox(role, user, fallbackEmoji, relationLabel) {
+        const avatar = document.getElementById('avatar-' + role);
+        const nameEl = document.getElementById('name-' + role);
+        const subEl = document.getElementById('sub-' + role);
+        const editEl = document.getElementById('edit-' + role);
+        const wrap = document.getElementById('wrap-' + role);
+        if (!avatar || !wrap) return;
+
+        // 아바타 이미지 / SNS 기본 이미지 (이미지 로드 실패 시 기본 이미지로 폴백)
+        const showImg = (src) => {
+            avatar.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = '프로필';
+            img.onerror = () => { img.onerror = null; img.src = DEFAULT_AVATAR; };
+            avatar.appendChild(img);
+        };
+        if (user && user.profileURL) {
+            showImg(Daylog.bustImg(user.profileURL)); // [smsong] 변경 즉시 반영(캐시버스터)
+        } else {
+            showImg(DEFAULT_AVATAR);
+        }
+
+        // 닉네임 우선, 없으면 정규화된 실제 이름(송성민/강미르)으로 표시
+        const hasNick = !!(user && user.nickname && String(user.nickname).trim());
+        const realName = user ? normalizeDisplayName(user.name) : relationLabel;
+        nameEl.innerText = hasNick ? user.nickname : realName;
+        subEl.innerText = relationLabel;
+
+        // ✋ 내 정보 탭에서는 이미지 수정 불가 — 실제 사진이 있을 때만 클릭 확대(라이트박스)
+        wrap.classList.remove('editable', 'viewable');
+        editEl.classList.add('hidden'); // 📷 편집 배지 항상 숨김
+        wrap.onclick = null;
+
+        if (user && user.profileURL) {
+            wrap.classList.add('viewable');
+            wrap.onclick = () => openLightbox(Daylog.bustImg(user.profileURL), avatar);
+        }
+    }
+
+    if (profileFileInput) {
+        profileFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            profileFileInput.value = ''; // 같은 파일 재선택 허용
+            if (!file || !editingUser) return;
+            const target = editingUser;
+            _crop.sourceInput = profileFileInput; // [B] edit by smsong - 취소(X) 시 갤러리 재오픈용 / [E] edit by smsong
+            openCropper(file, (cropped) => uploadProfileImage(target, cropped));
+        });
+    }
+
+    function uploadProfileImage(user, file) {
+        if (!requireAuthOrRedirect()) return;
+        showToast('프로필 사진을 올리는 중...');
+        saveUser({ uid: user.uid, id: user.id }, file)
+            .then((updated) => {
+                Daylog.bumpImgVer(); // [smsong] 같은 경로 덮어쓰기여도 새 사진 즉시 표시
+                // [smsong] 새 프로필 이미지를 미리 받아 캐시에 올려둠 → 렌더 시 빈 화면 깜빡임 없이 즉시 표시
+                if (updated && updated.profileURL) { var _pre = new Image(); _pre.src = Daylog.bustImg(updated.profileURL); }
+                showToast('프로필 사진이 변경 완료');
+                loadProfiles(true);
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('변경 실패: ' + (err.message || '서버 오류'));
+            });
+    }
+
+    // ----- 닉네임 최초 설정 -----
+    const nicknameForm = document.getElementById('nickname-form');
+    if (nicknameForm) {
+        nicknameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = document.getElementById('nickname-input').value.trim();
+            if (!val) { showToast('닉네임을 입력해주십시오'); return; }
+            if (!currentUser) { showToast('사용자 정보 조회 실패'); return; }
+            const btn = nicknameForm.querySelector('.submit-btn');
+            btn.disabled = true; btn.innerText = '저장 중...';
+            const payload = { uid: currentUser.uid, id: currentUser.id, nickname: val };
+            saveUser(payload, null)
+                .then(updated => {
+                    currentUser = updated || payload;
+                    document.getElementById('nickname-modal').classList.add('hidden');
+                    showToast('닉네임 설정 완료');
+                    loadProfiles(true);
+                })
+                .catch(err => { console.error(err); showToast('설정 실패: ' + (err.message || '서버 오류')); })
+                .finally(() => { btn.disabled = false; btn.innerText = '시작하기'; });
+        });
+    }
+
+    // ----- 프로필 수정 페이지 -----
+    let editPendingFile = null;
+    let editRemovePhoto = false;
+    const editFileInput = document.getElementById('edit-file');
+    const editPage = document.getElementById('edit-page');
+
+    // 수정 페이지 아바타 미리보기 + '사진 제거' 버튼 노출 제어
+    function setEditAvatar(src, hasPhoto) {
+        const av = document.getElementById('edit-avatar');
+        if (av) av.innerHTML = '<img src="' + src + '" alt="프로필">';
+        const rm = document.getElementById('edit-remove-photo');
+        if (rm) rm.classList.toggle('hidden', !hasPhoto);
+    }
+
+    function openEditPage() {
+        if (!currentUser) { showToast('사용자 정보를 불러오는 중입니다'); loadProfiles(); return; }
+        editPendingFile = null;
+        editRemovePhoto = false;
+        document.getElementById('edit-nickname').value = currentUser.nickname || '';
+        setEditAvatar(currentUser.profileURL || DEFAULT_AVATAR, !!currentUser.profileURL);
+        editPage.classList.add('open');
+    }
+    function closeEditPage() { editPage.classList.remove('open'); }
+
+    // [B] edit by smsong - #3 btn-edit-profile 제거됨 → null 가드
+    var _bep = document.getElementById('btn-edit-profile');
+    if (_bep) _bep.addEventListener('click', openEditPage);
+    // [B] edit by smsong - #3 멤버 보기 버튼 → 멤버 모달
+    var _bmv = document.getElementById('btn-member-view');
+    if (_bmv) _bmv.addEventListener('click', openMemberModal);
+    // [B] edit by smsong - #3 방 알림 켜기/끄기 토글 버튼
+    var _brnt = document.getElementById('btn-room-notif-toggle');
+    if (_brnt) _brnt.addEventListener('click', toggleRoomNotif);
+    try { applyRoomNotifToggle(); } catch (e) {}
+    var _mmClose = document.getElementById('member-modal-close');
+    if (_mmClose) _mmClose.addEventListener('click', function () { var mm = document.getElementById('member-modal'); if (mm) mm.classList.add('hidden'); });
+    var _mmModal = document.getElementById('member-modal');
+    if (_mmModal) _mmModal.addEventListener('click', function (e) { if (e.target.id === 'member-modal') _mmModal.classList.add('hidden'); });
+    const btnTrash = document.getElementById('btn-trash');
+    if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
+    // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
+    const btnRooms = document.getElementById('btn-rooms');
+    if (btnRooms) btnRooms.addEventListener('click', () => { location.href = 'rooms.html'; });
+    // [B] edit by smsong - #1 로고 클릭 핸들러는 아래 navLogo(confirm) 하나로 통일 (중복 무조건 이동 제거)
+    const logoHome = document.getElementById('logo-home');
+    if (logoHome) { logoHome.setAttribute('tabindex', '0'); }
+    const btnProfileLogout = document.getElementById('btn-profile-logout');
+    if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
+        if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
+    });
+    // [smsong] 방장 전용 권한 관리(접근/CRUD/내보내기) 모달 열기/닫기
+    const btnPermAdmin = document.getElementById('btn-perm-admin');
+    if (btnPermAdmin) btnPermAdmin.addEventListener('click', openPermissionAdmin);
+    const rmClose = document.getElementById('room-members-close');
+    if (rmClose) rmClose.addEventListener('click', closeRoomMembers);
+    const rmModal = document.getElementById('room-members-modal');
+    if (rmModal) rmModal.addEventListener('click', (e) => { if (e.target.id === 'room-members-modal') closeRoomMembers(); });
+    const permClose = document.getElementById('perm-close');
+    if (permClose) permClose.addEventListener('click', closePermissionAdmin);
+    const permModal = document.getElementById('perm-modal');
+    if (permModal) permModal.addEventListener('click', (e) => { if (e.target.id === 'perm-modal') closePermissionAdmin(); });
+    // 접근 요청 알림 모달 닫기 (X · 배경 클릭)
+    const areqClose = document.getElementById('access-request-close');
+    if (areqClose) areqClose.addEventListener('click', closeAccessRequestModal);
+    const areqModal = document.getElementById('access-request-modal');
+    if (areqModal) areqModal.addEventListener('click', (e) => { if (e.target.id === 'access-request-modal') closeAccessRequestModal(); });
+    // [B] edit by smsong - 거절 사유 입력 모달 (취소=사유없이 닫기, X/배경=거절 취소)
+    const rrClose = document.getElementById('reject-reason-close');
+    if (rrClose) rrClose.addEventListener('click', () => _closeRejectReason(null));
+    const rrCancel = document.getElementById('reject-reason-cancel');
+    if (rrCancel) rrCancel.addEventListener('click', () => _closeRejectReason(null));
+    const rrConfirm = document.getElementById('reject-reason-confirm');
+    if (rrConfirm) rrConfirm.addEventListener('click', () => {
+        const inp = document.getElementById('reject-reason-input');
+        _closeRejectReason(inp ? inp.value : '');
+    });
+    const rrModal = document.getElementById('reject-reason-modal');
+    if (rrModal) rrModal.addEventListener('click', (e) => { if (e.target.id === 'reject-reason-modal') _closeRejectReason(null); });
+    // [B] edit by smsong - 환영 폼: 동의 체크 시 '방 이용하기' 버튼 활성화
+    const wChk = document.getElementById('welcome-consent-check');
+    const wBtn = document.getElementById('welcome-enter-btn');
+    if (wChk && wBtn) wChk.addEventListener('change', function () { wBtn.disabled = !wChk.checked; });
+    if (wBtn) wBtn.addEventListener('click', confirmWelcome);
+    // [E] edit by smsong
+    // 헤더의 디데이 클릭 → 디데이 폼 열기
+    const headerDday = document.querySelector('.dday-counter');
+    if (headerDday) {
+        headerDday.style.cursor = 'pointer';
+        headerDday.addEventListener('click', () => showDDayInfo());
+    }
+    document.getElementById('edit-back').addEventListener('click', closeEditPage);
+    document.getElementById('edit-avatar-wrap').addEventListener('click', () => editFileInput.click());
+
+    // 사진 제거 버튼 — 현재/선택 사진을 지우고 기본 이미지로
+    const editRemoveBtn = document.getElementById('edit-remove-photo');
+    if (editRemoveBtn) {
+        editRemoveBtn.addEventListener('click', () => {
+            editPendingFile = null;
+            editRemovePhoto = true;
+            setEditAvatar(DEFAULT_AVATAR, false);
+            showToast('저장하면 사진이 제거됩니다');
+        });
+    }
+
+    editFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        editFileInput.value = '';
+        if (!file) return;
+        _crop.sourceInput = editFileInput; // [B] edit by smsong - 취소(X) 시 갤러리 재오픈용 / [E] edit by smsong
+        openCropper(file, (cropped) => {
+            editPendingFile = cropped;
+            editRemovePhoto = false;
+            const reader = new FileReader();
+            reader.onload = (ev) => { setEditAvatar(ev.target.result, true); };
+            reader.readAsDataURL(cropped);
+        });
+    });
+
+    const editForm = document.getElementById('edit-form');
+    editForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const nick = document.getElementById('edit-nickname').value.trim();
+        if (!nick) { showToast('닉네임을 입력해주십시오'); return; }
+        const btn = editForm.querySelector('.submit-btn');
+        btn.disabled = true; btn.innerText = '저장 중...';
+        // 닉네임 + (선택) 프로필 이미지 변경/제거. uid/id 는 본인 식별용
+        const payload = { uid: currentUser.uid, id: currentUser.id, nickname: nick };
+        // 새 사진이 없고 '사진 제거'를 누른 경우 → profileURL 을 빈 값으로 보내 명시적 제거
+        if (!editPendingFile && editRemovePhoto) {
+            payload.profileURL = '';
+        }
+        saveUser(payload, editPendingFile)
+            .then(updated => {
+                currentUser = updated || payload;
+                if (editRemovePhoto && currentUser) currentUser.profileURL = '';
+                editPendingFile = null;
+                editRemovePhoto = false;
+                Daylog.bumpImgVer(); // [smsong] 사진 변경/제거 즉시 반영
+                // [smsong] 새 프로필 이미지 미리 로드 → 즉시 표시(깜빡임 방지)
+                if (currentUser && currentUser.profileURL) { var _pre2 = new Image(); _pre2.src = Daylog.bustImg(currentUser.profileURL); }
+                showToast('프로필 저장 완료');
+                closeEditPage();
+                loadProfiles(true);
+            })
+            .catch(err => { console.error(err); showToast('저장 실패: ' + (err.message || '서버 오류')); })
+            .finally(() => { btn.disabled = false; btn.innerText = '저장하기'; });
+    });
+
+    function displayNameOf(user, fallback) {
+        if (!user) return fallback;
+        if (user.nickname && String(user.nickname).trim()) return user.nickname;
+        return normalizeDisplayName(user.name);
+    }
+
+    function updateProfileStats() {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+        var _dday = getDdayStart(); // [smsong] 방(coupleSince) 기준
+        set('stat-days', _dday ? daysSince(_dday) : '-');
+        set('stat-total', memoryList.length);
+        const meUid = meUser && meUser.uid;
+        const pUid = partnerUser && partnerUser.uid;
+        set('stat-me-count', memoryList.filter(m => m.ownerUid === meUid).length);
+        set('stat-partner-count', memoryList.filter(m => m.ownerUid === pUid).length);
+        // 라벨에 정규화된 이름 반영
+        const meLabel = document.getElementById('stat-me-label');
+        const pLabel = document.getElementById('stat-partner-label');
+        if (meLabel && meUser) meLabel.innerText = displayNameOf(meUser, '나') + '의 추억';
+        if (pLabel && partnerUser) pLabel.innerText = displayNameOf(partnerUser, '상대방') + '의 추억';
+    }
+
+    // [smsong] ===== 방 타입별 내 정보 화면 =====
+    //  커플: 기존 커플 카드(디데이/우리의 추억/나♥상대) 그대로
+    //  친구·가족: 구성원 프로필 그리드 → 프로필의 추억/가볼곳 조회
+    var _memberCache = null;
+    var _roomInfoLoading = false;
+    // [B] edit by smsong - #2 설정 뷰 판정 전에 서버 방정보(타입 권위) 를 반드시 확보 → 커플/멤버 오판 방지
+    function ensureRoomInfoThen(cb) {
+        if (Daylog.roomInfo) { cb(); return; }
+        var roomId = getRoomId();
+        if (!roomId) { cb(); return; }
+        if (_roomInfoLoading) { setTimeout(function () { ensureRoomInfoThen(cb); }, 120); return; }
+        _roomInfoLoading = true;
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => {
+                Daylog.roomInfo = room;
+                if (room && room.type) localStorage.setItem('selectedRoomType', String(room.type).toUpperCase());
+                _memberCache = (room && room.members) || [];
+                // [B] edit by smsong - #4 작성자/수정자 즉시 표시: 멤버 정보로 usersByUid 채움(설정 미방문에도 이름 표시)
+                try {
+                    Daylog.usersByUid = Daylog.usersByUid || {};
+                    _memberCache.forEach(function (m) {
+                        if (m && m.uid) Daylog.usersByUid[m.uid] = {
+                            uid: m.uid, nickname: m.nickname, name: m.name, profileURL: m.profileURL
+                        };
+                    });
+                } catch (e) {}
+            })
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err))
+            .finally(() => { _roomInfoLoading = false; cb(); }), '방 정보를 불러오는 중...'); // [smsong] 로딩
+    }
+
+    function applyRoomProfileMode() {
+        ensureRoomInfoThen(function () {
+            var coupleView = document.getElementById('couple-view');
+            var memberView = document.getElementById('member-view');
+            if (typeof applyDdayVisibility === 'function') applyDdayVisibility(); // [smsong] 디데이 커플 전용 표시/숨김
+            if (isCoupleRoom()) {
+                if (coupleView) coupleView.style.display = '';
+                if (memberView) memberView.style.display = 'none';
+                return;
+            }
+            if (coupleView) coupleView.style.display = 'none';
+            // [B] edit by smsong - #3 멤버 목록은 [멤버 보기] 모달로 이동 → 설정 탭에선 그리드 미표시
+            if (memberView) memberView.style.display = 'none';
+        });
+    }
+    function fetchMembersThenPaint() {
+        var roomId = getRoomId();
+        if (!roomId) return;
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => { _memberCache = (room && room.members) || []; paintMemberGrid(_memberCache); })
+            .catch(err => console.error('[Daylog] 멤버 뷰 로드 실패:', err)), '멤버를 불러오는 중...'); // [smsong] 로딩
+    }
+    function paintMemberGrid(members) {
+        var container = document.getElementById('member-view');
+        if (!container) return;
+        var _rt = getRoomType();
+        var typeName = (_rt === 'FAMILY') ? '가족' : (_rt === 'ACQUAINTANCE') ? '지인' : '친구'; // [B] edit by smsong - 지인 추가
+        var head = document.createElement('div');
+        head.className = 'member-view-head';
+        head.textContent = typeName + ' 구성원 ' + members.length + '명';
+        var grid = document.createElement('div');
+        grid.className = 'member-grid-inner';
+        members.forEach(m => {
+            var name = m.nickname || normalizeDisplayName(m.name) || m.uid;
+            var memCount = memoryList.filter(x => x.ownerUid === m.uid).length;
+            var clCount = checklistList.filter(x => x.ownerUid === m.uid).length;
+            var card = document.createElement('div');
+            card.className = 'member-card';
+            var avatar = m.profileURL
+                ? `<img src="${Daylog.bustImg(m.profileURL)}" alt="" class="member-avatar-img">`
+                : `<span class="member-avatar-fallback">${icon('user',30)}</span>`;
+            var ownerBadge = m.owner ? '<span class="member-owner-badge">방장</span>' : '';
+            // [B] edit by smsong - #3 역할(방장/멤버/일반) 뱃지를 닉네임 '바로 위'에 배치
+            var _role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
+            var _roleLabel = (_role === 'OWNER') ? '방장' : (_role === 'MEMBER') ? '멤버' : '일반';
+            var _roleCls = (_role === 'OWNER') ? 'owner' : (_role === 'MEMBER') ? 'member' : 'general';
+            card.innerHTML =
+                `<div class="member-avatar">${avatar}</div>` +
+                `<div class="member-info">` +
+                    `<div class="member-role-badge role-${_roleCls}">${_roleLabel}</div>` +
+                    `<div class="member-name">${_escHtml(name)}</div>` +
+                `</div>` +
+                // [B] edit by smsong - 추억/가볼곳 타일을 멤버 카드 오른쪽 끝에 배치
+                `<div class="member-counts">` +
+                    `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
+                    `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
+                `</div>`;
+            card.querySelector('[data-kind="mem"]').addEventListener('click', () => {
+                var items = memoryList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
+                Daylog._openListKind = null;
+                openMemoryListModal(name + '의 추억', items);
+            });
+            card.querySelector('[data-kind="cl"]').addEventListener('click', () => {
+                var items = checklistList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
+                openChecklistListModal(name + '의 가볼곳', items);
+            });
+            grid.appendChild(card);
+        });
+        container.innerHTML = '';
+        container.appendChild(head);
+        container.appendChild(grid);
+    }
+    // 외부(멤버 강퇴/탭 전환)에서 강제 새로고침
+    Daylog.refreshMemberProfile = function () { _memberCache = null; applyRoomProfileMode(); };
+    Daylog._applyRoomProfileMode = applyRoomProfileMode;
+
+    // [smsong] ===== 커플 슬롯('나'/'상대방') 방장 지정 =====
+    // 방 정보(RoomDTO: coupleLeftUid/coupleRightUid/members) 로드 → Daylog.roomInfo 캐시
+    function loadRoomInfo(force) {
+        var roomId = getRoomId();
+        if (!roomId) return;
+        if (!force && Daylog.roomInfo) { afterRoomInfo(); return; }
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => { Daylog.roomInfo = room; _memberCache = (room && room.members) || null; afterRoomInfo(); })
+            .catch(err => console.error('[Daylog] 방 정보 로드 실패:', err)), '방 정보를 불러오는 중...'); // [smsong] 로딩
+    }
+    function afterRoomInfo() {
+        if (isCoupleRoom()) { loadProfiles(true); applyCoupleEditButtons(); }
+        else applyRoomProfileMode();
+    }
+    Daylog.loadRoomInfo = loadRoomInfo;
+
+    // 방장 & 커플 방일 때만 '나/상대방' 변경 버튼 노출
+    function applyCoupleEditButtons() {
+        var show = isCoupleRoom() && isRoomOwner();
+        var em = document.getElementById('couple-edit-me');
+        var ep = document.getElementById('couple-edit-partner');
+        if (em) em.classList.toggle('hidden', !show);
+        if (ep) ep.classList.toggle('hidden', !show);
+    }
+
+    // 슬롯 선택 모달
+    var _pickSlot = null; // 'me' | 'partner'
+    function openCouplePicker(slot) {
+        _pickSlot = slot;
+        var modal = document.getElementById('couple-pick-modal');
+        var title = document.getElementById('couple-pick-title');
+        var body = document.getElementById('couple-pick-body');
+        if (!modal || !body) return;
+        if (title) title.textContent = (slot === 'me') ? "'나' 선택" : "'상대방' 선택";
+        modal.classList.remove('hidden');
+        body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+        // 최신 멤버 확보 후 렌더
+        var roomId = getRoomId();
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
+            .then(handleResponse)
+            .then(room => { Daylog.roomInfo = room; renderCouplePicker((room && room.members) || []); })
+            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); }), '멤버를 불러오는 중...'); // [smsong] 로딩
+    }
+    function renderCouplePicker(members) {
+        var body = document.getElementById('couple-pick-body');
+        if (!body) return;
+        var info = Daylog.roomInfo || {};
+        var curUid = (_pickSlot === 'me') ? info.coupleLeftUid : info.coupleRightUid;
+        var otherUid = (_pickSlot === 'me') ? info.coupleRightUid : info.coupleLeftUid;
+        var html = '<div class="rm-list">';
+        members.forEach(function (m) {
+            var name = m.nickname || m.name || m.uid;
+            var avatar = m.profileURL
+                ? '<img src="' + _escHtml(m.profileURL) + '" alt="" class="rm-avatar-img">'
+                : '<span class="rm-avatar-fallback">' + icon('user', 20) + '</span>';
+            var isCur = (curUid && curUid === m.uid);
+            var isOther = (otherUid && otherUid === m.uid); // 반대 슬롯에 이미 지정된 사람
+            var right = isCur
+                ? '<span class="cp-current">현재 지정</span>'
+                : (isOther ? '<span class="cp-other">반대편 지정됨</span>' : '<span class="cp-pick">선택 ›</span>');
+            html += '<button type="button" class="rm-item cp-item' + (isCur ? ' cp-sel' : '') + '" data-uid="' + _escHtml(m.uid) + '">' +
+                        '<span class="rm-avatar">' + avatar + '</span>' +
+                        '<span class="rm-name">' + _escHtml(name) + '</span>' +
+                        right +
+                    '</button>';
+        });
+        html += '</div>';
+        body.innerHTML = html;
+        body.querySelectorAll('.cp-item').forEach(function (btn) {
+            btn.addEventListener('click', function () { setCoupleSlot(_pickSlot, btn.getAttribute('data-uid')); });
+        });
+    }
+    function closeCouplePicker() {
+        var modal = document.getElementById('couple-pick-modal');
+        if (modal) modal.classList.add('hidden');
+        _pickSlot = null;
+    }
+    function setCoupleSlot(slot, uid) {
+        var info = Daylog.roomInfo || {};
+        var left = info.coupleLeftUid || null;
+        var right = info.coupleRightUid || null;
+        if (slot === 'me') {
+            left = uid;
+            if (right === uid) right = null; // 같은 사람이 양쪽에 지정되지 않도록
+        } else {
+            right = uid;
+            if (left === uid) left = null;
+        }
+        var roomId = getRoomId();
+        withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/couple`, {
+            method: 'PUT', headers: authHeaders(true),
+            body: JSON.stringify({ uid: getUid(), leftUid: left || '', rightUid: right || '' })
+        }), '저장 중...')
+            .then(handleResponse)
+            .then(room => {
+                Daylog.roomInfo = room;
+                closeCouplePicker();
+                showToast('저장되었어요');
+                loadProfiles(true); // 카드 즉시 반영
+            })
+            .catch(err => { showToast('저장 실패: ' + (err.message || '오류')); console.error(err); });
+    }
+    // 편집 버튼 / 모달 이벤트 바인딩
+    (function wireCoupleEdit() {
+        var em = document.getElementById('couple-edit-me');
+        var ep = document.getElementById('couple-edit-partner');
+        if (em) em.addEventListener('click', function (e) { e.stopPropagation(); openCouplePicker('me'); });
+        if (ep) ep.addEventListener('click', function (e) { e.stopPropagation(); openCouplePicker('partner'); });
+        var cc = document.getElementById('couple-pick-close');
+        if (cc) cc.addEventListener('click', closeCouplePicker);
+        var cm = document.getElementById('couple-pick-modal');
+        if (cm) cm.addEventListener('click', function (e) { if (e.target.id === 'couple-pick-modal') closeCouplePicker(); });
+    })();
+
+    // --- 내 정보 통계 클릭 → 해당 추억 목록 / D-Day 날짜 표시 ---
+    function buildStatList(kind) {
+        if (kind === 'total') return { title: '우리의 추억', items: [...memoryList].sort(sortByDateDesc) };
+        if (kind === 'me') {
+            const u = meUser && meUser.uid;
+            return { title: displayNameOf(meUser, '나') + '의 추억', items: memoryList.filter(m => m.ownerUid === u).sort(sortByDateDesc) };
+        }
+        if (kind === 'partner') {
+            const u = partnerUser && partnerUser.uid;
+            return { title: displayNameOf(partnerUser, '상대방') + '의 추억', items: memoryList.filter(m => m.ownerUid === u).sort(sortByDateDesc) };
+        }
+        return null;
+    }
+    function openStatList(kind) {
+        const b = buildStatList(kind);
+        if (!b) return;
+        Daylog._openListKind = kind; // 새로고침 시 같은 목록 재구성용
+        openMemoryListModal(b.title, b.items);
+    }
+
+    // 유저별 체크리스트 개수 표시 + 라벨
+    function updateChecklistStats() {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+        const meUid = meUser && meUser.uid;
+        const pUid = partnerUser && partnerUser.uid;
+        set('stat-cl-me-count', checklistList.filter(c => c.ownerUid === meUid).length);
+        set('stat-cl-partner-count', checklistList.filter(c => c.ownerUid === pUid).length);
+        const meLabel = document.getElementById('stat-cl-me-label');
+        const pLabel = document.getElementById('stat-cl-partner-label');
+        if (meLabel && meUser) meLabel.innerText = displayNameOf(meUser, '나') + '의 체크리스트';
+        if (pLabel && partnerUser) pLabel.innerText = displayNameOf(partnerUser, '상대방') + '의 체크리스트';
+    }
+    Daylog.updateChecklistStats = updateChecklistStats;
+
+    function openChecklistStatList(kind) {
+        const meUid = meUser && meUser.uid;
+        const pUid = partnerUser && partnerUser.uid;
+        let title, items;
+        if (kind === 'me') {
+            title = displayNameOf(meUser, '나') + '의 체크리스트';
+            items = checklistList.filter(c => c.ownerUid === meUid);
+        } else {
+            title = displayNameOf(partnerUser, '상대방') + '의 체크리스트';
+            items = checklistList.filter(c => c.ownerUid === pUid);
+        }
+        openChecklistListModal(title, [...items].sort(sortByDateDesc));
+    }
+
+    function bindStatClicks() {
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', fn); }
+        };
+        bind('stat-card-dday', () => { Daylog._openListKind = null; showDDayInfo(); });
+        bind('stat-card-total', () => openStatList('total'));
+        bind('stat-card-me', () => openStatList('me'));
+        bind('stat-card-partner', () => openStatList('partner'));
+        bind('stat-card-cl-me', () => openChecklistStatList('me'));
+        bind('stat-card-cl-partner', () => openChecklistStatList('partner'));
+    }
+    bindStatClicks();
+
+    // 첫 진입 시 프로필 로드
+    loadProfiles();
+    loadRoomInfo(false); // [smsong] 방 커플 슬롯/멤버 정보 로드 → 카드 반영
+
+    // 모달 바깥 클릭 시 닫기
+    document.getElementById('memory-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'memory-modal') closeMemoryModal();
+    });
+    document.getElementById('detail-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'detail-modal') closeDetailModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeLightbox(); closeEditPage(); closeMemoryModal(); closeDetailModal(); closeChecklistModal(); closeChecklistDetail(); }
+    });
+
+    // ===== 이미지 라이트박스 (확대 + 드래그) =====
+    const lbStage = document.getElementById('lightbox-stage');
+    const lbImg = document.getElementById('lightbox-img');
+    const lbHint = document.getElementById('lightbox-hint');
+
+    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+    const lbPrev = document.getElementById('lightbox-prev');
+    const lbNext = document.getElementById('lightbox-next');
+    if (lbPrev) lbPrev.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx - 1); });
+    if (lbNext) lbNext.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx + 1); });
+
+    // 이미지 탭 → 확대/축소 토글
+    lbImg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_lb.moved) { _lb.moved = false; return; }
+        if (_lb.scale === 1) { _lb.scale = 2.4; }
+        else { _lb.scale = 1; _lb.x = 0; _lb.y = 0; }
+        _lbApply();
+        if (lbHint) lbHint.style.opacity = (_lb.scale === 1) ? '1' : '0';
+    });
+
+    // 확대 상태에서 드래그하여 이동 / 기본 상태에서 좌우 스와이프로 이미지 전환
+    lbStage.addEventListener('pointerdown', (e) => {
+        _lb.swStartX = e.clientX; _lb.swStartY = e.clientY; _lb.swiping = (_lb.scale === 1);
+        if (_lb.scale === 1) return;
+        _lb.dragging = true; _lb.moved = false;
+        _lb.sx = e.clientX; _lb.sy = e.clientY; _lb.bx = _lb.x; _lb.by = _lb.y;
+        lbImg.classList.add('dragging');
+        try { lbStage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    lbStage.addEventListener('pointermove', (e) => {
+        if (!_lb.dragging) return;
+        const dx = e.clientX - _lb.sx, dy = e.clientY - _lb.sy;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _lb.moved = true;
+        _lb.x = _lb.bx + dx; _lb.y = _lb.by + dy; _lbApply();
+    });
+    function _lbEndDrag(e) {
+        _lb.dragging = false; lbImg.classList.remove('dragging');
+        // 기본 상태 좌우 스와이프 → 이전/다음 이미지
+        if (_lb.swiping && _lb.list && _lb.list.length > 1) {
+            const dx = e.clientX - _lb.swStartX, dy = e.clientY - _lb.swStartY;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+                _lb.moved = true; // 스와이프를 탭으로 오인하지 않도록
+                if (dx < 0) _lbShow(_lb.idx + 1); else _lbShow(_lb.idx - 1);
+            }
+        }
+        _lb.swiping = false;
+    }
+    lbStage.addEventListener('pointerup', _lbEndDrag);
+    lbStage.addEventListener('pointercancel', _lbEndDrag);
+
+    // 이미지 밖(배경) 탭 → 닫기
+    lbStage.addEventListener('click', (e) => {
+        if (e.target === lbImg) return;
+        if (_lb.moved) { _lb.moved = false; return; }
+        closeLightbox();
+    });
+
+    // 미리보기(작성 폼) 클릭 → 자르기/회전 편집기 / 상세 이미지 클릭 → 라이트박스
+    const previewImg = document.getElementById('image-preview');
+    if (previewImg) previewImg.addEventListener('click', function () {
+        if (selectedFile) openPhotoEditor(selectedFile, applyEditedPhoto);
+        else if (this.src) openLightbox(this.src, this);
+    });
+    const detailImg = document.getElementById('detail-image');
+    if (detailImg) detailImg.addEventListener('click', function () { if (this.src) openLightbox(this.src, this); });
+
+    // 편집기에서 적용된 사진을 작성 폼에 반영
+    function applyEditedPhoto(file) {
+        if (!file) return;
+        selectedFile = file;
+        const preview = document.getElementById('image-preview');
+        if (preview) {
+            const url = URL.createObjectURL(file);
+            preview.src = url;
+            preview.classList.remove('hidden');
+        }
+        showToast('편집한 사진을 적용했습니다');
+    }
+
+    // ===== 사진 편집기(자르기/회전) 이벤트 =====
+    const peStage = document.getElementById('pe-stage');
+    const peCrop = document.getElementById('pe-crop');
+    if (document.getElementById('pe-cancel')) document.getElementById('pe-cancel').addEventListener('click', closePhotoEditor);
+    if (document.getElementById('pe-apply')) document.getElementById('pe-apply').addEventListener('click', peApply);
+    if (document.getElementById('pe-rotate')) document.getElementById('pe-rotate').addEventListener('click', peRotate);
+    if (document.getElementById('pe-reset')) document.getElementById('pe-reset').addEventListener('click', () => peLayout(true));
+
+    if (peStage && peCrop) {
+        // 핸들(모서리) → 리사이즈 / 박스 본문 → 이동
+        peCrop.querySelectorAll('.pe-handle').forEach(h => {
+            h.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                _ped.drag = { mode: 'resize', corner: h.getAttribute('data-corner'), sx: e.clientX, sy: e.clientY, box0: { ..._ped.crop } };
+                try { peStage.setPointerCapture(e.pointerId); } catch (_) {}
+            });
+        });
+        peCrop.addEventListener('pointerdown', (e) => {
+            if (e.target.classList.contains('pe-handle')) return;
+            _ped.drag = { mode: 'move', sx: e.clientX, sy: e.clientY, box0: { ..._ped.crop } };
+            try { peStage.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+        peStage.addEventListener('pointermove', (e) => {
+            if (!_ped.drag) return;
+            const dx = e.clientX - _ped.drag.sx, dy = e.clientY - _ped.drag.sy;
+            const b0 = _ped.drag.box0;
+            if (_ped.drag.mode === 'move') {
+                _ped.crop.x = b0.x + dx;
+                _ped.crop.y = b0.y + dy;
+            } else {
+                const co = _ped.drag.corner;
+                if (co === 'nw') { _ped.crop.x = b0.x + dx; _ped.crop.y = b0.y + dy; _ped.crop.w = b0.w - dx; _ped.crop.h = b0.h - dy; }
+                else if (co === 'ne') { _ped.crop.y = b0.y + dy; _ped.crop.w = b0.w + dx; _ped.crop.h = b0.h - dy; }
+                else if (co === 'sw') { _ped.crop.x = b0.x + dx; _ped.crop.w = b0.w - dx; _ped.crop.h = b0.h + dy; }
+                else if (co === 'se') { _ped.crop.w = b0.w + dx; _ped.crop.h = b0.h + dy; }
+            }
+            peClampCrop();
+            peApplyCropStyle();
+        });
+        const peEnd = (e) => { _ped.drag = null; try { peStage.releasePointerCapture(e.pointerId); } catch (_) {} };
+        peStage.addEventListener('pointerup', peEnd);
+        peStage.addEventListener('pointercancel', peEnd);
+    }
+
+    // ===== 사진 편집(크롭/줌) 이벤트 =====
+    const cropStage = document.getElementById('crop-stage');
+    // [B] edit by smsong - 프로필 사진 편집 취소(X) 시 갤러리를 다시 열어 바로 재선택 가능하게
+    document.getElementById('crop-cancel').addEventListener('click', () => {
+        const _src = _crop.sourceInput;
+        closeCropper();
+        if (_src) { try { _src.value = ''; _src.click(); } catch (_) {} }
+    });
+    // [E] edit by smsong
+    document.getElementById('crop-apply').addEventListener('click', cropApply);
+    document.getElementById('crop-zoom').addEventListener('input', (e) => setCropZoom(parseFloat(e.target.value)));
+
+    cropStage.addEventListener('pointerdown', (e) => {
+        _crop.dragging = true; _crop.sx = e.clientX; _crop.sy = e.clientY;
+        _crop.bx = _crop.x; _crop.by = _crop.y;
+        try { cropStage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    cropStage.addEventListener('pointermove', (e) => {
+        if (!_crop.dragging) return;
+        _crop.x = _crop.bx + (e.clientX - _crop.sx);
+        _crop.y = _crop.by + (e.clientY - _crop.sy);
+        applyCropTransform();
+    });
+    const endCropDrag = () => { _crop.dragging = false; };
+    cropStage.addEventListener('pointerup', endCropDrag);
+    cropStage.addEventListener('pointercancel', endCropDrag);
+    cropStage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        setCropZoom(Math.min(3, Math.max(1, _crop.zoom + (e.deltaY < 0 ? 0.1 : -0.1))));
+    }, { passive: false });
+});
+
+// ==========================================
+// 3. UI 제어 유틸
+// ==========================================
+function openMemoryModal() {
+    const modal = document.getElementById('memory-modal');
+    modal.classList.remove('hidden');
+    const d = document.getElementById('memory-date');
+    if (!d.value) d.value = new Date().toISOString().substring(0, 10);
+    // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력 (비어 있을 때만)
+    const titleEl = document.getElementById('memory-title');
+    if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
+        titleEl.value = window._pendingPlaceTitle;
+    }
+    window._pendingPlaceTitle = '';
 }
 
+function closeMemoryModal() {
+    document.getElementById('memory-modal').classList.add('hidden');
+    document.getElementById('memory-form').reset();
+    document.getElementById('image-preview').classList.add('hidden');
+    if (window._memCreateMgr) window._memCreateMgr.reset([]);
+    const rt = document.getElementById('btn-retake-photo');
+    if (rt) rt.classList.add('hidden');
+    const lm = document.getElementById('location-mode');
+    if (lm) lm.classList.add('hidden');
+}
+
+// ====== 가볼곳(체크리스트) 모달 ======
+function openChecklistModal() {
+    const modal = document.getElementById('checklist-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    if (typeof window._openChecklistForm === 'function') window._openChecklistForm();
+}
+
+function closeChecklistModal() {
+    const modal = document.getElementById('checklist-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    const form = document.getElementById('checklist-form');
+    if (form) form.reset();
+    window._clSelectedType = null;
+    document.querySelectorAll('#cl-type-options .cl-type-chip').forEach(c => c.classList.remove('selected'));
+    const vd = document.getElementById('cl-visited-date');
+    if (vd) vd.disabled = true;
+    const clChk = document.getElementById('cl-visited');
+    if (clChk) { clChk.checked = false; const lbl = clChk.closest('.cl-check-label'); if (lbl) lbl.classList.remove('checked'); }
+    const lm = document.getElementById('location-mode');
+    if (lm) lm.classList.add('hidden');
+}
+
+let _detailChecklist = null;
+
+function openChecklistDetail(item, overModal) {
+    _detailChecklist = item;
+    document.getElementById('checklist-detail-modal').classList.toggle('over-modal', !!overModal); // [smsong] 목록 모달 위로 올릴지
+    const view = document.getElementById('cl-detail-view');
+    const editForm = document.getElementById('cl-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+
+    const meta = checklistType(item.type);
+    const isOwner = !!(item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid);
+    const canManage = canManageObject(item); // [smsong] 소유자 또는 커플(송성민/강미르)
+    const loc = [item.placeName, item.address].filter(Boolean).join(' ');
+    const contentHtml = escapeHtml(item.content || '').replace(/\n/g, '<br>');
+
+    // 작성자(= 만든 사람) 정보
+    const author = (Daylog.usersByUid && Daylog.usersByUid[item.ownerUid]) || null;
+    let authorName = '';
+    if (author) {
+        authorName = (author.nickname && String(author.nickname).trim())
+            ? author.nickname
+            : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(author.name) : (author.name || ''));
+    }
+    const authorPhoto = (author && author.profileURL) ? author.profileURL : DEFAULT_AVATAR;
+
+    const visitedHtml = item.visited
+        ? '<span class="meta-item cl-meta-visited">' + icon('check',13) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
+        : '<span class="meta-item cl-meta-todo">아직 안 가봤습니다</span>';
+    const _clUrls = mediaUrlsOf(item);
+    // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거: 캐러셀이 첫 장만 즉시, 나머지는 lazy → 개수 무관 즉시 표시
+    const imageHtml = carouselHtml(_clUrls);
+
+    view.innerHTML =
+        '<div class="detail-container">' +
+        '<div class="detail-header">' +
+        '<span class="cl-type-tag cl-type-tag-lg" style="--cl-color:' + meta.color + '">' + meta.emoji + ' ' + meta.label + '</span>' +
+        '<h2 class="detail-title">' + escapeHtml(item.title || '') + '</h2>' +
+        '<div class="detail-author">' +
+        '<div class="da-avatar" id="cl-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
+        '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
+        '</div>' +
+        '<div class="detail-meta">' +
+        visitedHtml +
+        (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</span>' : '') +
+        '</div>' +
+        '</div>' +
+        editedByHtml(item) + // [smsong] 마지막 수정 일시/수정자
+        imageHtml +
+        (item.content ? '<div class="detail-body"><p>' + contentHtml + '</p></div>' : '') +
+        // [smsong] 가볼곳 댓글 영역 (추억과 동일, id는 cl- 접두어로 분리)
+        '<div class="comments-section">' +
+        '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="cl-comments-count">0</span></div>' +
+        '<div class="comments-list" id="cl-comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
+        '<div class="comment-compose">' +
+        '<input type="text" class="comment-input" id="cl-new-comment-input" placeholder="댓글을 남겨보십시오" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" id="cl-new-comment-send">등록</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+
+    const headerActions = document.getElementById('cl-detail-header-actions');
+    if (headerActions) {
+        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만
+        headerActions.innerHTML =
+            (canManage ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">' + icon('edit',16) + '</button>' : '') +
+            (canTrashObject(item) ? '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">' + icon('trash',16) + '</button>' : '');
+    }
+
+    bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
+    const av = document.getElementById('cl-author-avatar');
+    if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
+    const locEl = document.getElementById('cl-detail-loc');
+    if (locEl && item.lat != null && item.lng != null) {
+        locEl.addEventListener('click', () => Daylog.focusChecklistOnMap && Daylog.focusChecklistOnMap(item));
+    }
+    const eo = document.getElementById('cl-detail-edit-open');
+    if (eo) eo.addEventListener('click', () => enterChecklistEdit(item));
+    const dl = document.getElementById('cl-detail-del-open');
+    if (dl) dl.addEventListener('click', () => trashChecklist(item.id));
+
+    // [smsong] 가볼곳 댓글 작성 바인딩 + 로드
+    const clSend = document.getElementById('cl-new-comment-send');
+    const clInput = document.getElementById('cl-new-comment-input');
+    if (clSend) clSend.addEventListener('click', () => submitComment('checklist', item.id, null, 'cl-new-comment-input'));
+    if (clInput) clInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitComment('checklist', item.id, null, 'cl-new-comment-input'); }
+    });
+    loadComments('checklist', item.id);
+
+    const cdm = document.getElementById('checklist-detail-modal');
+    const cdmScroll = cdm.querySelector('.sheet-body');
+    if (cdmScroll) cdmScroll.scrollTop = 0;
+    _getChecklistSheet().open('full');       // [smsong] 바텀시트로 열기(완전히 위)
+}
+
+function enterChecklistEdit(item) {
+    if (_clSheet) _clSheet.snap('full', true); // [smsong] 편집 시 시트를 완전히 위로
+    const view = document.getElementById('cl-detail-view');
+    const editForm = document.getElementById('cl-edit-form');
+    if (!editForm) return;
+
+    // 위치(수정 불가) 표시
+    const loc = [item.placeName, item.address].filter(Boolean).join(' ');
+    const locEl = document.getElementById('cl-edit-loc');
+    if (locEl) locEl.innerHTML = loc ? pinText(loc) : pinText('위치');
+
+    // 타입 칩 선택 반영
+    window._clEditSelectedType = item.type || 'ETC';
+    document.querySelectorAll('#cl-edit-type-options .cl-type-chip').forEach(c => {
+        c.classList.toggle('selected', c.dataset.type === window._clEditSelectedType);
+    });
+
+    // 사진 편집 그리드 시드 (기존 이미지 → url 항목)
+    if (window._clEditMgr) {
+        const urls = mediaUrlsOf(item);
+        window._clEditMgr.reset(urls.map(u => ({ kind: 'url', url: u })));
+    }
+
+    document.getElementById('cl-edit-title').value = item.title || '';
+    document.getElementById('cl-edit-content').value = item.content || '';
+    const chk = document.getElementById('cl-edit-visited');
+    const date = document.getElementById('cl-edit-visited-date');
+    chk.checked = !!item.visited;
+    date.disabled = !item.visited;
+    date.value = item.visitedDate ? String(item.visitedDate).substring(0, 10) : '';
+    const editLbl = chk.closest('.cl-check-label');
+    if (editLbl) editLbl.classList.toggle('checked', !!item.visited);
+
+    if (view) view.classList.add('hidden');
+    editForm.classList.remove('hidden');
+}
+
+function exitChecklistEdit() {
+    // [smsong] 위치 재설정 복귀 중에는 초기화하지 않음(복귀 시 새 위치 유지)
+    if (!window._editLocRestoring) _editLocPicked = null;
+    const view = document.getElementById('cl-detail-view');
+    const editForm = document.getElementById('cl-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+}
+
+// 가볼곳을 '다녀옴'으로 표시하면 동일 위치/제목/내용/이미지로 추억을 자동 생성
+// (이미지는 이미 업로드된 URL을 mediaOrder로 그대로 재사용 → 재업로드 없음)
+function createMemoryFromChecklist(cl) {
+    if (!cl || cl.lat == null || cl.lng == null) return Promise.resolve();
+    const urls = mediaUrlsOf(cl);
+    const dateStr = cl.visitedDate ? String(cl.visitedDate).substring(0, 10) : new Date().toISOString().substring(0, 10);
+    const memoryData = {
+        title: cl.title || '',
+        content: cl.content || '',
+        lat: cl.lat,
+        lng: cl.lng,
+        placeName: cl.placeName || '',
+        address: cl.address || '',
+        createdAt: dateStr + 'T00:00:00',
+        mediaOrder: urls
+    };
+    const fd = new FormData();
+    fd.append('uid', Daylog.currentUid);
+    fd.append('memoryData', JSON.stringify(memoryData));
+    // mediaData(새 파일) 없음 → 백엔드가 mediaOrder의 기존 URL을 그대로 보존
+    return fetch(`${Daylog.api}/api/memories`, { method: 'POST', headers: Daylog.authHeaders(false), body: fd })
+        .then(Daylog.handleResponse)
+        .then(function (created) {
+            // [B] edit by smsong - #5 가볼곳 댓글(+답글)을 새 추억으로 이동
+            if (created && created.id && cl.id) {
+                return fetch(`${Daylog.api}/comment/move?fromChecklist=${cl.id}&toMemory=${created.id}`,
+                    { method: 'POST', headers: Daylog.authHeaders(true) })
+                    .then(Daylog.handleResponse).catch(function () {})
+                    .then(function () { return created; });
+            }
+            return created;
+        });
+}
+
+// [B] edit by smsong - 가볼곳 '다녀옴' 추억 자동 생성 시 중복 방지
+//  가볼곳의 위치(lat/lng)는 수정할 수 없으므로, '동일 위치 + 동일 제목'의 추억을 같은 오브젝트로 간주한다.
+//  이미 존재하면 새로 만들지 않아, 안가봄<->갔다왔습니다 토글을 반복해도 추억이 중복 생성되지 않는다.
+function ensureMemoryForChecklist(cl) {
+    if (!cl || cl.lat == null || cl.lng == null) return Promise.resolve(false);
+    const sameObject = (m) =>
+        m && m.lat != null && m.lng != null &&
+        Math.abs(Number(m.lat) - Number(cl.lat)) < 1e-6 &&
+        Math.abs(Number(m.lng) - Number(cl.lng)) < 1e-6 &&
+        String(m.title || '').trim() === String(cl.title || '').trim();
+    return fetch(`${Daylog.api}/api/memories/${Daylog.currentUid}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then((list) => {
+            if ((list || []).some(sameObject)) return false; // 동일 추억이 이미 있음 -> 생성 안 함
+            return createMemoryFromChecklist(cl).then(() => true);
+        })
+        .catch(() => createMemoryFromChecklist(cl).then(() => true)); // 목록 조회 실패 시 기존 동작 유지
+}
+// [E] edit by smsong
+
+function saveChecklistEdit() {
+    const item = _detailChecklist;
+    if (!item) return;
+    const wasVisited = !!item.visited; // 수정 전 방문여부 (새로 체크된 경우에만 추억 생성)
+    const title = document.getElementById('cl-edit-title').value.trim();
+    if (!title) { showToast('제목을 입력해주십시오'); return; }
+    const visited = document.getElementById('cl-edit-visited').checked;
+    const visitedDate = document.getElementById('cl-edit-visited-date').value;
+    const mgr = window._clEditMgr;
+    const order = mgr ? mgr.getMediaOrder() : null;
+    const newFiles = mgr ? mgr.getNewFiles() : [];
+    if (visited && (!order || order.length === 0)) { showToast('다녀온 곳은 사진을 1장 이상 첨부해주십시오'); return; }
+    if (order && order.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); return; }
+    const dto = {
+        title: title,
+        content: document.getElementById('cl-edit-content').value,
+        type: window._clEditSelectedType || item.type || 'ETC',
+        visited: visited,
+        visitedDate: (visited && visitedDate) ? visitedDate : null,
+        mediaOrder: order
+    };
+    // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
+    if (_editLocPicked) {
+        dto.lat = _editLocPicked.lat;
+        dto.lng = _editLocPicked.lng;
+        dto.placeName = _editLocPicked.placeName || '';
+        dto.address = _editLocPicked.address || '';
+    }
+    // [E] edit by smsong
+    const fd = new FormData();
+    fd.append('checklistData', JSON.stringify(dto));
+    newFiles.forEach(f => fd.append('mediaData', f));
+
+    const btn = document.querySelector('#cl-edit-form .submit-btn');
+    if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
+
+    withLoading(fetch(`${Daylog.api}/api/checklists/${item.id}`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(false), // FormData → Content-Type 자동 설정
+        body: fd
+    }), '수정 중...')
+        .then(Daylog.handleResponse)
+        .then((updated) => {
+            _editLocPicked = null; // [smsong] 수정 위치 소비
+            closeChecklistDetail();
+            // [B] edit by smsong - 처음으로 '다녀옴'이 되면 추억으로 기록하고 가볼곳은 제거(추억으로 이동)
+            if (updated && updated.visited && !wasVisited) {
+                ensureMemoryForChecklist(updated)
+                    .then((made) => { showToast('다녀온 곳이라 추억으로 옮겼어요'); })
+                    .then(() => trashChecklistQuietly(updated.id)) // 원본 가볼곳 제거
+                    .catch(err => console.warn('추억 이동 실패', err))
+                    .finally(() => {
+                        // [B] edit by smsong - #3 추억/가볼곳 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
+                        Promise.all([loadMemoriesFromServer(), loadChecklistsFromServer()]).then(function () {
+                            if (mapMode !== 'memory') setMapMode('memory'); else refreshMapMarkers();
+                        });
+                    });
+            } else {
+                showToast('수정 완료');
+                Daylog.reloadChecklists();
+            }
+            // [E] edit by smsong
+        })
+        .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주십시오.'); })
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
+}
+
+// [B] edit by smsong - '다녀옴' 추억 자동생성 후 원본 가볼곳을 조용히 휴지통으로 제거(확인창/토스트 없음).
+//  추억은 같은 이미지 URL 을 참조하고, 휴지통/영구삭제는 GCS 원본을 지우지 않으므로 이미지 유실 없음.
+function trashChecklistQuietly(id) {
+    if (id == null) return Promise.resolve();
+    return fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse).catch(() => {});
+}
+
+function trashChecklist(id) {
+    if (!confirm('이 가볼곳을 휴지통으로 옮기시겠습니까?')) return;
+    withLoading(fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '휴지통으로 이동 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('휴지통으로 이동했습니다'); closeChecklistDetail(); Daylog.reloadChecklists(); })
+        .catch(err => { console.error(err); showToast('이동 실패. 다시 시도해주십시오.'); });
+}
+
+function closeChecklistDetail() {
+    _getChecklistSheet().close();  // [smsong] 정리는 onClosed 콜백에서
+}
+
+let _detailMemory = null;
+// [B] edit by smsong - 추억/가볼곳 '수정' 중 새로 고른 위치(없으면 원본 유지). 저장 함수(최상위)와 위치선택(클로저)이 공유하므로 최상위에 선언
+let _editLocPicked = null; // { lat, lng, placeName, address } | null
+// [E] edit by smsong
+
 // =====================================================
-// BOTTOM SHEET — 네이버 지도 스타일(손가락을 따라 부드럽게 + 스냅)
-//  스냅 지점: full(전체) → half(약 2/3 지점에서 걸림) → closed(완전히 내려감)
+// [smsong] 상세보기 바텀시트 (REMS 방식 이식)
+//  스냅: full(완전히 위) → one(1/3) → closed(완전히 아래=닫힘)
+//  드래그 영역: 핸들 + 헤더 / 본문(.sheet-body)은 자유 스크롤
 // =====================================================
-const Sheet = (function () {
-    const el = document.getElementById('bottom-sheet');
-    const handle = document.getElementById('sheet-handle');
-    const header = document.getElementById('sheet-header');
+function createDetailSheet(modalId, onClosed) {
+    const modal = document.getElementById(modalId);
+    const content = modal.querySelector('.detail-content');
+    const handle = modal.querySelector('.sheet-handle');
+    const header = modal.querySelector('.detail-modal-header');
+    let current = 'closed';
+    let dragging = false, startY = 0, startPx = 0, lastY = 0, lastT = 0, vel = 0;
+    let closeTimer = null;
 
-    let mode = 'building';     // 'building' | 'tab'
-    let current = 'closed';    // 'full' | 'half' | 'peek' | 'closed'
-    let dragging = false;
-    let startY = 0, startPx = 0, lastY = 0, lastT = 0, vel = 0;
-
-    const PEEK = 156;          // peek 상태에서 화면에 남겨둘 시트 높이(px) — "위에 살짝만"
-
-    // 시트 높이/화면 높이를 기준으로 각 스냅 지점의 translateY(px)를 계산
+    function A() { return window.innerHeight || document.documentElement.clientHeight; }
+    function H() { return content.offsetHeight || A() * 0.88; }
     function metrics() {
-        const A = (el.parentElement && el.parentElement.clientHeight) || window.innerHeight;
-        const H = el.offsetHeight || A * 0.88;
+        const a = A(), h = H();
         return {
-            full: 0,                                         // 맨 위로 올라온 상태
-            half: Math.max(0, Math.round(H - A * 0.45)),     // 중간 지점에서 걸림
-            peek: Math.max(0, Math.round(H - PEEK)),         // 아래로 다 내려도 살짝 남김(완전히 안 닫힘)
-            closed: Math.round(H + 24)                        // 완전히 숨김(몰입모드/초기 진입 애니메이션용)
+            full: 0,                                    // 완전히 위
+            one:  Math.max(0, Math.round(h - a * 0.34)),// 1/3 노출
+            closed: Math.round(h + 40)                  // 완전히 아래(숨김)
         };
     }
-    function curTranslate() {
-        const m = /translateY\(([-0-9.]+)px\)/.exec(el.style.transform || '');
+    function curPx() {
+        const m = /translateY\(([-0-9.]+)px\)/.exec(content.style.transform || '');
         return m ? parseFloat(m[1]) : metrics()[current];
     }
     function apply(px, animate) {
-        el.style.transition = animate
-            ? 'transform 0.42s cubic-bezier(0.32,0.72,0,1)'   // 부드러운 감속(네이버 느낌)
-            : 'none';
-        el.style.transform = 'translateY(' + px + 'px)';
+        content.style.transition = animate ? 'transform 0.42s cubic-bezier(0.32,0.72,0,1)' : 'none';
+        content.style.transform = 'translateY(' + px + 'px)';
     }
     function snap(name, animate) {
         current = name;
         apply(metrics()[name], animate !== false);
-        el.classList.toggle('sheet-open', name !== 'closed');
+        if (name === 'closed') {
+            clearTimeout(closeTimer);
+            closeTimer = setTimeout(() => {
+                if (current !== 'closed') return;
+                modal.classList.add('hidden');
+                if (typeof onClosed === 'function') onClosed();
+            }, animate !== false ? 380 : 0);
+        }
     }
-
-    function open(m, target) {
-        mode = m;
-        el.dataset.mode = m;
-        setImmersive(false);                       // 시트가 열리면 상/하단 UI는 보이게
+    function open(target) {
+        clearTimeout(closeTimer);
         target = target || 'full';
-        if (current === 'closed') {
-            apply(metrics().closed, false);        // 아래에서 시작
-            void el.offsetHeight;                  // reflow → 진입 애니메이션 보장
-            requestAnimationFrame(() => snap(target, true));
-        } else {
-            snap(target, true);
+        dragging = false;                 // [smsong] 이전 드래그 상태 강제 해제
+        modal.classList.remove('hidden');
+        const sb = content.querySelector('.sheet-body');
+        if (sb) sb.scrollTop = 0;         // [smsong] 본문 스크롤도 항상 맨 위로
+        // [smsong] 오브젝트 간 이동/화면 이동 시 항상 완전히 아래에서 시작 → 완전히 위(첫 페이지)로 초기화
+        current = 'closed';
+        content.style.transition = 'none';
+        content.style.transform = 'translateY(' + metrics().closed + 'px)';
+        void content.offsetHeight;        // reflow → 닫힘 위치 확정
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => snap(target, true));  // 이중 rAF로 확실히 애니메이션 재생
+        });
+        // [smsong] 드래그 가능 힌트: 핸들을 잠깐 튕김(유한)
+        if (handle) {
+            handle.classList.remove('hinting');
+            void handle.offsetWidth;
+            handle.classList.add('hinting');
+            setTimeout(() => handle.classList.remove('hinting'), 2000);
         }
     }
-    // 아래로 다 내려도 완전히 닫지 않고 peek(살짝 남김)으로 — 사용중인 폼이 사라지지 않게
-    function collapse() {
-        if (current === 'closed') {
-            apply(metrics().closed, false);
-            void el.offsetHeight;
-            requestAnimationFrame(() => snap('peek', true));
-        } else {
-            snap('peek', true);
-        }
-        // peek은 '닫힘'이 아니므로 currentBuilding(사용중인 폼 컨텍스트)을 유지한다
-    }
-    // 화면 밖으로 완전히 숨김(위치설정/몰입모드 전환 등 특수한 경우만)
-    function hardClose() {
-        snap('closed', true);
-        currentBuilding = null;
-    }
-    function dismiss() { collapse(); }            // 호환용: dismiss=peek로 수렴
-    function isOpen() { return current === 'full' || current === 'half'; }  // 펼쳐진 상태만 '열림'
-    function isPeek() { return current === 'peek'; }
+    function close() { snap('closed', true); }
 
-    // ---------- 드래그(터치/마우스 공용) ----------
     function down(e) {
         dragging = true;
         startY = lastY = (e.touches ? e.touches[0].clientY : e.clientY);
-        lastT = Date.now(); vel = 0;
-        startPx = curTranslate();
-        el.style.transition = 'none';              // 드래그 중엔 손가락을 1:1로 따라오게
+        lastT = Date.now(); vel = 0; startPx = curPx();
+        content.style.transition = 'none';
         document.body.style.userSelect = 'none';
     }
     function move(e) {
         if (!dragging) return;
         const y = (e.touches ? e.touches[0].clientY : e.clientY);
-        const max = metrics().peek;                // 아래로는 peek까지만(완전히 안 닫힘)
-        const px = Math.max(0, Math.min(startPx + (y - startY), max));
-        el.style.transform = 'translateY(' + px + 'px)';
+        const m = metrics();
+        const px = Math.max(0, Math.min(startPx + (y - startY), m.closed));
+        content.style.transform = 'translateY(' + px + 'px)';
         const now = Date.now(), dt = now - lastT;
-        if (dt > 0) vel = (y - lastY) / dt;        // +면 아래 방향 속도
+        if (dt > 0) vel = (y - lastY) / dt;
         lastY = y; lastT = now;
         if (e.cancelable) e.preventDefault();
     }
     function up() {
         if (!dragging) return;
-        dragging = false;
-        document.body.style.userSelect = '';
-        const m = metrics();
-        const pos = curTranslate();
-        const TH = 0.55;                            // 플릭 속도 임계값(px/ms)
+        dragging = false; document.body.style.userSelect = '';
+        const m = metrics(), pos = curPx(), TH = 0.55;
         let target;
-        if (vel > TH) {                             // 아래로 빠르게 → 한 단계 내림(최하단은 peek)
-            target = current === 'full' ? 'half' : 'peek';
-        } else if (vel < -TH) {                     // 위로 빠르게 → 한 단계 올림
-            target = current === 'peek' ? 'half' : 'full';
-        } else {                                    // 천천히 놓으면 가장 가까운 지점으로 스냅
-            const cand = (m.half > 4 && m.half < m.peek - 4)
-                ? ['full', 'half', 'peek'] : ['full', 'peek'];
-            target = cand.reduce((a, b) =>
-                Math.abs(m[b] - pos) < Math.abs(m[a] - pos) ? b : a, cand[0]);
+        if (vel > TH) {          // 아래로 플릭 → 한 단계 내림 (완전히 위→1/3, 그 아래는 닫힘)
+            target = current === 'full' ? 'one' : 'closed';
+        } else if (vel < -TH) {  // 위로 플릭 → 완전히 위로
+            target = 'full';
+        } else {                 // 천천히 놓으면 가장 가까운 스냅 (2/3 지점 제거)
+            const cand = ['full', 'one', 'closed'];
+            target = cand.reduce((a, b) => Math.abs(m[b] - pos) < Math.abs(m[a] - pos) ? b : a, cand[0]);
         }
         snap(target, true);
     }
@@ -2026,2866 +4474,1517 @@ const Sheet = (function () {
     window.addEventListener('mousemove', move);
     window.addEventListener('touchend', up);
     window.addEventListener('mouseup', up);
-    window.addEventListener('resize', () => { if (isOpen()) snap(current, false); });
+    window.addEventListener('resize', () => { if (current !== 'closed') snap(current, false); });
 
-    return { open, collapse, dismiss, hardClose, snap, isOpen, isPeek };
-})();
-
-// 기존 호출부 호환: ''=peek(살짝 남김), 'full'=탭 시트, 그 외('center'/'half'/'peek')=건물 상세
-function showSheet(state_) {
-    if (!state_) { Sheet.collapse(); return; }   // 완전히 닫지 않고 peek
-    if (state_ === 'full') { Sheet.open('tab', 'full'); return; }
-    Sheet.open('building', 'full');
+    return { open, close, snap, isOpen: () => current !== 'closed' };
 }
-function closeSheet() {
-    // ✕(닫기)도 완전히 닫지 않고 목록을 살짝 남긴 peek 상태로
-    markTab('map');
-    showBuildingList();
-    Sheet.collapse();
-    currentBuilding = null;
+let _memorySheet = null, _clSheet = null;
+function _getMemorySheet() {
+    if (!_memorySheet) _memorySheet = createDetailSheet('detail-modal', () => {
+        const ha = document.getElementById('detail-header-actions'); if (ha) ha.innerHTML = '';
+        exitDetailEdit();
+        _detailMemory = null;
+    });
+    return _memorySheet;
+}
+function _getChecklistSheet() {
+    if (!_clSheet) _clSheet = createDetailSheet('checklist-detail-modal', () => {
+        const ha = document.getElementById('cl-detail-header-actions'); if (ha) ha.innerHTML = '';
+        exitChecklistEdit();
+        _detailChecklist = null;
+    });
+    return _clSheet;
 }
 
-function showBuildingList() {
-    hideSheetBack('sheet');
-    if (!myPerms().canRead) {
-        document.getElementById('sheet-title').textContent = '조회 권한 없음';
-        document.getElementById('sheet-subtitle').textContent = '관리자에게 조회 권한을 요청하세요';
-        document.getElementById('sheet-body').innerHTML =
-            `<div class="empty-state"><div class="empty-state-icon">${icon('lock',56,'color:#9ca3af;')}</div>` +
-            `<div class="empty-state-title">조회 권한이 없습니다</div>` +
-            `<div class="empty-state-sub">관리자가 조회 권한을 켜면 목록이 표시됩니다</div></div>`;
-        return;
+function openDetailModal(memory, overModal) {
+    _detailMemory = memory;
+    document.getElementById('detail-modal').classList.toggle('over-modal', !!overModal); // [smsong] 목록 모달 위로 올릴지
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+
+    const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+    const _memUrls = mediaUrlsOf(memory);
+    // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거 → 캐러셀 lazy 로 위임 (이미지 많아도 즉시 열림)
+    const imageHtml = carouselHtml(_memUrls);
+    const isOwner = !!(memory.ownerUid && Daylog.currentUid && memory.ownerUid === Daylog.currentUid);
+    const canManage = canManageObject(memory); // [smsong] 소유자 또는 커플(송성민/강미르)
+    const contentHtml = escapeHtml(memory.content || '').replace(/\n/g, '<br>');
+
+    // 작성자 정보 (2인 전용 — usersByUid 에서 조회)
+    const author = (Daylog.usersByUid && Daylog.usersByUid[memory.ownerUid]) || null;
+    let authorName = '';
+    if (author) {
+        authorName = (author.nickname && String(author.nickname).trim())
+            ? author.nickname
+            : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(author.name) : (author.name || ''));
     }
-    let list = state.buildings.filter(matchesFilter);
-    if (listMineOnly) list = list.filter(isMine);           // 내 목록: 내 건물만
-    const dealName = DEAL_LABEL[activeFilter];
-    const baseTitle = listMineOnly ? '내 건물 목록' : '핵방 보기';
-    document.getElementById('sheet-title').textContent = dealName ? `${dealName} 매물` : baseTitle;
-    document.getElementById('sheet-subtitle').textContent =
-        (activeFilter === 'all')
-            ? (listMineOnly ? `내 건물 ${list.length}개` : `총 ${state.buildings.length}개 건물`)
-            : `${list.length}개 매물 (필터 적용중)`;
+    const authorPhoto = (author && author.profileURL) ? author.profileURL : DEFAULT_AVATAR;
+    const authorHtml =
+        '<div class="detail-author">' +
+        '<div class="da-avatar" id="detail-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
+        '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
+        '</div>';
 
-    const body = document.getElementById('sheet-body');
-    if (list.length === 0) {
-        const msg = state.buildings.length === 0 ? '등록된 건물이 없습니다' : '조건에 맞는 매물이 없습니다';
-        const sub = state.buildings.length === 0 ? '+ 버튼을 눌러 첫 번째 건물을 추가해보세요' : '상단 필터를 바꿔보세요';
-        body.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">${icon('building',56,'color:#9ca3af;')}</div>
-      <div class="empty-state-title">${msg}</div>
-      <div class="empty-state-sub">${sub}</div>
-    </div>`;
-        return;
-    }
+    view.innerHTML =
+        '<div class="detail-container">' +
+        '<div class="detail-header">' +
+        '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
+        authorHtml +
+        '<div class="detail-meta">' +
+        '<span class="meta-item">' + icon('calendar',13) + ' ' + escapeHtml(dateStr) + '</span>' +
+        '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin',13) + ' 위치 확인 중…</span>' +
+        '</div>' +
+        '</div>' +
+        editedByHtml(memory) + // [smsong] 마지막 수정 일시/수정자
+        imageHtml +
+        '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
+        // 댓글 영역
+        '<div class="comments-section">' +
+        '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
+        '<div class="comments-list" id="comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
+        '<div class="comment-compose">' +
+        '<input type="text" class="comment-input" id="new-comment-input" placeholder="댓글을 남겨보십시오" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" id="new-comment-send">등록</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
 
-    body.innerHTML = list.map(buildingListItemHTML).join('');
-    hydrateOwnerNames(body); // [B/E] edit by smsong - 목록 잠금 배지의 등록자 이름 채우기
-}
-
-// 건물 목록 카드 1개 마크업 — 목록 탭 / 클러스터 목록에서 공용으로 사용
-function buildingListItemHTML(b) {
-    const s = getUnitStats(b);
-    const pct = s.total > 0 ? Math.round((s.occupied / s.total) * 100) : 0;
-    const emoji = typeIcon(b.type, 26); // [B/E] edit by smsong - 유형 라인 아이콘(기본 이모지 대체)
-    // 실제 오브젝트에 첨부된 첫 번째 이미지를 썸네일로 사용 (없거나 로드 실패 시 타입 이모지)
-    const firstImg = (b.mediaURLs && b.mediaURLs.length) ? b.mediaURLs[0] : '';
-    const thumb = firstImg
-        ? `<div class="building-thumb has-img"><img src="${firstImg}" alt="" loading="lazy" onerror="this.remove();this.parentElement.classList.remove('has-img')"><span class="building-thumb-emoji">${emoji}</span></div>`
-        : `<div class="building-thumb"><span class="building-thumb-emoji">${emoji}</span></div>`;
-    return `<div class="building-list-item" onclick="selectBuilding('${b.id}')">
-      ${thumb}
-      <div style="flex:1;min-width:0;">
-        <div class="building-list-name" style="display:flex;align-items:center;gap:6px;">${dealBadge(b)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.name}</span></div>
-        <div class="building-list-addr">${b.address}</div>
-        <div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          ${formatPriceLabel(b) ? `<span style="font-size:11.5px;color:#1a56db;font-weight:800;letter-spacing:-0.2px;">${formatPriceLabel(b)}</span>` : ''}
-          <span style="font-size:11px;color:#6b7280;font-weight:700;">${TYPE_LABEL[b.type] || ''}</span>
-          ${isOwnedByMe(b)
-        ? '<span style="font-size:10.5px;color:#1a56db;background:#e8f0fe;font-weight:700;padding:1px 7px;border-radius:10px;">내 매물</span>'
-        : isOfficeMates(b)
-            ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:#7c3aed;background:#f1ebfe;font-weight:700;padding:1px 7px;border-radius:10px;">${icon('agency', 11)} ${escapeHtml(officeMemberName(b))}</span>`
-            : (ownerIdOf(b) ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:#6b7280;background:#f3f4f6;font-weight:600;padding:1px 7px;border-radius:10px;">${icon('lock', 11)} ${ownerNameSpan(b)}</span>` : '')}
-          ${s.empty > 0 ? `<span style="font-size:11px;color:#dc2626;font-weight:600;">공실 ${s.empty}</span>` : ''}
-          ${s.expiring > 0 ? `<span style="font-size:11px;color:#d97706;font-weight:600;">만기 ${s.expiring}</span>` : ''}
-        </div>
-      </div>
-      ${favBtnHTML(b)}
-    </div>`;
-}
-
-// 현재 로그인 사용자가 이 오브젝트(건물/호실)의 작성자인지 확인 → 위쪽 isMine()으로 통합됨
-
-// [B] edit by smsong - 잠금 라벨의 등록자 표시를 uid가 아닌 name 으로. 이름은 비동기로 채움.
-function ownerNameSpan(obj, fallback) {
-    const oid = ownerIdOf(obj);
-    return `<span class="owner-name-async" data-owner-uid="${escapeHtml(oid)}">${escapeHtml(fallback || '다른 사용자')}</span>`;
-}
-async function hydrateOwnerNames(root) {
-    const scope = root || document;
-    const spans = scope.querySelectorAll('.owner-name-async[data-owner-uid]:not([data-filled])');
-    for (const el of spans) {
-        const oid = el.dataset.ownerUid;
-        el.dataset.filled = '1';
-        if (!oid) continue;
-        try {
-            const p = await fetchOwnerProfile(oid);
-            el.textContent = (p && (p.name || p.nickname)) || '다른 사용자';
-        } catch (_) {}
-    }
-}
-// [E] edit by smsong
-
-function showBuildingDetail(b, target) {
-    const s = getUnitStats(b);
-    const totalRent = b.units.filter(u => u.status === 'occupied').reduce((sum, u) => sum + (u.rent || 0), 0);
-    const totalDeposit = b.units.filter(u => u.status !== 'empty').reduce((sum, u) => sum + (u.deposit || 0), 0);
-
-    // 렌더 대상: 'detail'=웹 오른쪽 패널 / 그 외='sheet'(모바일 바텀시트, 기존 동작)
-    const P = (target === 'detail') ? 'detail' : 'sheet';
-
-    // 제목 위(헤더 맨 앞)에 '목록' 버튼 — 웹은 상세 패널 닫기, 모바일은 목록으로
-    ensureSheetBack(P, (P === 'detail') ? closeWebDetail : function () { switchTab('list'); });
-
-    document.getElementById(P + '-title').textContent = b.name;
-    document.getElementById(P + '-subtitle').textContent = (b.address || '');
-
-    const body = document.getElementById(P + '-body');
-    body.innerHTML = `
-    ${renderGallery(b)}
-    <!-- 매물 등록자 + 공인중개사사무소 통합 카드 (비동기 채움) -->
-    <div class="owner-agency-card" id="ownercard-${b.id}">
-      <div class="oa-top">
-        ${avatarHTML(null, 40)}
-        <div style="min-width:0;flex:1;">
-          <div class="owner-card-label">매물 등록자</div>
-          <div class="owner-card-name">불러오는 중…</div>
-        </div>
-      </div>
-    </div>
-    <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${favBtnHTML(b, { detail: true })}
-      ${isMine(b) ? `
-      ${myPerms().canUpdate ? `<button onclick="openEditBuilding('${b.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;color:#374151;cursor:pointer;">${icon('edit',15)} 건물 수정</button>` : ''}
-      ${myPerms().canCreate ? `<button onclick="openAddUnit('${b.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:7px 14px;border-radius:8px;border:none;background:#1a56db;font-size:13px;font-weight:600;color:#fff;cursor:pointer;">${icon('plus',15)} 호실 추가</button>` : ''}
-      ` : ``}
-    </div>
-
-    <!-- 주소(풀주소·지번 포함) + 건물 유형 -->
-    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:#f9fafb;border-radius:10px;">
-      <span style="font-size:12px;font-weight:700;color:#6b7280;flex-shrink:0;">주소</span>
-      <span style="font-size:14px;font-weight:600;color:#111827;">${b.address || '-'}</span>
-      <span style="margin-left:auto;font-size:11px;font-weight:700;color:#1a56db;background:#e8f0fe;padding:2px 8px;border-radius:10px;flex-shrink:0;">${TYPE_LABEL[b.type] || ''}</span>
-    </div>
-    ${b.createdAt ? `<div style="font-size:11.5px;color:#9ca3af;margin:-6px 0 12px 2px;">등록일 ${formatDate(b.createdAt)}</div>` : ''}
-
-    <!-- 대표 거래유형 + 금액 -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-      ${dealBadge(b, 12)}
-      <span style="font-size:15px;font-weight:800;color:#1a56db;letter-spacing:-0.3px;">${formatPriceLabel(b) || '가격 미입력'}</span>
-    </div>
-    <div class="building-info-grid" style="grid-template-columns:repeat(${(inferDeal(b) !== 'sale' && (b.rent || 0) > 0) ? 3 : 2},1fr);">
-      <div class="info-card">
-        <div class="info-card-label">${inferDeal(b) === 'sale' ? '매매가' : inferDeal(b) === 'jeonse' ? '전세금' : '보증금'}</div>
-        <div class="info-card-value">${(b.deposit || 0).toLocaleString()}만원</div>
-      </div>
-      ${(inferDeal(b) !== 'sale' && (b.rent || 0) > 0) ? `
-      <div class="info-card">
-        <div class="info-card-label">월세</div>
-        <div class="info-card-value">${(b.rent || 0).toLocaleString()}만원</div>
-      </div>` : ''}
-      <div class="info-card">
-        <div class="info-card-label">관리비</div>
-        <div class="info-card-value">${(b.manage || 0).toLocaleString()}만원</div>
-      </div>
-    </div>
-
-    ${(b.parkingAvailable || b.petAllowed || b.jeonseLoanAvailable) ? `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-      ${b.parkingAvailable ? '<span class="opt-chip">주차</span>' : ''}
-      ${b.petAllowed ? '<span class="opt-chip">애완</span>' : ''}
-      ${b.jeonseLoanAvailable ? `<span class="opt-chip on">전세대출${b.jeonseLoanType ? ' · ' + b.jeonseLoanType.split(',').map(s => s.trim()).filter(Boolean).join(', ') : ''}</span>` : ''}
-    </div>` : ''}
-
-    ${renderUnitStatus(b)}
-  `;
-    hydrateOwnerCard(b);
-    hydrateOwnerNames(body); // [B/E] edit by smsong - 조회전용 잠금 라벨 등록자 이름 채우기
-}
-
-// =====================================================
-// 호실 현황 — 점유율 스택바 + 범례 + 상태 레일 카드 (앱 톤: 블루/라운드/라인 아이콘)
-// =====================================================
-function renderUnitStatus(b) {
-    const units = b.units || [];
-    const s = getUnitStats(b);
-    const total = s.total || 0;
-    const occPct = total > 0 ? Math.round((s.occupied / s.total) * 100) : 0;
-
-    // 점유율 스택바 (임차=초록 / 만기임박=주황 / 공실=빨강)
-    const seg = (n, varName) => n > 0
-        ? `<div class="uf-seg" style="flex:${n};background:var(${varName});"></div>` : '';
-    const barInner = total > 0
-        ? seg(s.occupied, '--green') + seg(s.expiring, '--amber') + seg(s.empty, '--red')
-        : '<div class="uf-seg" style="flex:1;background:var(--gray-200);"></div>';
-
-    // 범례 칩 — 0개인 상태는 흐리게
-    const leg = (label, n, cls) =>
-        `<span class="uf-leg ${n > 0 ? cls : 'is-zero'}"><i class="uf-dot ${cls}"></i>${label} <b>${n}</b></span>`;
-
-    const head = `
-      <div class="uf-head">
-        <div class="uf-head-title">호실 현황 <span class="uf-total">${total}</span></div>
-      </div>
-      <div class="uf-bar">${barInner}</div>
-      <div class="uf-legend">
-        ${leg('임차', s.occupied, 'occupied')}
-        ${leg('만기임박', s.expiring, 'expiring')}
-        ${leg('공실', s.empty, 'empty')}
-      </div>`;
-
-    if (units.length === 0) {
-        return `<div class="uf-block">
-          ${head}
-          <div class="uf-empty">${icon('building', 30, 'color:var(--gray-300);')}<span>등록된 호실이 없습니다</span></div>
-        </div>`;
+    // 헤더 영역: (소유자만) 수정/휴지통 버튼을 '추억 상세' 위치에 작게 배치
+    const headerActions = document.getElementById('detail-header-actions');
+    if (headerActions) {
+        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만
+        headerActions.innerHTML =
+            (canManage ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">' + icon('edit',16) + '</button>' : '') +
+            (canTrashObject(memory) ? '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">' + icon('trash',16) + '</button>' : '');
     }
 
-    const rows = units.map(u => {
-        const deal = inferDeal(u);
-        const st = effectiveStatus(u);   // 만기일 지나면 자동 공실
-        let rent;
-        if (st === 'empty') {
-            rent = `<div class="uf-rent-main uf-rent-empty">비어있음</div>`;
-        } else if (deal === 'sale') {
-            rent = `<div class="uf-rent-main">${(u.deposit || 0).toLocaleString()}<i>만</i></div>
-                    <div class="uf-rent-sub">매매</div>`;
-        } else if (deal === 'jeonse') {
-            rent = `<div class="uf-rent-main">${(u.deposit || 0).toLocaleString()}<i>만</i></div>
-                    <div class="uf-rent-sub">전세</div>`;
-        } else {
-            rent = `<div class="uf-rent-main">${u.rent > 0 ? u.rent.toLocaleString() + '<i>만</i>' : '월세'}</div>
-                    <div class="uf-rent-sub">보 ${(u.deposit || 0).toLocaleString()}</div>`;
-        }
-        return `
-          <button type="button" class="uf-unit ${st}" onclick="openUnitDetail('${b.id}','${u.id}')">
-            <span class="uf-rail"></span>
-            <span class="uf-chip">${STATUS_LABEL[st]}</span>
-            <span class="uf-unit-main">
-              <span class="uf-unit-name">${escapeHtml(u.name || '')}<i class="uf-deal" style="--dc:${DEAL_COLOR[deal]};">${DEAL_LABEL[deal]}</i></span>
-              <span class="uf-unit-sub">${u.area}㎡</span>
-            </span>
-            <span class="uf-rent">${rent}</span>
-            <span class="uf-go">${icon('back', 15, 'transform:rotate(180deg);color:var(--gray-300);')}</span>
-          </button>`;
-    }).join('');
+    applyDetailLocation(memory);
 
-    return `<div class="uf-block">
-      ${head}
-      <div class="uf-list">${rows}</div>
-    </div>`;
+    // 위치 클릭 → 지도 탭으로 이동 + 해당 마커 흔들기
+    const locEl = document.getElementById('detail-loc');
+    if (locEl && memory.lat != null && memory.lng != null) {
+        locEl.addEventListener('click', () => {
+            if (Daylog && typeof Daylog.focusOnMap === 'function') Daylog.focusOnMap(memory);
+        });
+    }
+
+    // 이미지 캐러셀 바인딩 (좌우 스와이프 + 탭 확대)
+    bindCarousel(document.getElementById('detail-view'), _memUrls);
+
+    // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
+    const da = document.getElementById('detail-author-avatar');
+    if (da) da.addEventListener('click', () => openLightbox(authorPhoto, da));
+
+    const eo = document.getElementById('detail-edit-open');
+    if (eo) eo.addEventListener('click', () => enterDetailEdit(memory));
+
+    const to = document.getElementById('detail-trash-open');
+    if (to) to.addEventListener('click', () => trashMemory(memory.id));
+
+    // 댓글 작성 바인딩
+    const sendBtn = document.getElementById('new-comment-send');
+    const newInput = document.getElementById('new-comment-input');
+    if (sendBtn) sendBtn.addEventListener('click', () => submitComment('memory', memory.id, null, 'new-comment-input'));
+    if (newInput) newInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitComment('memory', memory.id, null, 'new-comment-input'); }
+    });
+
+    loadComments('memory', memory.id);
+
+    const dm = document.getElementById('detail-modal');
+    const dmScroll = dm.querySelector('.sheet-body');
+    if (dmScroll) dmScroll.scrollTop = 0;   // 항상 맨 위에서 시작
+    _getMemorySheet().open('full');         // [smsong] 바텀시트로 열기(완전히 위)
 }
 
-// 매물 등록자 카드 채우기 — 등록자 프로필을 비동기로 불러와 이름/사진/제공자 표시
-async function hydrateOwnerCard(b) {
-    const el = document.getElementById('ownercard-' + b.id);
+// 상세/수정 모달의 위치 표기 (장소명 + 상세주소) — 없으면 좌표로 역지오코딩
+//  elId: 채워 넣을 요소 id ('detail-loc' 또는 'edit-loc')
+function fillLocationInto(elId, memory) {
+    const el = document.getElementById(elId);
     if (!el) return;
-    // [B] edit by smsong - 등록자 식별을 객체 기반으로, 표시 이름은 name 우선
-    const p = await fetchOwnerProfile(b);
-    const name = (p && (p.name || p.nickname)) || '알 수 없음';
+    const place = (memory.placeName || '').trim();
+    const addr = (memory.address || '').trim();
+    // 기존과 동일하게 한 줄 주소처럼 보이도록 공백으로 합침
+    const compose = (p, a) => pinText([p, a].filter(Boolean).join(' '));
+    if (place || addr) el.innerHTML = compose(place, addr);
+    if (!place && !addr) {
+        if (memory.lat != null && memory.lng != null) {
+            reverseGeocode(memory.lat, memory.lng, (a) => { el.innerHTML = a ? pinText(a) : pinText('위치 정보 없음'); });
+        } else { el.innerHTML = pinText('위치 정보 없음'); }
+    } else if (place && !addr && memory.lat != null && memory.lng != null) {
+        reverseGeocode(memory.lat, memory.lng, (a) => { if (a) el.innerHTML = compose(place, a); });
+    }
+}
+
+function applyDetailLocation(memory) { fillLocationInto('detail-loc', memory); }
+
+function enterDetailEdit(memory) {
+    if (_memorySheet) _memorySheet.snap('full', true); // [smsong] 편집 시 시트를 완전히 위로
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (!editForm) return;
+
+    // 사진 편집 그리드 시드 (기존 이미지 → url 항목, 추가/삭제/정렬 가능)
+    if (window._memEditMgr) {
+        const urls = mediaUrlsOf(memory);
+        window._memEditMgr.reset(urls.map(u => ({ kind: 'url', url: u })));
+    }
+    // 위치 표시 (수정 불가)
+    fillLocationInto('edit-loc', memory);
+
+    document.getElementById('edit-memory-date').value = memory.createdAt ? memory.createdAt.substring(0, 10) : '';
+    document.getElementById('edit-memory-title').value = memory.title || '';
+    document.getElementById('edit-memory-content').value = memory.content || '';
+    if (view) view.classList.add('hidden');
+    editForm.classList.remove('hidden');
+}
+
+function exitDetailEdit() {
+    // [smsong] 위치 재설정 복귀 중에는 초기화하지 않음(복귀 시 새 위치 유지)
+    if (!window._editLocRestoring) _editLocPicked = null;
+    const view = document.getElementById('detail-view');
+    const editForm = document.getElementById('detail-edit-form');
+    if (editForm) editForm.classList.add('hidden');
+    if (view) view.classList.remove('hidden');
+}
+
+// 본인 추억 수정 저장 (이미지 제외 · 제목/내용/날짜)
+function saveDetailEdit() {
+    const memory = _detailMemory;
+    if (!memory) return;
+    const date = document.getElementById('edit-memory-date').value;
+    const title = document.getElementById('edit-memory-title').value.trim();
+    const content = document.getElementById('edit-memory-content').value.trim();
+    if (!title) { showToast('제목을 입력해주십시오'); return; }
+
+    const mgr = window._memEditMgr;
+    const order = mgr ? mgr.getMediaOrder() : null;
+    const newFiles = mgr ? mgr.getNewFiles() : [];
+    if (order && order.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); return; }
+
+    // createdAt: LocalDateTime("yyyy-MM-ddT00:00:00") 형식으로 전송
+    let createdAt = null;
+    if (date) createdAt = date + 'T00:00:00';
+    else if (memory.createdAt) createdAt = (String(memory.createdAt).length === 10) ? (memory.createdAt + 'T00:00:00') : memory.createdAt;
+
+    const memoryData = { title: title, content: content, createdAt: createdAt, mediaOrder: order };
+    // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
+    if (_editLocPicked) {
+        memoryData.lat = _editLocPicked.lat;
+        memoryData.lng = _editLocPicked.lng;
+        memoryData.placeName = _editLocPicked.placeName || '';
+        memoryData.address = _editLocPicked.address || '';
+    }
     // [E] edit by smsong
-    const mine = isOwnedByMe(b);          // 내가 직접 등록한 경우에만 '나'
-    const mate = isOfficeMates(b);        // 같은 사무소 동료가 등록한 경우
-    el.innerHTML = `
-      <div class="oa-top">
-        ${avatarHTML(p, 40)}
-        <div style="min-width:0;flex:1;">
-          <div class="owner-card-label">매물 등록자</div>
-          <div class="owner-card-name">${escapeHtml(name)}${mine
-            ? '<span class="owner-you">나</span>'
-            : (mate ? '<span class="owner-mate">같은 사무소</span>' : '')}</div>
-        </div>
-      </div>
-      ${agencySectionHTML(p)}
-    `;
+    const fd = new FormData();
+    fd.append('memoryData', JSON.stringify(memoryData));
+    newFiles.forEach(f => fd.append('mediaData', f));
+
+    const btn = document.querySelector('#detail-edit-form .submit-btn');
+    if (btn) { btn.disabled = true; btn.innerText = '저장 중...'; }
+
+    withLoading(fetch(`${Daylog.api}/api/memories/${memory.id}`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(false), // FormData → Content-Type 자동
+        body: fd
+    }), '수정 중...')
+        .then(Daylog.handleResponse)
+        .then(() => {
+            _editLocPicked = null; // [smsong] 수정 위치 소비
+            showToast('수정 완료');
+            closeDetailModal();
+            Daylog.reload();
+        })
+        .catch(err => { console.error(err); showToast('수정 실패. 다시 시도해주십시오.'); })
+        .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
 }
 
-// 통합 카드 내부의 사무소 섹션 (구분선 + 이름/전화/주소). 정보 없으면 '' 반환.
-function agencySectionHTML(p) {
-    if (!p) return '';
-    const name = p.agencyName, phone = p.agencyPhone, addr = p.agencyAddress;
-    if (!name && !phone && !addr) return '';
-    const row = (ic, val, isTel) => val ? `
-      <div class="oa-row">
-        <span class="oa-row-ic">${icon(ic, 15)}</span>
-        ${isTel ? `<a href="tel:${escapeHtml(String(val).replace(/[^0-9+]/g, ''))}" class="oa-tel">${escapeHtml(val)}</a>`
-            : `<span>${escapeHtml(val)}</span>`}
-      </div>` : '';
-    return `
-      <div class="oa-agency">
-        <div class="oa-agency-label">${icon('agency', 14)} 공인중개사사무소</div>
-        ${name ? `<div class="oa-agency-name">${escapeHtml(name)}</div>` : ''}
-        ${row('phone', phone, true)}
-        ${row('pin', addr, false)}
-      </div>`;
+function closeDetailModal() {
+    _getMemorySheet().close();  // [smsong] 아래로 슬라이드 후 숨김/정리는 onClosed 콜백에서
 }
 
-// [B] edit by smsong - 공인중개사사무소(이름/전화/주소) 표시 카드. 정보가 하나도 없으면 렌더 안 함.
-function agencyCardHTML(p) {
-    if (!p) return '';
-    const name = p.agencyName, phone = p.agencyPhone, addr = p.agencyAddress;
-    if (!name && !phone && !addr) return '';
-    const row = (ic, val, isTel) => val ? `
-      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;">
-        <span style="color:#1a56db;display:inline-flex;">${icon(ic, 15)}</span>
-        ${isTel ? `<a href="tel:${escapeHtml(String(val).replace(/[^0-9+]/g,''))}" style="color:#1a56db;text-decoration:none;font-weight:600;">${escapeHtml(val)}</a>`
-                : `<span>${escapeHtml(val)}</span>`}
-      </div>` : '';
-    return `
-      <div style="width:100%;box-sizing:border-box;margin:10px 0 2px;padding:14px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;text-align:left;">
-        <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#6b7280;margin-bottom:8px;">
-          ${icon('agency',14)} 공인중개사사무소
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          ${name ? `<div style="font-size:14px;font-weight:700;color:#111827;">${escapeHtml(name)}</div>` : ''}
-          ${row('phone', phone, true)}
-          ${row('pin', addr, false)}
-        </div>
-      </div>`;
-}
-// [E] edit by smsong
+// ==========================================
+//  댓글 / 대댓글
+// ==========================================
+const _commentCache = {};
 
-// =====================================================
-// MODALS — Building
-// =====================================================
-function startAddBuilding() {
-    // Enter picker mode
-    pickerMode = true;
-    pickerLatlng = map.getCenter();
-    document.getElementById('map-picker-bar').classList.add('show');
-    document.getElementById('map-picker-crosshair').classList.add('show');
-    document.getElementById('map-picker-confirm').classList.add('show');
-    document.getElementById('map-picker-search').classList.add('show');
-    document.getElementById('picker-search-input').value = '';
-    document.getElementById('picker-search-results').classList.remove('show');
-    const addBtn = document.getElementById('add-btn-float');
-    addBtn.classList.add('picking');      // + → × (취소 아이콘)
-    addBtn.title = '위치 설정 취소';
-    document.getElementById('app').classList.add('picker-active'); // 상단바 숨기고 검색창을 그 자리에
-    document.getElementById('app').classList.remove('chrome-hidden'); // 항상 검색/안내바 보이는 상태로 시작
-    Sheet.hardClose();                    // 위치 설정 중엔 시트를 완전히 내려 지도를 비움
-    hideSheetBack('sheet');
-    document.getElementById('sheet-body').innerHTML = `<div class="empty-state"><div class="empty-state-icon">${icon('pin',56,'color:#9ca3af;')}</div><div class="empty-state-title">지도를 이동하여 위치 설정</div><div class="empty-state-sub">건물 위치를 지도 위에서 직접 설정하세요</div></div>`;
+// [smsong] 오브젝트별 댓글 수 (썸네일 배지) — { memory:{id:n}, checklist:{id:n} }
+function _ensureCommentCounts() {
+    if (!Daylog.commentCounts) Daylog.commentCounts = { memory: {}, checklist: {} };
+    return Daylog.commentCounts;
+}
+function applyCommentBadges(kind) {
+    const map = _ensureCommentCounts()[kind] || {};
+    const prefix = (kind === 'checklist') ? 'clcbadge-' : 'mcbadge-';
+    document.querySelectorAll('[id^="' + prefix + '"]').forEach(el => {
+        const key = el.id.substring(prefix.length);
+        const n = map[key] || 0;
+        if (n > 0) { el.innerHTML = icon('comment', 12) + ' ' + n; el.style.display = ''; }
+        else { el.style.display = 'none'; }
+    });
+}
+function fetchCommentCounts(kind) {
+    const path = (kind === 'checklist') ? '/comment/counts/checklist' : '/comment/counts/memory';
+    return fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(map => { _ensureCommentCounts()[kind] = map || {}; applyCommentBadges(kind); })
+        .catch(err => console.warn('[Daylog] 댓글 수 조회 실패:', err));
+}
+// 썸네일에 붙는 댓글 수 배지 요소 (초기 숨김 → 카운트 로드 후 표시)
+function commentBadgeHtml(kind, id) {
+    const prefix = (kind === 'checklist') ? 'clcbadge-' : 'mcbadge-';
+    return '<span class="obj-comment-badge" id="' + prefix + id + '" style="display:none"></span>';
 }
 
-// + 버튼 토글: 활성 상태면 취소, 아니면 위치 설정 시작
-function toggleMapPicker() {
-    if (pickerMode) cancelMapPicker();
-    else startAddBuilding();
+function commentAuthorName(c) {
+    if (c.ownerNickname && c.ownerNickname.trim()) return c.ownerNickname.trim();
+    if (typeof normalizeDisplayName === 'function' && c.ownerName) return normalizeDisplayName(c.ownerName);
+    return c.ownerName || '익명';
 }
 
-// 위치 설정(피커) 취소 → 상단 안내바/확인 버튼 숨기고 + 버튼 원래대로
-function cancelMapPicker() {
-    pickerMode = false;
-    document.getElementById('map-picker-bar').classList.remove('show');
-    document.getElementById('map-picker-crosshair').classList.remove('show');
-    document.getElementById('map-picker-confirm').classList.remove('show');
-    document.getElementById('map-picker-search').classList.remove('show');
-    document.getElementById('picker-search-results').classList.remove('show');
-    const addBtn = document.getElementById('add-btn-float');
-    addBtn.classList.remove('picking');
-    addBtn.title = '건물 추가';
-    document.getElementById('app').classList.remove('picker-active'); // 상단바 복원
-    document.getElementById('app').classList.remove('chrome-hidden');
-    showBuildingList();
-    Sheet.collapse();                     // 취소하면 목록을 다시 살짝 띄움(peek)
+function commentTimeLabel(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diff = (now - d) / 1000; // 초
+    if (diff < 60) return '방금 전';
+    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+    const yyyy = d.getFullYear(), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}.${mm}.${dd}`;
 }
 
-function confirmPickerLocation() {
-    const center = map.getCenter();
-    pickerLatlng = center;
-    pickerMode = false;
-    document.getElementById('map-picker-bar').classList.remove('show');
-    document.getElementById('map-picker-crosshair').classList.remove('show');
-    document.getElementById('map-picker-confirm').classList.remove('show');
-    document.getElementById('map-picker-search').classList.remove('show');
-    document.getElementById('picker-search-results').classList.remove('show');
-    const addBtn = document.getElementById('add-btn-float');
-    addBtn.classList.remove('picking');
-    addBtn.title = '건물 추가';
-    document.getElementById('app').classList.remove('picker-active'); // 상단바 복원
-    document.getElementById('app').classList.remove('chrome-hidden');
+function commentAvatarHtml(c) {
+    const src = (c.ownerProfileURL && c.ownerProfileURL.trim()) ? c.ownerProfileURL : DEFAULT_AVATAR;
+    return '<div class="c-avatar" style="background-image:url(\'' + src + '\')" data-photo="' + src + '" onclick="openLightbox(this.dataset.photo, this)"></div>';
+}
 
-    // 네이버 Reverse Geocoding 호출
-    //  · orders 를 지정하지 않으면 행정구역 코드만 와서 지번/도로명이 비어버린다.
-    //    → 도로명(roadaddr) + 지번(addr) 을 명시해 풀주소를 받는다.
-    naver.maps.Service.reverseGeocode({
-        coords: center,
-        orders: 'roadaddr,addr'   // 지번(addr) 확보 — 상수 미정의 SDK 대비 문자열로 직접 지정
-    }, function(status, response) {
-        let addr = '';
-        if (status === naver.maps.Service.Status.OK) {
-            // 지번 주소로 저장 — 예: "서울특별시 강남구 역삼동 681-1"
-            addr = buildFullAddress(response.v2);
-        }
-        // 좌표를 전달할 때 네이버는 .lat() .lng() 함수를 사용합니다.
-        openBuildingForm(null, center.lat(), center.lng(), addr);
+function commentItemHtml(c, kind, targetId, isReply) {
+    _commentCache[c.id] = c;
+    const isOwner = !!(c.ownerUid && Daylog.currentUid && c.ownerUid === Daylog.currentUid);
+    const contentHtml = escapeHtml(c.content || '').replace(/\n/g, '<br>');
+    const K = "'" + kind + "'";
+
+    let actions =
+        '<div class="c-actions">' +
+        (isReply ? '' : '<button type="button" class="c-act-btn" onclick="toggleReplyForm(' + c.id + ')">답글</button>') +
+        (isOwner ? '<button type="button" class="c-act-btn" onclick="enterCommentEdit(' + c.id + ',' + K + ',' + targetId + ')">수정</button>' : '') +
+        (isOwner ? '<button type="button" class="c-act-btn c-act-trash" onclick="trashComment(' + K + ',' + c.id + ',' + targetId + ')">' + icon('trash',15) + '</button>' : '') +
+        '</div>';
+
+    let replyForm = isReply ? '' :
+        '<div class="c-reply-form hidden" id="reply-form-' + c.id + '">' +
+        '<input type="text" class="comment-input" id="reply-input-' + c.id + '" placeholder="답글을 입력하십시오" maxlength="1000">' +
+        '<button type="button" class="comment-send-btn" onclick="submitComment(' + K + ',' + targetId + ',' + c.id + ',\'reply-input-' + c.id + '\')">등록</button>' +
+        '</div>';
+
+    let repliesHtml = '';
+    if (!isReply && c.replies && c.replies.length) {
+        repliesHtml = '<div class="c-replies">' +
+            c.replies.map(r => commentItemHtml(r, kind, targetId, true)).join('') +
+            '</div>';
+    }
+
+    return '' +
+        '<div class="comment-item' + (isReply ? ' is-reply' : '') + '" data-id="' + c.id + '">' +
+        commentAvatarHtml(c) +
+        '<div class="c-body">' +
+        '<div class="c-meta">' +
+        '<span class="c-name">' + escapeHtml(commentAuthorName(c)) + '</span>' +
+        '<span class="c-time">' + commentTimeLabel(c.createdAt) + '</span>' +
+        '</div>' +
+        '<div class="c-content" id="c-content-' + c.id + '">' + contentHtml + '</div>' +
+        actions +
+        replyForm +
+        repliesHtml +
+        '</div>' +
+        '</div>';
+}
+
+function loadComments(kind, targetId) {
+    const listId = (kind === 'checklist') ? 'cl-comments-list' : 'comments-list';
+    const countId = (kind === 'checklist') ? 'cl-comments-count' : 'comments-count';
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const path = (kind === 'checklist') ? `/comment/checklist/${targetId}` : `/comment/memory/${targetId}`;
+    withLoading(fetch(`${Daylog.api}${path}`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(comments => {
+            comments = comments || [];
+            const countEl = document.getElementById(countId);
+            let total = comments.length;
+            comments.forEach(c => { total += (c.replies ? c.replies.length : 0); });
+            if (countEl) countEl.textContent = total;
+
+            if (!comments.length) {
+                list.innerHTML = '<div class="comments-empty">댓글이 존재하지 않습니다.</div>';
+                return;
+            }
+            list.innerHTML = comments.map(c => commentItemHtml(c, kind, targetId, false)).join('');
+        })
+        .catch(err => {
+            console.error(err);
+            list.innerHTML = '<div class="comments-empty">댓글을 조회 실패</div>';
+        }), '댓글을 불러오는 중...'); // [smsong] 로딩
+}
+
+function submitComment(kind, targetId, parentId, inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const content = input.value.trim();
+    if (!content) { showToast('댓글을 입력해주십시오'); return; }
+
+    const body = (kind === 'checklist')
+        ? { checklistId: targetId, parentId: parentId, content: content }
+        : { memoryId: targetId, parentId: parentId, content: content };
+
+    withLoading(fetch(`${Daylog.api}/comment`, {
+        method: 'POST',
+        headers: Daylog.authHeaders(true),
+        body: JSON.stringify(body)
+    }), '등록 중...')
+        .then(Daylog.handleResponse)
+        .then(() => {
+            input.value = '';
+            loadComments(kind, targetId);
+        })
+        .catch(err => { console.error(err); showToast('댓글 등록 실패'); });
+}
+
+function toggleReplyForm(commentId) {
+    const form = document.getElementById('reply-form-' + commentId);
+    if (!form) return;
+    form.classList.toggle('hidden');
+    if (!form.classList.contains('hidden')) {
+        const inp = document.getElementById('reply-input-' + commentId);
+        if (inp) inp.focus();
+    }
+}
+
+function enterCommentEdit(commentId, kind, targetId) {
+    const c = _commentCache[commentId];
+    const box = document.getElementById('c-content-' + commentId);
+    if (!c || !box) return;
+    const K = "'" + kind + "'";
+    box.innerHTML =
+        '<textarea class="c-edit-area" id="c-edit-' + commentId + '" maxlength="1000">' + escapeHtml(c.content || '') + '</textarea>' +
+        '<div class="c-edit-actions">' +
+        '<button type="button" class="c-edit-cancel" onclick="loadComments(' + K + ',' + targetId + ')">취소</button>' +
+        '<button type="button" class="c-edit-save" onclick="saveCommentEdit(' + commentId + ',' + K + ',' + targetId + ')">저장</button>' +
+        '</div>';
+    const ta = document.getElementById('c-edit-' + commentId);
+    if (ta) { ta.focus(); ta.value = c.content || ''; }
+}
+
+function saveCommentEdit(commentId, kind, targetId) {
+    const ta = document.getElementById('c-edit-' + commentId);
+    if (!ta) return;
+    const content = ta.value.trim();
+    if (!content) { showToast('내용을 입력해주십시오'); return; }
+    withLoading(fetch(`${Daylog.api}/comment/${commentId}`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true),
+        body: JSON.stringify({ content: content })
+    }), '수정 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('댓글 수정 완료'); loadComments(kind, targetId); })
+        .catch(err => { console.error(err); showToast('수정 실패'); });
+}
+
+function trashComment(kind, commentId, targetId) {
+    if (!confirm('이 댓글을 휴지통으로 옮기시겠습니까?')) return;
+    withLoading(fetch(`${Daylog.api}/comment/${commentId}/trash`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true)
+    }), '휴지통으로 이동 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('휴지통으로 이동했습니다'); loadComments(kind, targetId); })
+        .catch(err => { console.error(err); showToast('이동 실패'); });
+}
+
+// ==========================================
+//  추억 휴지통 이동
+// ==========================================
+function trashMemory(memoryId) {
+    if (!confirm('이 추억을 휴지통으로 옮기시겠습니까?')) return;
+    withLoading(fetch(`${Daylog.api}/api/memories/${memoryId}/trash`, {
+        method: 'PUT',
+        headers: Daylog.authHeaders(true)
+    }), '휴지통으로 이동 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('휴지통으로 이동했습니다'); closeDetailModal(); Daylog.reload(); })
+        .catch(err => { console.error(err); showToast('이동 실패'); });
+}
+
+// ==========================================
+//  휴지통 모달
+// ==========================================
+function openTrashModal() {
+    const modal = document.getElementById('trash-modal');
+    const body = document.getElementById('trash-modal-body');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="comments-loading">휴지통을 불러오는 중…</div>';
+    modal.classList.remove('hidden');
+
+    const uid = Daylog.currentUid;
+    withLoading(Promise.all([
+        fetch(`${Daylog.api}/api/memories/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
+        fetch(`${Daylog.api}/comment/trash`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
+        fetch(`${Daylog.api}/api/checklists/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
+    ]).then(([memories, comments, checklists]) => {
+        renderTrash(memories || [], comments || [], checklists || []);
+    }), '휴지통을 불러오는 중...'); // [smsong] 로딩
+}
+
+function closeTrashModal() {
+    const modal = document.getElementById('trash-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderTrash(memories, comments, checklists) {
+    const body = document.getElementById('trash-modal-body');
+    if (!body) return;
+    checklists = checklists || [];
+
+    if (!memories.length && !comments.length && !checklists.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('trash',40) + '</span><p>휴지통이 비어 있습니다</p></div>';
+        return;
+    }
+
+    let html = '';
+    // [B] edit by smsong - 휴지통 30일 자동 삭제 안내
+    html += '<div class="trash-notice">' + icon('trash',13) + ' 휴지통의 항목은 30일 뒤 자동으로 삭제됩니다.</div>';
+    // [E] edit by smsong
+
+    if (memories.length) {
+        html += '<div class="trash-group-title">추억 ' + memories.length + '</div>';
+        memories.forEach(m => {
+            const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(m), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
+            html +=
+                '<div class="trash-row">' +
+                thumb +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(m.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(m.content || '') + '</div>' +
+                autoDeleteText(m) + // [smsong]
+                '</div>' +
+                '<div class="trash-actions">' +
+                (canTrashObject(m) ? '<button type="button" class="trash-restore" onclick="restoreMemory(' + m.id + ')">복원</button>' : '') +
+                (canDeleteObject(m) ? '<button type="button" class="trash-delete" onclick="deleteMemoryForever(' + m.id + ')">영구삭제</button>' : '') +
+                '</div>' +
+                '</div>';
+        });
+    }
+
+    if (comments.length) {
+        html += '<div class="trash-group-title">댓글 ' + comments.length + '</div>';
+        comments.forEach(c => {
+            const onTitle = c.memoryTitle ? ('"' + escapeHtml(c.memoryTitle) + '" 에 남긴 댓글') : '댓글';
+            html +=
+                '<div class="trash-row">' +
+                '<div class="lm-thumb lm-thumb-empty">' + icon('comment',22,'color:#b08968;') + '</div>' +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + onTitle + '</div>' +
+                '<div class="lm-row-text trash-comment-text">' + escapeHtml(c.content || '') + '</div>' +
+                '</div>' +
+                '<div class="trash-actions">' +
+                '<button type="button" class="trash-restore" onclick="restoreComment(' + c.id + ')">복원</button>' +
+                '<button type="button" class="trash-delete" onclick="deleteCommentForever(' + c.id + ')">영구삭제</button>' +
+                '</div>' +
+                '</div>';
+        });
+    }
+
+    if (checklists.length) {
+        html += '<div class="trash-group-title">가볼곳 ' + checklists.length + '</div>';
+        checklists.forEach(c => {
+            const meta = (typeof checklistType === 'function') ? checklistType(c.type) : { emoji: icon('bookmark',15), label: '' };
+            const loc = [c.placeName, c.address].filter(Boolean).join(' ');
+            html +=
+                '<div class="trash-row">' +
+                '<div class="lm-thumb lm-thumb-empty">' + meta.emoji + '</div>' +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(meta.label || '가볼곳') + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(c.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(loc) + '</div>' +
+                autoDeleteText(c) + // [smsong]
+                '</div>' +
+                '<div class="trash-actions">' +
+                (canTrashObject(c) ? '<button type="button" class="trash-restore" onclick="restoreChecklist(' + c.id + ')">복원</button>' : '') +
+                (canDeleteObject(c) ? '<button type="button" class="trash-delete" onclick="deleteChecklistForever(' + c.id + ')">영구삭제</button>' : '') +
+                '</div>' +
+                '</div>';
+        });
+    }
+
+    body.innerHTML = html;
+}
+
+function restoreMemory(id) {
+    withLoading(fetch(`${Daylog.api}/api/memories/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('복원했습니다'); openTrashModal(); Daylog.reload(); })
+        .catch(err => { console.error(err); showToast('복원 실패'); });
+}
+
+function deleteMemoryForever(id) {
+    if (!confirm('이 추억을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
+    withLoading(fetch(`${Daylog.api}/api/memories/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했습니다'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('삭제 실패'); });
+}
+
+function restoreComment(id) {
+    withLoading(fetch(`${Daylog.api}/comment/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('복원했습니다'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('복원 실패'); });
+}
+
+function deleteCommentForever(id) {
+    if (!confirm('이 댓글을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
+    withLoading(fetch(`${Daylog.api}/comment/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했습니다'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('삭제 실패'); });
+}
+
+function restoreChecklist(id) {
+    withLoading(fetch(`${Daylog.api}/api/checklists/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('복원했습니다'); openTrashModal(); Daylog.reloadChecklists(); })
+        .catch(err => { console.error(err); showToast('복원 실패'); });
+}
+
+function deleteChecklistForever(id) {
+    if (!confirm('이 가볼곳을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
+    withLoading(fetch(`${Daylog.api}/api/checklists/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했습니다'); openTrashModal(); })
+        .catch(err => { console.error(err); showToast('삭제 실패'); });
+}
+
+// ===== 통계 클릭용 리스트 모달 / D-Day 정보 =====
+// [B] edit by smsong - #3 멤버 보기 모달
+function openMemberModal() {
+    const modal = document.getElementById('member-modal');
+    const body = document.getElementById('member-modal-body');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="perm-loading">불러오는 중...</div>';
+    modal.classList.remove('hidden');
+    const roomId = getRoomId();
+    // [B] edit by smsong - 추억/가볼곳 목록을 먼저 로드해야 카운트가 정확(특히 가볼곳 탭 미방문 시 0 방지)
+    withLoading(Promise.all([
+        (Daylog.reload ? Promise.resolve(Daylog.reload()) : Promise.resolve()),
+        (Daylog.reloadChecklists ? Promise.resolve(Daylog.reloadChecklists()) : Promise.resolve()),
+        fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse)
+    ]).then(function (results) {
+        const room = results[2];
+        Daylog.roomInfo = room;
+        renderMemberModal((room && room.members) || [], isCoupleRoom());
+    }).catch(function () {
+        body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>';
+    }), '멤버를 불러오는 중...');
+}
+
+function renderMemberModal(members, isCouple) {
+    const body = document.getElementById('member-modal-body');
+    if (!body) return;
+    if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버가 없습니다.</div>'; return; }
+    const mems = Daylog.memories || [];
+    const cls = Daylog.checklists || [];
+    body.innerHTML = '';
+    members.forEach(m => {
+        const name = m.nickname || m.name || m.uid;
+        const memCount = mems.filter(x => x.ownerUid === m.uid).length;
+        const clCount = cls.filter(x => x.ownerUid === m.uid).length;
+        const role = m.role || (m.owner ? 'OWNER' : 'MEMBER');
+        const roleLabel = role === 'OWNER' ? '방장' : (role === 'MEMBER' ? '멤버' : '일반');
+        const roleCls = role === 'OWNER' ? 'owner' : (role === 'MEMBER' ? 'member' : 'general');
+        const avatar = m.profileURL
+            ? `<img class="member-avatar-img" src="${m.profileURL}" alt="" onerror="this.style.display='none'">`
+            : icon('user', 26, 'color:#b08968;');
+        // [B] edit by smsong - 추억/가볼곳 개수만 표시 (댓글 제거)
+        let counts = '';
+        counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
+        counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
+        const card = document.createElement('div');
+        card.className = 'mm-card';
+        card.innerHTML =
+            `<div class="member-avatar">${avatar}</div>` +
+            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name">${escapeHtml(name)}</div></div>` +
+            `<div class="mm-counts">${counts}</div>`;
+        body.appendChild(card);
+    });
+    body.querySelectorAll('.mm-count').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = btn.getAttribute('data-uid');
+            const act = btn.getAttribute('data-act');
+            const mem = members.find(x => x.uid === uid);
+            const nm = mem ? (mem.nickname || mem.name || uid) : uid;
+            if (act === 'mem') openMemoryListModal(nm + '님의 추억', (Daylog.memories || []).filter(x => x.ownerUid === uid));
+            else if (act === 'cl') openChecklistListModal(nm + '님의 가볼곳', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
+        });
     });
 }
 
-// ===== 건물 이미지(여러 장) 관리 =====
-const MAX_BUILDING_IMAGES = 10;   // 건물당 첨부 가능한 최대 이미지 수
-let bfKeepUrls = [];   // [호실사진] 수정 시 "유지할" 기존 이미지 URL 목록
-let bfNewFiles = [];   // [호실사진] 새로 추가한 파일(File) 목록
-let bfKeepVac = [];    // [공실표] 수정 시 "유지할" 기존 이미지 URL 목록
-let bfNewVac = [];     // [공실표] 새로 추가한 파일(File) 목록
-
-// 이미지 캐러셀 1개 블록 (제목 라벨 + 가로 스와이프)
-function renderGalleryBlock(arr, gid, safeName, title) {
-    if (!arr || !arr.length) return '';
-    const slides = arr.map((u, i) => `
-      <div class="gal-slide">
-        <img src="${u}" alt="${safeName}"
-             ${i === 0 ? `onload="fitGalleryHeight('${gid}', this)"` : ''}
-             onclick="openImageViewer('${u}')" onerror="this.parentElement.style.display='none'">
-      </div>`).join('');
-
-    // 이미지가 2장 이상일 때만 카운터/점/화살표 표시
-    const counter = arr.length > 1 ? `<div class="gal-counter" id="${gid}-cnt">1 / ${arr.length}</div>` : '';
-    const dots = arr.length > 1
-        ? `<div class="gal-dots" id="${gid}-dots">${arr.map((_, i) => `<span class="gal-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`
-        : '';
-    // 웹(마우스)에서 스와이프가 안 되므로 이전/다음 화살표로 넘긴다
-    const navs = arr.length > 1 ? `
-      <button class="gal-nav prev" onclick="galleryNav('${gid}',-1,${arr.length},event)" aria-label="이전 사진">${icon('back', 20)}</button>
-      <button class="gal-nav next" onclick="galleryNav('${gid}',1,${arr.length},event)" aria-label="다음 사진">${icon('back', 20, 'transform:rotate(180deg);')}</button>` : '';
-
-    const label = title ? `<div style="font-size:12px;font-weight:800;color:#6b7280;margin:2px 2px 6px;letter-spacing:-0.2px;">${title}</div>` : '';
-
-    return `${label}<div class="gallery-wrap">
-      <div class="gal-track" id="${gid}" onscroll="onGalleryScroll('${gid}', ${arr.length})">${slides}</div>
-      ${navs}
-      ${counter}
-      ${dots}
-    </div>`;
+function openCommentedItems(uid, name) {
+    const roomId = getRoomId();
+    withLoading(fetch(`${Daylog.api}/api/rooms/${encodeURIComponent(roomId)}/member/${encodeURIComponent(uid)}/commented`, { headers: Daylog.authHeaders(true) })
+        .then(Daylog.handleResponse)
+        .then(entries => { openCommentedListModal(name + '님이 남긴 댓글', entries || []); })
+        .catch(() => showToast('댓글 목록을 불러오지 못했습니다')), '댓글을 불러오는 중...');
 }
 
-// 단일 세그먼트(탭 1개) — 탭이 있는 갤러리와 동일한 스타일. 전환은 없음.
-function singleSeg(label) {
-    return `<div class="seg" style="--seg-n:1;--seg-i:0;">
-      <span class="seg-ind"></span>
-      <button type="button" class="seg-btn active" style="cursor:default;">${label}</button>
-    </div>`;
-}
-
-// 건물 상세 이미지 — '호실 사진' / '공실표' 탭 전환 (둘 다 있을 때만 탭, 하나면 그대로)
-function renderGallery(b) {
-    const base = (b && b.id ? b.id : Math.random().toString(36).slice(2));
-    const safeName = (b && b.name ? b.name : '').replace(/"/g, '&quot;');
-
-    const hasUnit = !!((b && b.mediaURLs) || []).length;
-    // 공실표는 소유자에게만 (서버에서도 비소유자에겐 빈 배열로 내려옴)
-    const hasVac = !!(isMine(b) && b && b.vacancyURLs && b.vacancyURLs.length);
-
-    if (!hasUnit && !hasVac) return '';
-
-    // 한쪽만 있으면 동일한 세그먼트 스타일의 단일 탭(전환 없음)으로 표시
-    if (hasUnit && !hasVac) {
-        return `<div style="margin-bottom:4px;">
-      ${singleSeg('호실 사진')}
-      ${renderGalleryBlock(b.mediaURLs, 'galu-' + base, safeName, null)}
-    </div>`;
+function openCommentedListModal(title, entries) {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen');
+    Daylog._openListKind = null;
+    titleEl.textContent = title;
+    body.innerHTML = '';
+    if (!entries.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>작성한 댓글이 없습니다</p></div>';
+    } else {
+        entries.forEach(function (e) {
+            const kindLabel = (e.type === 'memory') ? '추억' : '가볼곳';
+            const dateStr = e.createdAt ? String(e.createdAt).substring(0, 10).replace(/-/g, '.') : '';
+            const row = document.createElement('div');
+            row.className = 'lm-row cmt-row';
+            row.innerHTML =
+                '<div class="lm-row-main">' +
+                    '<div class="cmt-row-on">' + icon(e.type === 'memory' ? 'book' : 'bookmark', 13, 'color:#b08968;') +
+                        " <b>" + kindLabel + "</b> · '" + escapeHtml(e.itemTitle || '') + "'</div>" +
+                    '<div class="cmt-row-text">' + escapeHtml(e.content || '') + '</div>' +
+                    (dateStr ? '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' : '') +
+                '</div>';
+            row.addEventListener('click', function () {
+                if (e.type === 'memory') {
+                    const m = (Daylog.memories || []).find(x => String(x.id) === String(e.itemId));
+                    if (m) openDetailModal(m, true); else showToast('원본 추억을 찾을 수 없습니다');
+                } else {
+                    const c = (Daylog.checklists || []).find(x => String(x.id) === String(e.itemId));
+                    if (c) openChecklistDetail(c, true); else showToast('원본 가볼곳을 찾을 수 없습니다');
+                }
+            });
+            body.appendChild(row);
+        });
     }
-    if (!hasUnit && hasVac) {
-        return `<div style="margin-bottom:4px;">
-      ${singleSeg('공실표')}
-      ${renderGalleryBlock(b.vacancyURLs, 'galv-' + base, safeName, null)}
-    </div>`;
+    if (body) body.scrollTop = 0;
+    modal.classList.remove('hidden');
+}
+
+function openMemoryListModal(title, items) {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
+    titleEl.textContent = title;
+    body.innerHTML = '';
+
+    if (!items || !items.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book',40,'color:#b08968;') + '</span><p>표시할 추억이 없습니다</p></div>';
+    } else {
+        items.forEach(memory => {
+            const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(memory), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
+            const row = document.createElement('div');
+            row.className = 'lm-row';
+            row.innerHTML =
+                thumb +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
+                '</div>';
+            row.addEventListener('click', () => openDetailModal(memory, true)); // [smsong] 목록 유지 + 상세를 그 위로
+            body.appendChild(row);
+        });
+    }
+    if (body) body.scrollTop = 0;
+    modal.classList.remove('hidden');
+}
+
+function closeListModal() {
+    const modal = document.getElementById('list-modal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('dday-mode'); modal.classList.remove('list-fullscreen'); }
+    Daylog._openListKind = null;
+}
+
+// 유저별 체크리스트 목록 모달 (추억 목록과 동일한 UI, 클릭 시 가볼곳 상세)
+function openChecklistListModal(title, items) {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    modal.classList.remove('dday-mode');
+    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
+    Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
+    titleEl.textContent = title;
+    body.innerHTML = '';
+
+    if (!items || !items.length) {
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>표시할 가볼곳이 없습니다</p></div>';
+    } else {
+        items.forEach(item => {
+            const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: icon('bookmark',15), label: '' };
+            const loc = [item.placeName, item.address].filter(Boolean).join(' ');
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(item), meta.emoji); // [smsong] lazy 썸네일
+            const badge = item.visited
+                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴</span>'
+                : '<span class="cl-todo-badge">가볼 예정</span>';
+            const row = document.createElement('div');
+            row.className = 'lm-row';
+            row.innerHTML =
+                thumb +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(meta.label || '가볼곳') + ' · ' + badge + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(item.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(loc || (item.content || '')) + '</div>' +
+                '</div>';
+            row.addEventListener('click', () => openChecklistDetail(item, true)); // [smsong] 목록 유지 + 상세를 그 위로
+            body.appendChild(row);
+        });
+    }
+    if (body) body.scrollTop = 0;
+    modal.classList.remove('hidden');
+}
+
+function showDDayInfo() {
+    const modal = document.getElementById('list-modal');
+    const titleEl = document.getElementById('list-modal-title');
+    const body = document.getElementById('list-modal-body');
+    if (!modal || !body) return;
+    var since = getDdayStart();
+    var canEdit = false; // [B] edit by smsong - 디데이 수정 불가(요청): 편집 입력/저장 UI 비활성화
+    titleEl.innerHTML = 'D-Day';
+    var html = '<div class="dday-info">';
+    if (since) {
+        const start = new Date(since);
+        const y = start.getFullYear(), m = start.getMonth() + 1, d = start.getDate();
+        const n = daysSince(since);
+        // [B] edit by smsong - #4 '우리가 만난 날' 탭할 때마다 축포
+        html += '<div class="dday-celebrate" id="dday-celebrate" title="탭하면 축포가 터져요">' +
+                '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
+                '<div class="dday-info-label">우리가 만난 날 🎉</div>' +
+                '<div class="dday-info-date">' + y + '년 ' + m + '월 ' + d + '일</div>' +
+                '<div class="dday-info-count">오늘로 <b>D+' + n + '</b> 일째</div>' +
+                '</div>';
+    } else {
+        html += '<div class="dday-info-emoji">' + icon('calendar', 28) + '</div>' +
+                '<div class="dday-info-label">만난 날짜가 설정되지 않았어요</div>';
+    }
+    if (canEdit) {
+        html += '<div class="dday-edit-row">' +
+                    '<input id="dday-edit-input" type="date" class="dday-edit-input" value="' + (since || '') + '">' +
+                    '<button type="button" id="dday-edit-save" class="dday-edit-save">저장</button>' +
+                '</div>';
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    // [B] edit by smsong - #4 '우리가 만난 날' 탭마다 축포 + 열릴 때 1회
+    var _cel = document.getElementById('dday-celebrate');
+    if (_cel) {
+        _cel.addEventListener('click', function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); });
+        if (since) setTimeout(function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); }, 180);
+    }
+    if (canEdit) {
+        var saveBtn = document.getElementById('dday-edit-save');
+        if (saveBtn) saveBtn.addEventListener('click', saveDday);
+    }
+    Daylog._openListKind = null;
+    modal.classList.remove('list-fullscreen'); // [smsong] 디데이는 기존 카드 스타일 유지
+    modal.classList.add('dday-mode'); // 디데이 폼 내부는 드래그(당겨서 새로고침) 비활성
+    if (body) body.scrollTop = 0;
+    modal.classList.remove('hidden');
+}
+
+// [smsong] 방장: 디데이(만난 날짜) 저장 → 방(coupleSince) 갱신
+function saveDday() {
+    var input = document.getElementById('dday-edit-input');
+    if (!input) return;
+    var roomId = getRoomId();
+    withLoading(fetch(Daylog.api + '/api/rooms/' + encodeURIComponent(roomId) + '/dday', {
+        method: 'PUT', headers: Daylog.authHeaders(true),
+        body: JSON.stringify({ uid: getUid(), since: input.value || '' })
+    }), '저장 중...')
+        .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+        .then(function (room) {
+            Daylog.roomInfo = room;
+            showToast('저장되었어요');
+            applyDdayVisibility();
+            closeListModal();
+        })
+        .catch(function (err) { showToast('저장 실패: ' + (err.message || '오류')); console.error(err); });
+}
+
+// 타임라인/리스트 카드의 위치 표기 채우기
+function applyCardLocation(scope, memory) {
+    const placeEl = scope.querySelector('.tl-place');
+    const addrEl = scope.querySelector('.tl-addr');
+    if (!placeEl) return;
+    const place = (memory.placeName || '').trim();
+    const addr = (memory.address || '').trim();
+    if (place) placeEl.textContent = place;
+    if (addr) addrEl.textContent = addr;
+
+    if (!place && !addr) {
+        if (memory.lat != null && memory.lng != null) {
+            placeEl.textContent = '위치 확인 중…';
+            reverseGeocode(memory.lat, memory.lng, (a) => {
+                if (a) {
+                    const sp = splitKoreanAddress(a);
+                    placeEl.textContent = sp.placeName;
+                    addrEl.textContent = sp.address;
+                } else placeEl.textContent = '위치 정보 없음';
+            });
+        } else { placeEl.textContent = '위치 정보 없음'; }
+    } else if (place && !addr && memory.lat != null && memory.lng != null) {
+        reverseGeocode(memory.lat, memory.lng, (a) => {
+            if (a) { const sp = splitKoreanAddress(a); if (sp.address) addrEl.textContent = sp.address; }
+        });
+    }
+}
+function areaOf(addr) { return String(addr || '').split(' ').slice(0, 2).join(' '); }
+
+// [smsong] 디데이 기준일은 방(coupleSince)에서 가져옴 — 방마다 개별, 커플 방에만 적용
+function getDdayStart() {
+    return (typeof Daylog !== 'undefined' && Daylog.roomInfo && Daylog.roomInfo.coupleSince) ? Daylog.roomInfo.coupleSince : null;
+}
+// 커플 방 + 기준일 있을 때만 헤더/프로필 디데이 표시, 그 외(친구·가족·미설정)엔 숨김
+function applyDdayVisibility() {
+    var counter = document.querySelector('.dday-counter');
+    var card = document.getElementById('stat-card-dday');
+    var since = getDdayStart();
+    var show = isCoupleRoom() && !!since;
+    if (counter) counter.style.display = show ? '' : 'none';
+    if (card) card.style.display = show ? '' : 'none';
+    if (show) { var el = document.getElementById('dday-count'); if (el) el.innerText = daysSince(since); }
+}
+function daysSince(start) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const s = new Date(start);
+    s.setHours(0, 0, 0, 0);
+    return Math.floor((today.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+function calculateDDay(start) {
+    const el = document.getElementById('dday-count');
+    if (el) el.innerText = daysSince(start);
+}
+
+// ===== 사진 편집(크롭/줌) 상태 & 제어 =====
+const _crop = { natW: 0, natH: 0, base: 1, zoom: 1, x: 0, y: 0, size: 0, onDone: null, url: null, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, sourceInput: null /* [smsong] 취소 시 갤러리 재오픈 소스 */ };
+
+function openCropper(file, onDone) {
+    const modal = document.getElementById('crop-modal');
+    const img = document.getElementById('crop-img');
+    if (!modal || !img) { if (onDone) onDone(file); return; } // 크롭 UI 없으면 원본 사용
+    _crop.onDone = onDone;
+    if (_crop.url) URL.revokeObjectURL(_crop.url);
+    _crop.url = URL.createObjectURL(file);
+
+    img.onload = () => {
+        modal.classList.remove('hidden');
+        // 모달이 보인 뒤 실제 크기 측정
+        requestAnimationFrame(() => {
+            const stage = document.getElementById('crop-stage');
+            const size = stage.getBoundingClientRect().width || 260;
+            _crop.size = size;
+            _crop.natW = img.naturalWidth;
+            _crop.natH = img.naturalHeight;
+            _crop.base = size / Math.min(img.naturalWidth, img.naturalHeight); // cover
+            _crop.zoom = 1;
+            const zoomEl = document.getElementById('crop-zoom');
+            if (zoomEl) zoomEl.value = 1;
+            const rw = _crop.natW * _crop.base, rh = _crop.natH * _crop.base;
+            _crop.x = (size - rw) / 2;
+            _crop.y = (size - rh) / 2;
+            applyCropTransform();
+        });
+    };
+    img.src = _crop.url;
+}
+
+function applyCropTransform() {
+    const img = document.getElementById('crop-img');
+    if (!img) return;
+    const s = _crop.base * _crop.zoom;
+    const rw = _crop.natW * s, rh = _crop.natH * s;
+    // 크롭 영역(정사각형)을 항상 가득 채우도록 위치 제한
+    _crop.x = Math.min(0, Math.max(_crop.size - rw, _crop.x));
+    _crop.y = Math.min(0, Math.max(_crop.size - rh, _crop.y));
+    img.style.width = rw + 'px';
+    img.style.height = rh + 'px';
+    img.style.left = _crop.x + 'px';
+    img.style.top = _crop.y + 'px';
+}
+
+function setCropZoom(newZoom) {
+    const oldS = _crop.base * _crop.zoom;
+    const newS = _crop.base * newZoom;
+    const cx = _crop.size / 2, cy = _crop.size / 2;
+    const imgX = (cx - _crop.x) / oldS, imgY = (cy - _crop.y) / oldS;
+    _crop.zoom = newZoom;
+    _crop.x = cx - imgX * newS;
+    _crop.y = cy - imgY * newS;
+    const zoomEl = document.getElementById('crop-zoom');
+    if (zoomEl) zoomEl.value = newZoom;
+    applyCropTransform();
+}
+
+function cropApply() {
+    const img = document.getElementById('crop-img');
+    const s = _crop.base * _crop.zoom;
+    const sx = (0 - _crop.x) / s;
+    const sy = (0 - _crop.y) / s;
+    const sSize = _crop.size / s;
+    // 잘라낼 영역의 실제(원본) 해상도를 유지 → 확대(라이트박스) 시 원본 크기로 표시
+    const out = Math.max(512, Math.min(Math.round(sSize), 1600));
+    const canvas = document.createElement('canvas');
+    canvas.width = out; canvas.height = out;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, out, out);
+    canvas.toBlob((blob) => {
+        const cb = _crop.onDone;
+        closeCropper();
+        if (blob && cb) cb(new File([blob], 'profile.jpg', { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+}
+
+function closeCropper() {
+    const modal = document.getElementById('crop-modal');
+    if (modal) modal.classList.add('hidden');
+    if (_crop.url) { URL.revokeObjectURL(_crop.url); _crop.url = null; }
+    _crop.onDone = null;
+    _crop.sourceInput = null; // [B] edit by smsong - 갤러리 재오픈 소스 정리 / [E] edit by smsong
+}
+
+// ===== 추억 사진 편집기 (자르기 + 회전) =====
+const _ped = { url: null, img: null, natW: 0, natH: 0, stageW: 0, stageH: 0, dispScale: 1, dispX: 0, dispY: 0, crop: { x: 0, y: 0, w: 0, h: 0 }, onDone: null, drag: null };
+
+function openPhotoEditor(file, onDone) {
+    const modal = document.getElementById('photo-editor-modal');
+    const imEl = document.getElementById('pe-img');
+    if (!modal || !imEl || !file) { if (onDone) onDone(file); return; }
+    _ped.onDone = onDone;
+    if (_ped.url) URL.revokeObjectURL(_ped.url);
+    _ped.url = URL.createObjectURL(file);
+
+    const im = new Image();
+    im.onload = () => {
+        _ped.img = im;
+        _ped.natW = im.naturalWidth;
+        _ped.natH = im.naturalHeight;
+        imEl.src = _ped.url;
+        modal.classList.remove('hidden');
+        requestAnimationFrame(() => peLayout(true));
+    };
+    im.src = _ped.url;
+}
+
+function peLayout(resetCrop) {
+    const stage = document.getElementById('pe-stage');
+    const imEl = document.getElementById('pe-img');
+    if (!stage || !imEl) return;
+    _ped.stageW = stage.clientWidth;
+    _ped.stageH = stage.clientHeight;
+    _ped.dispScale = Math.min(_ped.stageW / _ped.natW, _ped.stageH / _ped.natH) || 1;
+    const dw = _ped.natW * _ped.dispScale, dh = _ped.natH * _ped.dispScale;
+    _ped.dispX = (_ped.stageW - dw) / 2;
+    _ped.dispY = (_ped.stageH - dh) / 2;
+    imEl.style.left = _ped.dispX + 'px';
+    imEl.style.top = _ped.dispY + 'px';
+    imEl.style.width = dw + 'px';
+    imEl.style.height = dh + 'px';
+    if (resetCrop) _ped.crop = { x: _ped.dispX, y: _ped.dispY, w: dw, h: dh };
+    peApplyCropStyle();
+}
+
+function peApplyCropStyle() {
+    const box = document.getElementById('pe-crop');
+    if (!box) return;
+    box.style.left = _ped.crop.x + 'px';
+    box.style.top = _ped.crop.y + 'px';
+    box.style.width = _ped.crop.w + 'px';
+    box.style.height = _ped.crop.h + 'px';
+}
+
+function peClampCrop() {
+    const minX = _ped.dispX, minY = _ped.dispY;
+    const maxX = _ped.dispX + _ped.natW * _ped.dispScale;
+    const maxY = _ped.dispY + _ped.natH * _ped.dispScale;
+    const c = _ped.crop;
+    const MIN = 40;
+    c.w = Math.max(MIN, Math.min(c.w, maxX - minX));
+    c.h = Math.max(MIN, Math.min(c.h, maxY - minY));
+    c.x = Math.max(minX, Math.min(c.x, maxX - c.w));
+    c.y = Math.max(minY, Math.min(c.y, maxY - c.h));
+}
+
+function peRotate() {
+    if (!_ped.img) return;
+    const c = document.createElement('canvas');
+    c.width = _ped.natH; c.height = _ped.natW;
+    const cx = c.getContext('2d');
+    cx.translate(c.width / 2, c.height / 2);
+    cx.rotate(Math.PI / 2);
+    cx.drawImage(_ped.img, -_ped.natW / 2, -_ped.natH / 2);
+    const data = c.toDataURL('image/jpeg', 0.95);
+    const im = new Image();
+    im.onload = () => {
+        _ped.img = im; _ped.natW = im.naturalWidth; _ped.natH = im.naturalHeight;
+        const imEl = document.getElementById('pe-img');
+        if (imEl) imEl.src = data;
+        peLayout(true);
+    };
+    im.src = data;
+}
+
+function peApply() {
+    if (!_ped.img) return;
+    const sx = (_ped.crop.x - _ped.dispX) / _ped.dispScale;
+    const sy = (_ped.crop.y - _ped.dispY) / _ped.dispScale;
+    const sw = _ped.crop.w / _ped.dispScale;
+    const sh = _ped.crop.h / _ped.dispScale;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw));
+    c.height = Math.max(1, Math.round(sh));
+    const cx = c.getContext('2d');
+    cx.drawImage(_ped.img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    c.toBlob((blob) => {
+        const cb = _ped.onDone;
+        closePhotoEditor();
+        if (blob && cb) cb(new File([blob], 'memory_' + Date.now() + '.jpg', { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+}
+
+function closePhotoEditor() {
+    const modal = document.getElementById('photo-editor-modal');
+    if (modal) modal.classList.add('hidden');
+    if (_ped.url) { URL.revokeObjectURL(_ped.url); _ped.url = null; }
+    _ped.onDone = null; _ped.drag = null;
+}
+
+// ============================================================
+//  다중 이미지 공용 모듈 — 미리보기 그리드(✕삭제·꾹눌러 드래그 정렬) + 캐러셀
+// ============================================================
+const MEDIA_MAX = 10;
+
+// obj: 추억/가볼곳 객체 → 이미지 URL 배열(첫 장이 대표)
+function mediaUrlsOf(obj) {
+    if (!obj) return [];
+    if (Array.isArray(obj.mediaUrls) && obj.mediaUrls.length) return obj.mediaUrls.filter(Boolean);
+    if (obj.mediaURL) return [obj.mediaURL];
+    return [];
+}
+
+// [B] edit by smsong - 목록/마커 썸네일용 대표(첫) 이미지 URL.
+//  다중 이미지(mediaUrls) 기록이면 첫 장, 단일이면 mediaURL. → 여러 장 기록의 썸네일 누락 해결.
+function coverUrlOf(obj) {
+    var arr = mediaUrlsOf(obj);
+    return arr.length ? arr[0] : null;
+}
+
+function createMediaManager(opts) {
+    const grid = opts.grid, input = opts.input, onTileTap = opts.onTileTap;
+    let items = []; // { kind:'url'|'file', url?, file?, _obj? }
+
+    function objURL(it) {
+        if (it.kind === 'url') return it.url;
+        if (!it._obj) it._obj = URL.createObjectURL(it.file);
+        return it._obj;
+    }
+    function revokeAll() { items.forEach(it => { if (it._obj) { try { URL.revokeObjectURL(it._obj); } catch (_) {} it._obj = null; } }); }
+    function reset(initial) { revokeAll(); items = (initial || []).slice(); render(); }
+    function count() { return items.length; }
+    function addFiles(fileList) {
+        const files = Array.from(fileList || []);
+        for (const f of files) {
+            if (!f || !f.type || f.type.indexOf('image/') !== 0) continue;
+            if (items.length >= MEDIA_MAX) { showToast('이미지는 최대 ' + MEDIA_MAX + '장까지 첨부할 수 있습니다'); break; }
+            items.push({ kind: 'file', file: f });
+        }
+        render();
+    }
+    function replaceAt(i, f) {
+        if (!items[i]) return;
+        if (items[i]._obj) { try { URL.revokeObjectURL(items[i]._obj); } catch (_) {} }
+        items[i] = { kind: 'file', file: f };
+        render();
+    }
+    function removeAt(i) {
+        const it = items[i];
+        if (it && it._obj) { try { URL.revokeObjectURL(it._obj); } catch (_) {} }
+        items.splice(i, 1);
+        render();
+    }
+    function getNewFiles() { return items.filter(it => it.kind === 'file').map(it => it.file); }
+    function getMediaOrder() { return items.map(it => it.kind === 'url' ? it.url : '$NEW$'); }
+
+    function render() {
+        if (!grid) return;
+        grid.innerHTML = '';
+        items.forEach((it, i) => {
+            const tile = document.createElement('div');
+            tile.className = 'media-tile';
+            tile.dataset.idx = i;
+            tile._item = it;
+            tile.style.backgroundImage = "url('" + objURL(it) + "')";
+            if (i === 0) { const b = document.createElement('span'); b.className = 'media-cover'; b.textContent = '대표'; tile.appendChild(b); }
+            const rm = document.createElement('button');
+            rm.type = 'button'; rm.className = 'media-remove'; rm.innerHTML = '&times;';
+            rm.addEventListener('click', (e) => { e.stopPropagation(); removeAt(i); });
+            tile.appendChild(rm);
+            if (onTileTap) tile.addEventListener('click', (e) => { if (e.target.closest('.media-remove')) return; if (!grid._didDrag) onTileTap(it, i, replaceAt); });
+            grid.appendChild(tile);
+        });
+        if (items.length < MEDIA_MAX) {
+            const add = document.createElement('button');
+            add.type = 'button'; add.className = 'media-add'; add.innerHTML = '<span>＋</span>';
+            add.addEventListener('click', () => { if (input) input.click(); });
+            grid.appendChild(add);
+        }
     }
 
-    // 둘 다 있으면 세그먼트 탭으로 전환
-    const unitBlock = renderGalleryBlock(b.mediaURLs, 'galu-' + base, safeName, null);
-    const vacBlock = renderGalleryBlock(b.vacancyURLs, 'galv-' + base, safeName, null);
-    return `<div style="margin-bottom:4px;">
-      <div class="seg" id="galtabs-${base}" style="--seg-n:2;--seg-i:0;">
-        <span class="seg-ind"></span>
-        <button type="button" class="seg-btn active" onclick="switchGalleryTab('${base}','u',event)">호실 사진</button>
-        <button type="button" class="seg-btn" onclick="switchGalleryTab('${base}','v',event)">공실표</button>
-      </div>
-      <div id="galwrap-${base}-u">${unitBlock}</div>
-      <div id="galwrap-${base}-v" style="display:none;">${vacBlock}</div>
-    </div>`;
-}
-
-// 갤러리 탭 전환 — 보이는 쪽만 표시하고 높이 재계산
-function switchGalleryTab(base, which, ev) {
-    if (ev) ev.stopPropagation();
-    const showU = which === 'u';
-    const wrapU = document.getElementById('galwrap-' + base + '-u');
-    const wrapV = document.getElementById('galwrap-' + base + '-v');
-    if (wrapU) wrapU.style.display = showU ? '' : 'none';
-    if (wrapV) wrapV.style.display = showU ? 'none' : '';
-    segMove('galtabs-' + base, showU ? 0 : 1);   // 흰 인디케이터를 부드럽게 이동
-    // 숨김 상태에선 clientWidth=0이라 높이가 안 잡혔을 수 있음 → 보이게 된 쪽 높이 재계산
-    const gid = showU ? ('galu-' + base) : ('galv-' + base);
-    const track = document.getElementById(gid);
-    if (track) {
-        const img = track.querySelector('img');
-        if (img && img.complete) fitGalleryHeight(gid, img);
+    // 꾹 눌러(롱프레스) 드래그 → 순서 변경 (마우스/터치 공통). DOM 노드를 직접 이동해 포인터 캡처 유지.
+    if (grid && !grid._reorderBound) {
+        grid._reorderBound = true;
+        let pressTimer = null, dragNode = null, isDragging = false, sx = 0, sy = 0;
+        grid.addEventListener('pointerdown', (e) => {
+            const tile = e.target.closest('.media-tile');
+            if (!tile || e.target.closest('.media-remove')) return;
+            sx = e.clientX; sy = e.clientY; grid._didDrag = false;
+            clearTimeout(pressTimer);
+            pressTimer = setTimeout(() => {
+                isDragging = true; dragNode = tile; grid._didDrag = true;
+                tile.classList.add('dragging');
+                try { tile.setPointerCapture(e.pointerId); } catch (_) {}
+            }, 200);
+        });
+        grid.addEventListener('pointermove', (e) => {
+            if (!isDragging) {
+                if (pressTimer && (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12)) { clearTimeout(pressTimer); pressTimer = null; }
+                return;
+            }
+            e.preventDefault();
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            const over = el && el.closest ? el.closest('.media-tile') : null;
+            if (over && over !== dragNode && over.parentElement === grid) {
+                const r = over.getBoundingClientRect();
+                const after = (e.clientX - r.left) > r.width / 2;
+                grid.insertBefore(dragNode, after ? over.nextSibling : over);
+            }
+        }, { passive: false });
+        const endDrag = () => {
+            clearTimeout(pressTimer); pressTimer = null;
+            if (isDragging) {
+                isDragging = false;
+                if (dragNode) dragNode.classList.remove('dragging');
+                // DOM 순서 → items 재구성
+                const tiles = Array.from(grid.querySelectorAll('.media-tile'));
+                items = tiles.map(t => t._item).filter(Boolean);
+                dragNode = null;
+                render();
+                setTimeout(() => { grid._didDrag = false; }, 50);
+            }
+        };
+        grid.addEventListener('pointerup', endDrag);
+        grid.addEventListener('pointercancel', endDrag);
     }
+
+    return { reset, addFiles, replaceAt, removeAt, count, getNewFiles, getMediaOrder, render };
 }
 
-// 이전/다음 버튼 → 한 장씩 부드럽게 스크롤(스냅)
-function galleryNav(gid, dir, total, ev) {
-    if (ev) ev.stopPropagation();
-    const track = document.getElementById(gid);
-    if (!track) return;
-    const w = track.clientWidth || 1;
-    let idx = Math.round(track.scrollLeft / w) + dir;
-    idx = Math.max(0, Math.min(total - 1, idx));
-    track.scrollTo({ left: idx * w, behavior: 'smooth' });
+// 상세 화면 캐러셀 HTML
+// [B] edit by smsong - 상세 이미지 캐러셀: JS transform → REMS식 네이티브 CSS scroll-snap.
+//  트랙 자체가 가로 스크롤(scroll-snap)로 넘어가므로 세로 페이지 스크롤은 브라우저가 자연 처리 →
+//  버벅임/포인터 캡처 이슈 없이 부드럽고, 손가락 세로 스크롤도 정상. 이미지는 decoding=async + onerror.
+function carouselHtml(urls) {
+    if (!urls || !urls.length) return '';
+    if (urls.length === 1) {
+        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" alt="사진" class="detail-single-img" decoding="async"></div>';
+    }
+    const cid = 'car-' + Math.random().toString(36).slice(2);
+    let slides = '';
+    urls.forEach((u, i) => {
+        // [B] edit by smsong - 첫 장만 즉시 로드, 나머지는 loading="lazy" → 이미지 개수와 무관하게 상세가 즉시 열림.
+        //  (네이티브 scroll-snap 이라 넘길 때 해당 슬라이드만 로드됨)
+        slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진" decoding="async"' +
+            (i === 0 ? ' onload="Daylog._fitCarousel(\'' + cid + '\', this)"' : ' loading="lazy"') +
+            ' onerror="this.parentElement.style.display=\'none\'"></div>';
+    });
+    let dots = '';
+    urls.forEach((u, i) => { dots += '<span class="carousel-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '"></span>'; });
+    return '<div class="detail-carousel">' +
+        '<div class="carousel-count"><span class="cc-cur">1</span>/' + urls.length + '</div>' +
+        '<div class="carousel-track" id="' + cid + '">' + slides + '</div>' +
+        '<button type="button" class="carousel-arrow prev" disabled>&#8249;</button>' +
+        '<button type="button" class="carousel-arrow next">&#8250;</button>' +
+        '<div class="carousel-dots">' + dots + '</div>' +
+        '</div>';
 }
 
-// 캐러셀 스크롤 위치 → 카운터/점 인디케이터 갱신
-function onGalleryScroll(gid, total) {
-    const track = document.getElementById(gid);
-    if (!track || !track.clientWidth) return;
-    const idx = Math.round(track.scrollLeft / track.clientWidth);
-    const cnt = document.getElementById(gid + '-cnt');
-    if (cnt) cnt.textContent = (idx + 1) + ' / ' + total;
-    const dots = document.getElementById(gid + '-dots');
-    if (dots) Array.from(dots.children).forEach((d, i) => d.classList.toggle('active', i === idx));
-}
-
-// 첫 이미지 비율에 맞춰 캐러셀 높이를 설정 → 첫 장은 딱 맞고 나머지는 그 안에 전체가 보임(contain)
-function fitGalleryHeight(gid, img) {
-    const track = document.getElementById(gid);
+// 첫 이미지 비율로 트랙 높이 설정 → 레이아웃 시프트(깜빡임) 방지 (REMS fitGalleryHeight 방식)
+Daylog._fitCarousel = function (cid, img) {
+    const track = document.getElementById(cid);
     if (!track || !img || !img.naturalWidth) return;
     const w = track.clientWidth || track.offsetWidth;
     if (!w) return;
     let h = w * img.naturalHeight / img.naturalWidth;
-    const maxH = Math.round(window.innerHeight * 0.7);   // 세로 사진이 화면을 다 먹지 않도록 상한
+    const maxH = Math.round(window.innerHeight * 0.7);
     if (h > maxH) h = maxH;
     track.style.height = Math.round(h) + 'px';
-}
-
-// 폼: 유지 중인 기존 이미지 썸네일 (X로 제거)
-function renderBfExisting() {
-    const box = document.getElementById('bf-existing');
-    if (!box) return;
-    if (!bfKeepUrls.length) { box.innerHTML = '<div class="bf-empty">기존 사진 없음</div>'; return; }
-    box.innerHTML = bfKeepUrls.map((u, i) => `
-      <div class="bf-thumb">
-        <img src="${u}" onerror="this.parentElement.style.display='none'">
-        <button type="button" class="bf-thumb-del" onclick="removeBfImage(${i})">${icon('close',14)}</button>
-      </div>`).join('');
-}
-
-function removeBfImage(idx) {
-    bfKeepUrls.splice(idx, 1);
-    renderBfExisting();
-    updateBfCount();
-}
-
-// 폼: 파일 선택 시 누적 추가 (최대 MAX_BUILDING_IMAGES 장 제한)
-function addBfFiles(e) {
-    const picked = Array.from((e.target && e.target.files) ? e.target.files : []);
-    const room = MAX_BUILDING_IMAGES - (bfKeepUrls.length + bfNewFiles.length);
-    if (room <= 0) {
-        showToast(`최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다`);
-        e.target.value = '';
-        return;
-    }
-    if (picked.length > room) {
-        showToast(`최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다 (지금 ${room}장까지 추가)`);
-    }
-    bfNewFiles = bfNewFiles.concat(picked.slice(0, room));
-    e.target.value = '';   // 같은 파일 재선택 가능 + 선택 누적
-    renderBfNewPreview();
-    updateBfCount();
-}
-
-// 폼: 새로 추가한 파일 미리보기 (✕로 제거)
-function renderBfNewPreview() {
-    const box = document.getElementById('bf-new-preview');
-    if (!box) return;
-    box.innerHTML = bfNewFiles.map((f, i) => `
-      <div class="bf-thumb">
-        <img src="${URL.createObjectURL(f)}">
-        <button type="button" class="bf-thumb-del" onclick="removeBfNewFile(${i})">${icon('close',14)}</button>
-        <span class="bf-thumb-new">NEW</span>
-      </div>`).join('');
-}
-
-function removeBfNewFile(idx) {
-    bfNewFiles.splice(idx, 1);
-    renderBfNewPreview();
-    updateBfCount();
-}
-
-// 현재 첨부 수 라벨 갱신 (호실 사진 / 공실표 각각)
-function updateBfCount() {
-    const el = document.getElementById('bf-count');
-    if (el) el.textContent = (bfKeepUrls.length + bfNewFiles.length) + ' / ' + MAX_BUILDING_IMAGES;
-    const elv = document.getElementById('bf-vac-count');
-    if (elv) elv.textContent = (bfKeepVac.length + bfNewVac.length) + ' / ' + MAX_BUILDING_IMAGES;
-}
-
-// ===== 공실표(vacancyURLs) 폼 헬퍼 =====
-function renderBfVacExisting() {
-    const box = document.getElementById('bf-vac-existing');
-    if (!box) return;
-    if (!bfKeepVac.length) { box.innerHTML = '<div class="bf-empty">기존 공실표 없음</div>'; return; }
-    box.innerHTML = bfKeepVac.map((u, i) => `
-      <div class="bf-thumb">
-        <img src="${u}" onerror="this.parentElement.style.display='none'">
-        <button type="button" class="bf-thumb-del" onclick="removeBfVacImage(${i})">${icon('close',14)}</button>
-      </div>`).join('');
-}
-function removeBfVacImage(idx) {
-    bfKeepVac.splice(idx, 1);
-    renderBfVacExisting();
-    updateBfCount();
-}
-function addBfVacFiles(e) {
-    const picked = Array.from((e.target && e.target.files) ? e.target.files : []);
-    const room = MAX_BUILDING_IMAGES - (bfKeepVac.length + bfNewVac.length);
-    if (room <= 0) {
-        showToast(`공실표는 최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다`);
-        e.target.value = '';
-        return;
-    }
-    if (picked.length > room) {
-        showToast(`공실표는 최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다 (지금 ${room}장까지 추가)`);
-    }
-    bfNewVac = bfNewVac.concat(picked.slice(0, room));
-    e.target.value = '';
-    renderBfVacNewPreview();
-    updateBfCount();
-}
-function renderBfVacNewPreview() {
-    const box = document.getElementById('bf-vac-new-preview');
-    if (!box) return;
-    box.innerHTML = bfNewVac.map((f, i) => `
-      <div class="bf-thumb">
-        <img src="${URL.createObjectURL(f)}">
-        <button type="button" class="bf-thumb-del" onclick="removeBfVacNewFile(${i})">${icon('close',14)}</button>
-        <span class="bf-thumb-new">NEW</span>
-      </div>`).join('');
-}
-function removeBfVacNewFile(idx) {
-    bfNewVac.splice(idx, 1);
-    renderBfVacNewPreview();
-    updateBfCount();
-}
-
-function openBuildingForm(building, lat, lng, addr) {
-    const isEdit = !!building;
-    bfKeepUrls = (building && building.mediaURLs) ? building.mediaURLs.slice() : [];
-    bfNewFiles = [];
-    bfKeepVac = (building && building.vacancyURLs) ? building.vacancyURLs.slice() : [];
-    bfNewVac = [];
-    document.getElementById('modal-title').textContent = isEdit ? '건물 수정' : '건물 추가';
-
-    document.getElementById('modal-body').innerHTML = `
-    <div class="form-section-title">기본 정보</div>
-    <div class="form-group">
-      <label class="form-label">건물명 *</label>
-      <input id="f-name" class="form-input" type="text" placeholder="예: 강남 상가빌딩" value="${building ? building.name : ''}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">주소</label>
-      <input id="f-addr" class="form-input" type="text" placeholder="주소" value="${building ? (building.address || '') : (addr || '')}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">건물 유형</label>
-      <select id="f-type" class="form-select">
-        <option value="house" ${(!building || building.type==='house')?'selected':''}>단독&다중</option>
-        <option value="multiplex" ${building && building.type==='multiplex'?'selected':''}>다세대</option>
-        <option value="officetel" ${building && building.type==='officetel'?'selected':''}>오피스텔</option>
-        <option value="apartment" ${building && building.type==='apartment'?'selected':''}>아파트</option>
-        <option value="neighborhood" ${building && building.type==='neighborhood'?'selected':''}>근린생활시설</option>
-        <option value="commercial" ${building && building.type==='commercial'?'selected':''}>상가</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">대표 거래유형 *</label>
-      <div class="deal-selector" id="f-deal-selector">
-        <div class="deal-option" data-deal="sale" onclick="selectDeal('f','sale')">매매</div>
-        <div class="deal-option" data-deal="jeonse" onclick="selectDeal('f','jeonse')">전세</div>
-        <div class="deal-option" data-deal="monthly" onclick="selectDeal('f','monthly')">월세</div>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label" id="f-deposit-label">보증금 (만원)</label>
-      <input id="f-deposit" class="form-input" type="number" min="0" placeholder="예: 1000" value="${building ? (building.deposit || '') : ''}">
-    </div>
-    <div class="form-row">
-      <div class="form-group" id="f-rent-group">
-        <label class="form-label">월세 (만원)</label>
-        <input id="f-rent" class="form-input" type="number" min="0" placeholder="예: 50" value="${building ? (building.rent || '') : ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">관리비 (만원)</label>
-        <input id="f-manage" class="form-input" type="number" min="0" placeholder="예: 5" value="${building ? (building.manage || '') : ''}">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">옵션</label>
-      <div class="toggle-row">
-        <button type="button" id="f-parking" class="toggle-btn ${building && building.parkingAvailable ? 'on' : ''}" onclick="this.classList.toggle('on')"><span class="tg-dot"></span>주차</button>
-        <button type="button" id="f-pet" class="toggle-btn ${building && building.petAllowed ? 'on' : ''}" onclick="this.classList.toggle('on')"><span class="tg-dot"></span>애완</button>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">전세 대출</label>
-      <button type="button" id="f-jeonse-loan" class="toggle-btn full ${building && building.jeonseLoanAvailable ? 'on' : ''}" onclick="toggleJeonseLoan()"><span class="tg-dot"></span>전세 대출 가능</button>
-      <div class="toggle-row" id="f-jeonse-loan-types" style="flex-wrap:wrap;margin-top:8px;display:${building && building.jeonseLoanAvailable ? 'flex' : 'none'};">
-        ${(() => {
-        const sel = new Set(((building && building.jeonseLoanType) || '').split(',').map(s => s.trim()).filter(Boolean));
-        return ['HUG', 'HF', 'SGI', '버팀목', 'LH'].map(v =>
-            `<button type="button" class="toggle-btn ${sel.has(v) ? 'on' : ''}" data-loan="${v}" onclick="this.classList.toggle('on')" style="flex:0 0 auto;padding:8px 14px;">${v}</button>`).join('');
-    })()}
-      </div>
-    </div>
-    <div class="form-section-title" style="margin-top:8px;">사진 첨부</div>
-    <!-- 호실 사진: 모든 사용자에게 표시 -->
-    <div class="form-group">
-      <label class="form-label">호실 사진 <span style="font-weight:400;color:#9ca3af;">(모든 사용자에게 표시 · 최대 ${MAX_BUILDING_IMAGES}장 · <span id="bf-count">0 / ${MAX_BUILDING_IMAGES}</span>)</span></label>
-      ${isEdit ? `<div id="bf-existing" class="bf-thumb-wrap"></div>` : ''}
-      <input id="f-media" class="form-input" type="file" accept="image/*,video/*" multiple onchange="addBfFiles(event)">
-      <div id="bf-new-preview" class="bf-thumb-wrap"></div>
-    </div>
-    <!-- 공실표: 소유자에게만 표시 -->
-    <div class="form-group">
-      <label class="form-label">공실표 <span style="font-weight:400;color:#9ca3af;">(소유자에게만 표시 · 최대 ${MAX_BUILDING_IMAGES}장 · <span id="bf-vac-count">0 / ${MAX_BUILDING_IMAGES}</span>)</span></label>
-      ${isEdit ? `<div id="bf-vac-existing" class="bf-thumb-wrap"></div>` : ''}
-      <input id="f-media-vac" class="form-input" type="file" accept="image/*,video/*" multiple onchange="addBfVacFiles(event)">
-      <div id="bf-vac-new-preview" class="bf-thumb-wrap"></div>
-    </div>
-  `;
-
-    document.getElementById('modal-footer').innerHTML = `
-    ${isEdit && myPerms().canDelete ? `<button class="btn-danger" onclick="deleteBuilding('${building.id}')">삭제</button>` : ''}
-    <button class="btn-secondary" onclick="closeModal()">취소</button>
-    <button class="btn-primary" onclick="saveBuilding('${isEdit ? building.id : ''}', ${lat||building?.lat}, ${lng||building?.lng})">저장</button>
-  `;
-
-    renderBfExisting();      // 수정 시 기존 호실 사진 썸네일
-    renderBfVacExisting();   // 수정 시 기존 공실표 썸네일
-    updateBfCount();
-    selectDeal('f', isEdit ? inferDeal(building) : 'monthly');   // 대표 거래유형 초기 상태(라벨/월세칸)
-    showModal();
-}
-
-function openEditBuilding(id) {
-    const b = state.buildings.find(b => b.id === id);
-    if (!isMine(b)) { showToast('본인이 등록한 매물만 수정할 수 있습니다'); return; }
-    if (b) openBuildingForm(b, b.lat, b.lng, b.address);
-}
-
-async function saveBuilding(id, lat, lng) {
-    if (_isSubmitting) return;                 // 진행 중이면 중복 호출 차단
-    const name = document.getElementById('f-name').value.trim();
-    if (!name) { showToast('건물명을 입력하세요'); return; }
-
-    const jeonseLoanAvailable = document.getElementById('f-jeonse-loan').classList.contains('on');
-    const dealType = selectedDeal('f');
-    const dto = {
-        name,
-        address: document.getElementById('f-addr').value.trim(),
-        type: document.getElementById('f-type').value,
-        dealType,
-        deposit: parseInt(document.getElementById('f-deposit').value) || 0,
-        rent: dealType === 'sale' ? 0 : (parseInt(document.getElementById('f-rent').value) || 0),
-        manage: parseInt(document.getElementById('f-manage').value) || 0,
-        jeonseLoanAvailable,
-        jeonseLoanType: jeonseLoanAvailable
-            ? Array.from(document.querySelectorAll('#f-jeonse-loan-types .toggle-btn.on')).map(x => x.dataset.loan).join(',')
-            : null,
-        parkingAvailable: document.getElementById('f-parking').classList.contains('on'),
-        petAllowed: document.getElementById('f-pet').classList.contains('on'),
-        lat: parseFloat(lat), lng: parseFloat(lng)
-    };
-
-    const mediaFiles = bfNewFiles;            // 새로 추가한 호실 사진
-    const vacancyFiles = bfNewVac;            // 새로 추가한 공실표
-    dto.mediaURLs = bfKeepUrls;               // 유지할 호실 사진 (제거된 건 빠져있음)
-    dto.vacancyURLs = bfKeepVac;              // 유지할 공실표
-    if (bfKeepUrls.length + mediaFiles.length > MAX_BUILDING_IMAGES) {
-        showToast(`호실 사진은 최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다`);
-        return;
-    }
-    if (bfKeepVac.length + vacancyFiles.length > MAX_BUILDING_IMAGES) {
-        showToast(`공실표는 최대 ${MAX_BUILDING_IMAGES}장만 첨부 가능합니다`);
-        return;
-    }
-
-    showLoading(id ? '건물 정보를 저장하는 중…' : '건물을 추가하는 중…');
-    try {
-        if (id) {
-            dto.id = id;
-            await Api.updateBuilding(dto, mediaFiles, vacancyFiles);   // 유지목록 + 새 파일들 (호실사진/공실표)
-        } else {
-            await Api.createBuilding(dto, mediaFiles, vacancyFiles);
-        }
-        await loadData();
-        closeModal();
-        renderMarkers();
-        updateStats();
-        showBuildingList();
-        showSheet('center');
-        showToast(id ? '건물 정보가 수정되었습니다' : '건물이 추가되었습니다');
-    } catch (e) {
-        showToast('저장 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-async function deleteBuilding(id) {
-    if (_isSubmitting) return;
-    const b = state.buildings.find(b => b.id === id);
-    if (b && !isMine(b)) { showToast('본인이 등록한 매물만 삭제할 수 있습니다'); return; }
-    if (!confirm('이 매물을 휴지통으로 이동할까요?\n휴지통에서 30일이 지나면 자동으로 영구 삭제됩니다.')) return;
-    showLoading('휴지통으로 이동하는 중…');
-    try {
-        await Api.deleteBuilding(id);
-        await loadData();
-        closeModal();
-        renderMarkers();
-        updateStats();
-        showBuildingList();
-        showSheet('center');
-        currentBuilding = null;
-        showToast('휴지통으로 이동되었습니다');
-    } catch (e) {
-        showToast('삭제 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// =====================================================
-// MODALS — Unit
-// =====================================================
-function openAddUnit(buildingId) {
-    const b = state.buildings.find(b => b.id === buildingId);
-    if (!isMine(b)) { showToast('본인이 등록한 매물에만 호실을 추가할 수 있습니다'); return; }
-    openUnitForm(buildingId, null);
-}
-
-function openUnitDetail(buildingId, unitId) {
-    const b = state.buildings.find(b => b.id === buildingId);
-    const u = b.units.find(u => u.id === unitId);
-    if (!u) return;
-
-    document.getElementById('modal-title').textContent = `${u.name} 상세`;
-
-    const statusColors = { empty: '#dc2626', occupied: '#0d9451', expiring: '#d97706' };
-    const statusBg = { empty: '#fee2e2', occupied: '#d1fae5', expiring: '#fef3c7' };
-    const st = effectiveStatus(u);
-    const d = inferDeal(u);
-    const ddayHtml = u.contractEnd ? (() => {
-        const daysLeft = Math.ceil((new Date(u.contractEnd) - new Date()) / 86400000);
-        const color = daysLeft < 90 ? '#dc2626' : daysLeft < 180 ? '#d97706' : '#0d9451';
-        const dateStr = String(u.contractEnd).replace(/-/g, '.');   // 2026-07-30 → 2026.07.30
-        return `<div style="padding:10px 12px;background:#f9fafb;border-radius:10px;font-size:13px;margin-top:8px;color:${color};font-weight:600;">${dateStr} 만기</div>`;
-    })() : '';
-
-    document.getElementById('modal-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-      <div style="display:inline-block;padding:5px 12px;border-radius:20px;background:${statusBg[st]};color:${statusColors[st]};font-size:13px;font-weight:700;">${STATUS_LABEL[st]}</div>
-      ${dealBadge(u, 12)}
-    </div>
-
-    <div class="form-section-title">기본 정보</div>
-    <div class="building-info-grid">
-      <div class="info-card"><div class="info-card-label">호실</div><div class="info-card-value">${escapeHtml(u.name || '')}</div></div>
-      <div class="info-card"><div class="info-card-label">면적</div><div class="info-card-value">${u.area}㎡</div></div>
-      <div class="info-card"><div class="info-card-label">유형</div><div class="info-card-value">${TYPE_LABEL[u.type] || {residential:'주거용',office:'사무용'}[u.type] || u.type}</div></div>
-      <div class="info-card"><div class="info-card-label">거래</div><div class="info-card-value">${DEAL_LABEL[d]}</div></div>
-    </div>
-    ${u.createdAt ? `<div style="font-size:11.5px;color:#9ca3af;margin-top:10px;">등록일 ${formatDate(u.createdAt)}</div>` : ''}
-
-    <div class="form-section-title" style="margin-top:16px;">계약 정보</div>
-    <div class="building-info-grid">
-      <div class="info-card"><div class="info-card-label">${d === 'sale' ? '매매가' : d === 'jeonse' ? '전세금' : '보증금'}</div><div class="info-card-value">${u.deposit ? u.deposit.toLocaleString()+'만원' : '—'}</div></div>
-      ${(d !== 'sale' && (u.rent || 0) > 0) ? `<div class="info-card"><div class="info-card-label">월세</div><div class="info-card-value">${u.rent.toLocaleString()}만원</div></div>` : ''}
-      <div class="info-card"><div class="info-card-label">관리비</div><div class="info-card-value">${u.manage ? u.manage+'만원' : '—'}</div></div>
-      <div class="info-card"><div class="info-card-label">계약기간</div><div class="info-card-value" style="font-size:12px;">${u.contractStart ? u.contractStart+'~'+u.contractEnd : '—'}</div></div>
-    </div>
-    ${ddayHtml}
-
-    <div class="form-section-title" style="margin-top:16px;">메모</div>
-    <div style="padding:12px;background:#f9fafb;border-radius:10px;font-size:14px;color:#374151;min-height:60px;">
-      ${u.memo ? escapeHtml(u.memo) : '<span style="color:#9ca3af;">메모가 없습니다</span>'}
-    </div>
-  `;
-
-    document.getElementById('modal-footer').innerHTML = `
-    <button class="btn-secondary" onclick="closeModal()">닫기</button>
-    ${isMine(u)
-        ? `${myPerms().canUpdate ? `<button class="btn-primary" onclick="openUnitForm('${buildingId}','${unitId}')">수정</button>` : ''}`
-        : `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:#9ca3af;align-self:center;padding:0 6px;">${icon('lock',13)} ${ownerNameSpan(u)}님이 등록한 호실</span>`}
-  `;
-    showModal();
-    hydrateOwnerNames(document.getElementById('modal')); // [B/E] edit by smsong
-}
-
-function switchUnitTab(tab) {
-    document.querySelectorAll('.unit-tab').forEach((t,i) => {
-        t.classList.toggle('active', ['info','contract','memo'][i] === tab);
-    });
-    renderUnitTab(tab);
-}
-
-function renderUnitTab(tab) {
-    const { u } = window._unitTabData;
-    const c = document.getElementById('unit-tab-content');
-
-    const statusColors = { empty: '#dc2626', occupied: '#0d9451', expiring: '#d97706' };
-    const statusBg = { empty: '#fee2e2', occupied: '#d1fae5', expiring: '#fef3c7' };
-
-    if (tab === 'info') {
-        c.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-        <div style="display:inline-block;padding:5px 12px;border-radius:20px;background:${statusBg[effectiveStatus(u)]};color:${statusColors[effectiveStatus(u)]};font-size:13px;font-weight:700;">
-          ${STATUS_LABEL[effectiveStatus(u)]}
-        </div>
-        ${dealBadge(u, 12)}
-      </div>
-      <div class="building-info-grid">
-        <div class="info-card"><div class="info-card-label">호실</div><div class="info-card-value">${u.name}</div></div>
-        <div class="info-card"><div class="info-card-label">면적</div><div class="info-card-value">${u.area}㎡</div></div>
-        <div class="info-card"><div class="info-card-label">유형</div><div class="info-card-value">${TYPE_LABEL[u.type] || {residential:'주거용',office:'사무용'}[u.type] || u.type}</div></div>
-        <div class="info-card"><div class="info-card-label">거래</div><div class="info-card-value">${DEAL_LABEL[inferDeal(u)]}</div></div>
-      </div>
-      ${u.createdAt ? `<div style="font-size:11.5px;color:#9ca3af;margin-top:10px;">등록일 ${formatDate(u.createdAt)}</div>` : ''}
-    `;
-    } else if (tab === 'contract') {
-        const d = inferDeal(u);
-        c.innerHTML = `
-      <div class="building-info-grid">
-        <div class="info-card"><div class="info-card-label">${d === 'sale' ? '매매가' : d === 'jeonse' ? '전세금' : '보증금'}</div><div class="info-card-value">${u.deposit ? u.deposit.toLocaleString()+'만원' : '—'}</div></div>
-        ${(d !== 'sale' && (u.rent || 0) > 0) ? `<div class="info-card"><div class="info-card-label">월세</div><div class="info-card-value">${u.rent.toLocaleString()}만원</div></div>` : ''}
-        <div class="info-card"><div class="info-card-label">관리비</div><div class="info-card-value">${u.manage ? u.manage+'만원' : '—'}</div></div>
-        <div class="info-card"><div class="info-card-label">계약기간</div>
-          <div class="info-card-value" style="font-size:12px;">${u.contractStart ? u.contractStart+'~'+u.contractEnd : '—'}</div>
-        </div>
-      </div>
-      ${u.contractEnd ? (() => {
-            const daysLeft = Math.ceil((new Date(u.contractEnd) - new Date()) / 86400000);
-            const color = daysLeft < 90 ? '#dc2626' : daysLeft < 180 ? '#d97706' : '#0d9451';
-            return `<div style="padding:10px 12px;background:#f9fafb;border-radius:10px;font-size:13px;margin-top:8px;color:${color};font-weight:600;">
-          만기까지 D-${daysLeft > 0 ? daysLeft : '만기'}
-        </div>`;
-        })() : ''}
-    `;
-    } else {
-        c.innerHTML = `<div style="padding:12px;background:#f9fafb;border-radius:10px;font-size:14px;color:#374151;min-height:80px;">
-      ${u.memo || '<span style="color:#9ca3af;">메모가 없습니다</span>'}
-    </div>`;
-    }
-}
-
-function openUnitForm(buildingId, unitId) {
-    const b = state.buildings.find(b => b.id === buildingId);
-    const u = unitId ? b.units.find(u => u.id === unitId) : null;
-    if (unitId && !isMine(u)) { showToast('본인이 등록한 호실만 수정할 수 있습니다'); return; }
-    if (!unitId && !isMine(b)) { showToast('본인이 등록한 매물에만 호실을 추가할 수 있습니다'); return; }
-    const isEdit = !!u;
-
-    document.getElementById('modal-title').textContent = isEdit ? '호실 수정' : '호실 추가';
-    document.getElementById('modal-body').innerHTML = `
-    <div class="form-section-title">기본 정보</div>
-    <div class="form-group">
-      <label class="form-label">호실명 *</label>
-      <input id="uf-name" class="form-input" placeholder="예: 101호" value="${u ? u.name : ''}">
-      <input id="uf-floor" type="hidden" value="${u ? u.floor : 1}">
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">면적 (㎡)</label>
-        <input id="uf-area" class="form-input" type="number" placeholder="㎡" value="${u ? u.area : ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">유형</label>
-        <select id="uf-type" class="form-select">
-          <option value="house" ${(!u || u.type==='house')?'selected':''}>단독&다중</option>
-          <option value="multiplex" ${u && u.type==='multiplex'?'selected':''}>다세대</option>
-          <option value="officetel" ${u && u.type==='officetel'?'selected':''}>오피스텔</option>
-          <option value="apartment" ${u && u.type==='apartment'?'selected':''}>아파트</option>
-          <option value="neighborhood" ${u && u.type==='neighborhood'?'selected':''}>근린생활시설</option>
-          <option value="commercial" ${u && u.type==='commercial'?'selected':''}>상가</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">현황</label>
-      <div class="status-selector">
-        <div class="status-option ${!u || u.status==='empty'?'selected':''}" data-status="empty" onclick="selectStatus('empty')">공실</div>
-        <div class="status-option ${u && u.status==='occupied'?'selected':''}" data-status="occupied" onclick="selectStatus('occupied')">임차중</div>
-      </div>
-    </div>
-
-    <div class="form-section-title">거래 · 금액 정보</div>
-    <input id="uf-tenant" type="hidden" value="${u ? (u.tenant || '') : ''}">
-    <div class="form-group">
-      <label class="form-label">거래유형</label>
-      <div class="deal-selector" id="uf-deal-selector">
-        <div class="deal-option" data-deal="sale" onclick="selectDeal('uf','sale')">매매</div>
-        <div class="deal-option" data-deal="jeonse" onclick="selectDeal('uf','jeonse')">전세</div>
-        <div class="deal-option" data-deal="monthly" onclick="selectDeal('uf','monthly')">월세</div>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label" id="uf-deposit-label">보증금 (만원)</label>
-        <input id="uf-deposit" class="form-input" type="number" placeholder="0" value="${u ? u.deposit : ''}">
-      </div>
-      <div class="form-group" id="uf-rent-group">
-        <label class="form-label">월세 (만원)</label>
-        <input id="uf-rent" class="form-input" type="number" placeholder="0" value="${u ? u.rent : ''}">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">관리비 (만원)</label>
-      <input id="uf-manage" class="form-input" type="number" placeholder="0" value="${u ? u.manage : ''}">
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">계약 시작</label>
-        <input id="uf-start" class="form-input" type="date" value="${u ? u.contractStart : ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">계약 만료</label>
-        <input id="uf-end" class="form-input" type="date" value="${u ? u.contractEnd : ''}">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">메모</label>
-      <textarea id="uf-memo" class="form-textarea">${u ? u.memo : ''}</textarea>
-    </div>
-  `;
-
-    document.getElementById('modal-footer').innerHTML = `
-    ${isEdit && myPerms().canDelete ? `<button class="btn-danger" onclick="deleteUnit('${buildingId}','${unitId}')">삭제</button>` : ''}
-    <button class="btn-secondary" onclick="closeModal()">취소</button>
-    <button class="btn-primary" onclick="saveUnit('${buildingId}','${isEdit ? unitId : ''}')">저장</button>
-  `;
-
-    selectDeal('uf', isEdit ? inferDeal(u) : 'monthly');   // 거래유형 초기 상태
-    showModal();
-}
-
-function selectStatus(status) {
-    document.querySelectorAll('.status-option').forEach(el => {
-        el.classList.toggle('selected', el.dataset.status === status);
-    });
-}
-
-// 전세 대출 가능 토글 — 켜지면 대출 종류 콤보박스 노출
-function toggleJeonseLoan() {
-    const btn = document.getElementById('f-jeonse-loan');
-    const box = document.getElementById('f-jeonse-loan-types');
-    const on = btn.classList.toggle('on');
-    if (box) box.style.display = on ? 'flex' : 'none';
-}
-
-// 거래유형 선택 — scope='f'(건물) 또는 'uf'(호실).
-//  · 선택 토글 + 보증금 라벨 변경(매매가/전세금/보증금) + 월세 입력칸 표시/숨김
-function selectDeal(scope, code) {
-    const sel = document.getElementById(scope + '-deal-selector');
-    if (sel) sel.querySelectorAll('.deal-option').forEach(o =>
-        o.classList.toggle('selected', o.dataset.deal === code));
-    const depLabel = document.getElementById(scope + '-deposit-label');
-    if (depLabel) depLabel.textContent =
-        code === 'sale' ? '매매가 (만원)' : code === 'jeonse' ? '전세금 (만원)' : '보증금 (만원)';
-    const rentGroup = document.getElementById(scope + '-rent-group');
-    if (rentGroup) rentGroup.style.display = (code === 'sale') ? 'none' : '';   // 매매만 월세 숨김 (전세·월세는 월세 입력 허용)
-}
-function selectedDeal(scope) {
-    return document.querySelector('#' + scope + '-deal-selector .deal-option.selected')?.dataset.deal || 'monthly';
-}
-
-async function saveUnit(buildingId, unitId) {
-    if (_isSubmitting) return;                 // 진행 중이면 중복 호출 차단
-    const name = document.getElementById('uf-name').value.trim();
-    if (!name) { showToast('호실명을 입력하세요'); return; }
-
-    const status = document.querySelector('.status-option.selected')?.dataset.status || 'empty';
-    const dealType = selectedDeal('uf');
-    const dto = {
-        name, status, dealType,
-        floor: parseInt(document.getElementById('uf-floor').value) || 1,
-        area: parseFloat(document.getElementById('uf-area').value) || 0,
-        type: document.getElementById('uf-type').value,
-        tenant: document.getElementById('uf-tenant').value.trim(),
-        deposit: parseInt(document.getElementById('uf-deposit').value) || 0,
-        rent: dealType === 'sale' ? 0 : (parseInt(document.getElementById('uf-rent').value) || 0),
-        manage: parseInt(document.getElementById('uf-manage').value) || 0,
-        contractStart: document.getElementById('uf-start').value,
-        contractEnd: document.getElementById('uf-end').value,
-        memo: document.getElementById('uf-memo').value.trim()
-    };
-
-    showLoading(unitId ? '호실 정보를 저장하는 중…' : '호실을 추가하는 중…');
-    try {
-        if (unitId) {
-            await Api.updateUnit(unitId, dto);
-        } else {
-            await Api.createUnit(buildingId, dto);
-        }
-        await loadData();
-        const b = state.buildings.find(x => x.id === buildingId);
-        closeModal();
-        renderMarkers();
-        updateStats();
-        if (b) { openBuildingDetail(b); }
-        showToast(unitId ? '호실 정보가 수정되었습니다' : '호실이 추가되었습니다');
-    } catch (e) {
-        showToast('저장 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-async function deleteUnit(buildingId, unitId) {
-    if (_isSubmitting) return;
-    const b = state.buildings.find(b => b.id === buildingId);
-    const u = b && b.units.find(u => u.id === unitId);
-    if (u && !isMine(u)) { showToast('본인이 등록한 호실만 삭제할 수 있습니다'); return; }
-    if (!confirm('이 호실을 삭제하시겠습니까?')) return;
-    showLoading('호실을 삭제하는 중…');
-    try {
-        await Api.deleteUnit(unitId);
-        await loadData();
-        const b = state.buildings.find(x => x.id === buildingId);
-        closeModal();
-        renderMarkers();
-        updateStats();
-        if (b) { openBuildingDetail(b); }
-        showToast('호실이 삭제되었습니다');
-    } catch (e) {
-        showToast('삭제 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// =====================================================
-// 관리자 탭 — 계약자·임차인 관리 리스트 (중개사 전용)
-// =====================================================
-let _tenants = [];   // 계약자 목록 캐시
-
-function showStatsView() {   // (하단 '관리자' 탭 진입점 — 기존 호출부 호환 위해 이름 유지)
-    hideSheetBack('sheet');
-    const body = document.getElementById('sheet-body');
-    document.getElementById('sheet-title').textContent = '계약자 · 고객 관리';
-    document.getElementById('sheet-subtitle').textContent = '중개사 전용 · 계약자(임차인)와 고객(리드) 관리';
-
-    if (!isBroker()) {
-        body.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">${icon('lock', 56, 'color:#9ca3af;')}</div>
-          <div class="empty-state-title">중개사 전용 기능입니다</div>
-          <div class="empty-state-sub">‘내 정보 수정’에서 공인중개사사무소 정보를 등록하면 이용할 수 있습니다</div>
-        </div>`;
-        return;
-    }
-
-    const sub = _statsSubTab || 'tenant';
-    const idx = sub === 'customer' ? 1 : 0;
-    body.innerHTML = `
-      <div class="seg" id="stats-seg" style="--seg-n:2;--seg-i:${idx};">
-        <span class="seg-ind"></span>
-        <button type="button" class="seg-btn${idx === 0 ? ' active' : ''}" onclick="switchStatsSubTab('tenant')">계약자 관리</button>
-        <button type="button" class="seg-btn${idx === 1 ? ' active' : ''}" onclick="switchStatsSubTab('customer')">고객 관리</button>
-      </div>
-      <div id="stats-sub-body"></div>
-    `;
-    if (sub === 'customer') renderCustomerSub();
-    else renderTenantSub();
-}
-
-function switchStatsSubTab(which) {
-    if (_statsSubTab === which) return;
-    _statsSubTab = which;
-    segMove('stats-seg', which === 'customer' ? 1 : 0);   // 인디케이터 슬라이드
-    const box = document.getElementById('stats-sub-body');
-    if (!box) { showStatsView(); return; }                // 세그가 아직 없으면 전체 렌더
-    if (which === 'customer') renderCustomerSub();
-    else renderTenantSub();
-}
-
-function renderTenantSub() {
-    const box = document.getElementById('stats-sub-body');
-    if (!box) return;
-    box.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-        <button onclick="openTenantForm()" style="display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:9px;border:none;background:#1a56db;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">${icon('plus', 15)} 계약자 추가</button>
-      </div>
-      <div id="tenant-list"><div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">불러오는 중…</div></div>
-    `;
-    loadTenants();
-}
-
-function renderCustomerSub() {
-    const box = document.getElementById('stats-sub-body');
-    if (!box) return;
-    box.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-        <button onclick="openCustomerForm()" style="display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:9px;border:none;background:#1a56db;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">${icon('plus', 15)} 고객 추가</button>
-      </div>
-      <div id="customer-list"><div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">불러오는 중…</div></div>
-    `;
-    loadCustomers();
-}
-
-async function loadTenants() {
-    const box = document.getElementById('tenant-list');
-    try {
-        _tenants = (await Api.getTenants()) || [];
-        _tenants.forEach(t => t.id = String(t.id));
-    } catch (e) {
-        _tenants = [];
-        if (box) box.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">불러오기 실패: ${escapeHtml(e.message)}</div>`;
-        return;
-    }
-    renderTenantList();
-}
-
-function renderTenantList() {
-    const box = document.getElementById('tenant-list');
-    if (!box) return;
-    if (!_tenants.length) {
-        box.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">${icon('user', 52, 'color:#9ca3af;')}</div>
-          <div class="empty-state-title">등록된 계약자가 없습니다</div>
-          <div class="empty-state-sub">‘계약자 추가’로 첫 계약자를 등록해보세요</div>
-        </div>`;
-        return;
-    }
-    box.innerHTML = _tenants.map(t => {
-        const priceLine = (t.rent > 0)
-            ? `보 ${(t.deposit || 0).toLocaleString()} / 월 ${t.rent.toLocaleString()}`
-            : `보증금 ${(t.deposit || 0).toLocaleString()}만`;
-        const period = (t.contractStart || t.contractEnd) ? `${t.contractStart || '?'} ~ ${t.contractEnd || '?'}` : '';
-        const dd = ddayLabel(t.contractEnd);
-        return `<div class="tenant-card" onclick="showTenantDetail('${t.id}')">
-          <div class="tenant-top">
-            <div class="tenant-bldg">${t.name ? `<span style="color:#111827;">${escapeHtml(t.name)}</span> · ` : ''}${escapeHtml(t.buildingName || '건물 미입력')}${t.unitName ? ` <span class="tenant-unit">${escapeHtml(t.unitName)}</span>` : ''}</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-              ${dd ? `<span style="font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px;background:${dd.bg};color:${dd.fg};">${dd.text}</span>` : ''}
-              <span class="tenant-phone">${icon('phone', 13)} ${escapeHtml(t.phone || '-')}</span>
-            </div>
-          </div>
-          <div class="tenant-meta">
-            <span class="tenant-price">${priceLine}${(t.manage || 0) > 0 ? ` · 관리 ${t.manage}만` : ''}</span>
-            ${period ? `<span class="tenant-period">${escapeHtml(period)}</span>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-}
-
-// 계약자 상세 (읽기 전용) — 편집/삭제 버튼은 가로로
-function showTenantDetail(id) {
-    const t = _tenants.find(x => x.id === String(id));
-    if (!t) return;
-    document.getElementById('modal-title').textContent = (t.name && t.name.trim()) ? t.name.trim() : (t.buildingName || '계약자');
-    const row = (label, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f5;">
-        <span style="color:#6b7280;font-size:13px;flex-shrink:0;">${label}</span>
-        <span style="color:#111827;font-size:13px;font-weight:600;text-align:right;word-break:break-all;">${escapeHtml(String(val))}</span></div>` : '';
-    const priceLine = (t.rent > 0)
-        ? `보 ${(t.deposit || 0).toLocaleString()} / 월 ${t.rent.toLocaleString()}만`
-        : `보증금 ${(t.deposit || 0).toLocaleString()}만`;
-    const price = priceLine + ((t.manage || 0) > 0 ? ` · 관리 ${t.manage}만` : '');
-    const period = (t.contractStart || t.contractEnd) ? `${t.contractStart || '?'} ~ ${t.contractEnd || '?'}` : '';
-    const dd = ddayLabel(t.contractEnd);
-    document.getElementById('modal-body').innerHTML = `
-      ${dd ? `<div style="margin-bottom:10px;"><span style="font-size:12px;font-weight:800;padding:3px 11px;border-radius:999px;background:${dd.bg};color:${dd.fg};">${dd.text}</span></div>` : ''}
-      ${row('이름', t.name)}
-      ${row('전화번호', t.phone)}
-      ${row('건물 · 호실', (t.buildingName || '') + (t.unitName ? ' ' + t.unitName : '') || '-')}
-      ${row('금액', price)}
-      ${row('계약기간', period)}
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <div style="display:flex;gap:8px;width:100%;">
-        <button class="btn-secondary" style="flex:1;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:5px;" onclick="openTenantForm('${t.id}')">${icon('edit', 15)} 편집</button>
-        ${myPerms().canDelete ? `<button class="btn-danger" style="flex:1;white-space:nowrap;" onclick="deleteTenant('${t.id}')">삭제</button>` : ''}
-      </div>
-    `;
-    showModal();
-}
-
-// 계약자 추가/수정 폼 (건물/호실 추가와 동일한 모달 스타일)
-// prefill 있으면 신규 폼에 미리 채움(통화녹음 AI 초안). call-parse.js 에서 호출.
-function openTenantForm(id, prefill) {
-    const t = id ? _tenants.find(x => x.id === id) : (prefill || null);
-    const isEdit = !!id;
-    document.getElementById('modal-title').textContent = isEdit ? '계약자 수정' : '계약자 추가';
-    const f = (label, fid, val, ph, type) => `
-      <div class="form-group">
-        <label class="form-label">${label}</label>
-        <input id="${fid}" class="form-input" type="${type || 'text'}" placeholder="${ph || ''}" value="${val != null ? escapeHtml(String(val)) : ''}">
-      </div>`;
-    document.getElementById('modal-body').innerHTML = `
-      ${f('이름', 'tf-name', t ? t.name : '', '예: 홍길동')}
-      ${f('전화번호', 'tf-phone', t ? t.phone : '', '010-0000-0000', 'tel')}
-      ${f('건물명', 'tf-bldg', t ? t.buildingName : '', '예: 강남빌딩')}
-      ${f('호실', 'tf-unit', t ? t.unitName : '', '예: 201호')}
-      <div class="form-row">
-        ${f('보증금 (만원)', 'tf-deposit', t ? (t.deposit || '') : '', '0', 'number')}
-        ${f('월세 (만원)', 'tf-rent', t ? (t.rent || '') : '', '0', 'number')}
-      </div>
-      ${f('관리비 (만원)', 'tf-manage', t ? (t.manage || '') : '', '0', 'number')}
-      <div class="form-row">
-        ${f('계약 시작', 'tf-start', t ? t.contractStart : '', '', 'date')}
-        ${f('계약 만료', 'tf-end', t ? t.contractEnd : '', '', 'date')}
-      </div>
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="${isEdit ? `showTenantDetail('${t.id}')` : 'closeModal()'}">취소</button>
-      <button class="btn-primary" onclick="saveTenant('${isEdit ? t.id : ''}')">저장</button>
-    `;
-    showModal();
-}
-
-async function saveTenant(id) {
-    if (_isSubmitting) return;
-    const phone = document.getElementById('tf-phone').value.trim();
-    const buildingName = document.getElementById('tf-bldg').value.trim();
-    if (!phone && !buildingName) { showToast('전화번호 또는 건물명을 입력하세요'); return; }
-    const dto = {
-        name: document.getElementById('tf-name').value.trim(),
-        phone,
-        buildingName,
-        unitName: document.getElementById('tf-unit').value.trim(),
-        deposit: parseInt(document.getElementById('tf-deposit').value) || 0,
-        rent: parseInt(document.getElementById('tf-rent').value) || 0,
-        manage: parseInt(document.getElementById('tf-manage').value) || 0,
-        contractStart: document.getElementById('tf-start').value,
-        contractEnd: document.getElementById('tf-end').value
-    };
-    showLoading(id ? '계약자 정보를 저장하는 중…' : '계약자를 추가하는 중…');
-    try {
-        if (id) await Api.updateTenant(id, dto);
-        else await Api.createTenant(dto);
-        closeModal();
-        await loadTenants();
-        showToast(id ? '계약자 정보가 수정되었습니다' : '계약자가 추가되었습니다');
-    } catch (e) {
-        showToast('저장 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-async function deleteTenant(id) {
-    if (_isSubmitting) return;
-    if (!confirm('이 계약자를 삭제하시겠습니까?')) return;
-    showLoading('계약자를 삭제하는 중…');
-    try {
-        await Api.deleteTenant(id);
-        closeModal();
-        await loadTenants();
-        showToast('계약자가 삭제되었습니다');
-    } catch (e) {
-        showToast('삭제 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// =====================================================
-// D-day 라벨 (계약 만료일 기준) — 전체 계약자 리스트에 표시
-// =====================================================
-function ddayLabel(endStr) {
-    if (!endStr) return null;
-    const end = new Date(String(endStr) + 'T00:00:00');
-    if (isNaN(end.getTime())) return null;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const diff = Math.round((end - today) / 86400000);
-    if (diff < 0)   return { text: `만료 D+${-diff}`, bg: '#fee2e2', fg: '#b91c1c' };
-    if (diff === 0) return { text: 'D-DAY',          bg: '#fef3c7', fg: '#b45309' };
-    if (diff <= 30) return { text: `D-${diff}`,       bg: '#fef3c7', fg: '#b45309' };
-    if (diff <= 90) return { text: `D-${diff}`,       bg: '#e0edff', fg: '#1e40af' };
-    return             { text: `D-${diff}`,           bg: '#f3f4f6', fg: '#6b7280' };
-}
-
-// =====================================================
-// 고객(리드) 관리 (중개사 전용)
-// =====================================================
-let _statsSubTab = 'tenant';   // 'tenant' | 'customer'
-let _customers = [];
-const CUST_SENS = {
-    high: { label: '상', bg: '#fee2e2', fg: '#b91c1c' },
-    mid:  { label: '중', bg: '#fef3c7', fg: '#b45309' },
-    low:  { label: '하', bg: '#e5e7eb', fg: '#4b5563' }
 };
 
-async function loadCustomers() {
-    const box = document.getElementById('customer-list');
-    try {
-        _customers = (await Api.getCustomers()) || [];
-        _customers.forEach(c => c.id = String(c.id));
-    } catch (e) {
-        _customers = [];
-        if (box) box.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">불러오기 실패: ${escapeHtml(e.message)}</div>`;
-        return;
+// 캐러셀 동작 바인딩 (네이티브 스크롤 + 화살표/점 + 탭→라이트박스)
+function bindCarousel(rootEl, urls) {
+    if (!rootEl) return;
+    const single = rootEl.querySelector('.detail-single-img');
+    if (single) { single.addEventListener('click', () => openLightbox(urls, single, 0)); return; }
+    const car = rootEl.querySelector('.detail-carousel');
+    if (!car) return;
+    const track = car.querySelector('.carousel-track');
+    const slides = car.querySelectorAll('.carousel-slide');
+    const dots = car.querySelectorAll('.carousel-dot');
+    const prev = car.querySelector('.carousel-arrow.prev');
+    const next = car.querySelector('.carousel-arrow.next');
+    const cur = car.querySelector('.cc-cur');
+    const total = urls.length;
+    if (!track) return;
+
+    function curIdx() {
+        const w = track.clientWidth || 1;
+        return Math.max(0, Math.min(total - 1, Math.round(track.scrollLeft / w)));
     }
-    renderCustomerList();
-}
-
-function renderCustomerList() {
-    const box = document.getElementById('customer-list');
-    if (!box) return;
-    if (!_customers.length) {
-        box.innerHTML = `<div class="empty-state">
-          <div class="empty-state-icon">${icon('user', 52, 'color:#9ca3af;')}</div>
-          <div class="empty-state-title">등록된 고객이 없습니다</div>
-          <div class="empty-state-sub">‘고객 추가’ 또는 통화 녹음으로 첫 고객을 등록해보세요</div>
-        </div>`;
-        return;
+    function update() {
+        const idx = curIdx();
+        dots.forEach((d, di) => d.classList.toggle('active', di === idx));
+        if (prev) prev.disabled = idx === 0;
+        if (next) next.disabled = idx === total - 1;
+        if (cur) cur.textContent = (idx + 1);
     }
-    box.innerHTML = _customers.map(c => {
-        const s = c.sensitivity && CUST_SENS[c.sensitivity];
-        const hasName = c.name && c.name.trim();
-        let title = hasName ? c.name.trim() : ((c.summary && c.summary.trim()) ? c.summary.trim() : (c.location || c.phone || '고객'));
-        if (title.length > 60) title = title.slice(0, 60) + '…';
-        const bits = [];
-        if (hasName && c.summary && c.summary.trim()) {
-            let sm = c.summary.trim(); if (sm.length > 40) sm = sm.slice(0, 40) + '…';
-            bits.push(escapeHtml(sm));
-        }
-        if (c.amount) bits.push(escapeHtml(c.amount));
-        if (c.location) bits.push(escapeHtml(c.location));
-        if (c.moveInDate) bits.push('입주 ' + escapeHtml(c.moveInDate));
-        const linkCnt = (c.buildingIds || []).length;
-        return `<div class="tenant-card" onclick="showCustomerDetail('${c.id}')">
-          <div class="tenant-top">
-            <div class="tenant-bldg" style="line-height:1.5;">${escapeHtml(title)}</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-              ${linkCnt ? `<span style="font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px;background:#e0edff;color:#1e40af;">매물 ${linkCnt}</span>` : ''}
-              ${s ? `<span style="font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px;background:${s.bg};color:${s.fg};">감도 ${s.label}</span>` : ''}
-            </div>
-          </div>
-          <div class="tenant-meta">
-            <span class="tenant-phone">${icon('phone', 13)} ${escapeHtml(c.phone || '-')}</span>
-            ${bits.length ? `<span class="tenant-period">${bits.join(' · ')}</span>` : ''}
-            ${c.meetingDate ? `<span style="margin-left:auto;font-size:12px;font-weight:700;color:#1e40af;">미팅 ${escapeHtml(c.meetingDate)}</span>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-}
+    function goTo(i) {
+        const idx = Math.max(0, Math.min(total - 1, i));
+        const w = track.clientWidth || 1;
+        track.scrollTo({ left: idx * w, behavior: 'smooth' });
+    }
+    // 스크롤 위치 → 카운터/점 갱신 (rAF 스로틀로 부드럽게)
+    let ticking = false;
+    track.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => { update(); ticking = false; });
+    }, { passive: true });
 
-// 고객 상세 (읽기 전용) — 편집/삭제/매물 추가 버튼은 가로로
-function showCustomerDetail(id) {
-    const c = _customers.find(x => x.id === String(id));
-    if (!c) return;
-    const cname = (c.name && c.name.trim()) ? c.name.trim() : '고객';
-    document.getElementById('modal-title').textContent = (c.name && c.name.trim()) ? c.name.trim()
-        : ((c.summary && c.summary.trim()) ? c.summary.trim().slice(0, 30) : (c.phone || '고객'));
-    const s = c.sensitivity && CUST_SENS[c.sensitivity];
-    const row = (label, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f5;">
-        <span style="color:#6b7280;font-size:13px;flex-shrink:0;">${label}</span>
-        <span style="color:#111827;font-size:13px;font-weight:600;text-align:right;word-break:break-all;white-space:pre-wrap;">${escapeHtml(String(val))}</span></div>` : '';
-    document.getElementById('modal-body').innerHTML = `
-      ${s ? `<div style="margin-bottom:10px;"><span style="font-size:12px;font-weight:800;padding:3px 11px;border-radius:999px;background:${s.bg};color:${s.fg};">감도 ${s.label}</span></div>` : ''}
-      ${row('이름', c.name)}
-      ${c.summary ? `<div style="padding:10px 0;border-bottom:1px solid #f1f3f5;"><div style="color:#6b7280;font-size:13px;margin-bottom:5px;">AI 요약</div><div style="color:#111827;font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(c.summary)}</div></div>` : ''}
-      ${row('전화번호', c.phone)}
-      ${row('금액', c.amount)}
-      ${row('위치', c.location)}
-      ${row('입주 희망일', c.moveInDate)}
-      ${row('미팅 날짜', c.meetingDate)}
-      ${row('대출', c.loan)}
-      ${row('미팅 일시', c.meetingAt ? String(c.meetingAt).slice(0, 16).replace('T', ' ') : '')}
-      ${row('본계약 일시', c.contractAt ? String(c.contractAt).slice(0, 16).replace('T', ' ') : '')}
-      ${row('잔금일', c.balanceOn ? String(c.balanceOn).slice(0, 10) : '')}
-      ${row('입주일', c.moveInOn ? String(c.moveInOn).slice(0, 10) : '')}
-      ${c.memo ? `<div style="padding:10px 0;border-bottom:1px solid #f1f3f5;"><div style="color:#6b7280;font-size:13px;margin-bottom:5px;">메모</div><div style="color:#111827;font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(c.memo)}</div></div>` : ''}
-      <div style="padding:12px 0 2px;">
-        <div style="color:#6b7280;font-size:13px;margin-bottom:8px;">연결된 매물</div>
-        ${custBuildingsHTML(c)}
-      </div>
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <div style="display:flex;gap:8px;width:100%;">
-        <button class="btn-secondary" style="flex:1;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px;display:inline-flex;align-items:center;justify-content:center;gap:5px;" onclick="openCustomerForm('${c.id}')">${icon('edit', 15)} 편집</button>
-        ${myPerms().canDelete ? `<button class="btn-danger" style="flex:1;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px;" onclick="deleteCustomer('${c.id}')">삭제</button>` : ''}
-        <button class="btn-primary" style="flex:1;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px;display:inline-flex;align-items:center;justify-content:center;gap:4px;" onclick="openCustomerBuildingPicker('${c.id}')">${icon('plus', 14)} 매물 추가</button>
-      </div>
-    `;
-    showModal();
-}
-
-// 고객 추가/수정 폼 — prefill 있으면 신규 폼에 미리 채움(AI 초안). call-parse.js 에서도 호출.
-function openCustomerForm(id, prefill) {
-    const c = id ? _customers.find(x => x.id === id) : (prefill || null);
-    const isEdit = !!id;
-    document.getElementById('modal-title').textContent = isEdit ? '고객 수정' : '고객 등록';
-    const v = k => (c && c[k] != null) ? escapeHtml(String(c[k])) : '';
-    const dtLocal = k => (c && c[k]) ? String(c[k]).slice(0, 16) : '';   // datetime-local 값(yyyy-MM-ddTHH:mm)
-    const dOnly = k => (c && c[k]) ? String(c[k]).slice(0, 10) : '';     // date 값(yyyy-MM-dd)
-    const sens = (c && c.sensitivity) ? c.sensitivity : '';
-    const sBtn = (key, label) => `<button type="button" onclick="cfSetSens('${key}')" data-sens="${key}" class="cf-sens-btn" style="flex:1;padding:9px 0;border-radius:8px;border:1px solid #e5e7eb;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;${sens === key ? `background:${CUST_SENS[key].bg};color:${CUST_SENS[key].fg};border-color:${CUST_SENS[key].fg};` : 'background:#fff;color:#6b7280;'}">${label}</button>`;
-    document.getElementById('modal-body').innerHTML = `
-      <div class="form-group">
-        <label class="form-label">이름</label>
-        <input id="cf-name" class="form-input" type="text" placeholder="예: 홍길동" value="${v('name')}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">AI 요약</label>
-        <textarea id="cf-summary" class="form-textarea" style="min-height:70px;" placeholder="AI가 통화에서 정리한 요약 (직접 수정 가능)">${v('summary')}</textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">감도 <span style="font-weight:400;color:#9ca3af;">(직접 선택)</span></label>
-        <input type="hidden" id="cf-sens" value="${sens}">
-        <div style="display:flex;gap:6px;">${sBtn('high', '상')}${sBtn('mid', '중')}${sBtn('low', '하')}</div>
-      </div>
-      <div class="form-group"><label class="form-label">전화번호</label>
-        <input id="cf-phone" class="form-input" type="tel" placeholder="010-0000-0000" value="${v('phone')}"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">금액</label>
-          <input id="cf-amount" class="form-input" type="text" placeholder="예: 매매 3억 / 보5000·월50" value="${v('amount')}"></div>
-        <div class="form-group"><label class="form-label">위치</label>
-          <input id="cf-location" class="form-input" type="text" placeholder="희망 지역" value="${v('location')}"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">입주 희망일</label>
-          <input id="cf-move" class="form-input" type="text" placeholder="예: 2026-03-01 / 3월 초" value="${v('moveInDate')}"></div>
-        <div class="form-group"><label class="form-label">미팅 날짜</label>
-          <input id="cf-meeting" class="form-input" type="text" placeholder="예: 2026-02-10" value="${v('meetingDate')}"></div>
-      </div>
-      <div class="form-group"><label class="form-label">대출</label>
-        <input id="cf-loan" class="form-input" type="text" placeholder="예: 버팀목 대출 희망" value="${v('loan')}"></div>
-      <div class="form-group"><label class="form-label">메모</label>
-        <textarea id="cf-memo" class="form-textarea" style="min-height:60px;" placeholder="특이사항">${v('memo')}</textarea>
-      </div>
-
-      <div style="margin:6px 2px 8px;padding-top:12px;border-top:1px solid #f1f3f5;font-size:13px;font-weight:800;color:#111827;">일정 알림 <span style="font-weight:400;color:#9ca3af;font-size:12px;">· 입력하면 자동으로 푸시 알림</span></div>
-      <div class="form-row form-row-datetime">
-        <div class="form-group"><label class="form-label">미팅 일시</label>
-          <input id="cf-meetingAt" class="form-input" type="datetime-local" value="${dtLocal('meetingAt')}"></div>
-        <div class="form-group"><label class="form-label">본계약 일시</label>
-          <input id="cf-contractAt" class="form-input" type="datetime-local" value="${dtLocal('contractAt')}"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">잔금일</label>
-          <input id="cf-balanceOn" class="form-input" type="date" value="${dOnly('balanceOn')}"></div>
-        <div class="form-group"><label class="form-label">입주일</label>
-          <input id="cf-moveInOn" class="form-input" type="date" value="${dOnly('moveInOn')}"></div>
-      </div>
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="${isEdit ? `showCustomerDetail('${c.id}')` : 'closeModal()'}">취소</button>
-      <button class="btn-primary" onclick="saveCustomer('${isEdit ? c.id : ''}')">저장</button>
-    `;
-    showModal();
-}
-
-// 감도 수기 선택
-function cfSetSens(key) {
-    const hidden = document.getElementById('cf-sens');
-    if (hidden) hidden.value = key;
-    document.querySelectorAll('.cf-sens-btn').forEach(b => {
-        const k = b.getAttribute('data-sens');
-        if (k === key) { b.style.background = CUST_SENS[k].bg; b.style.color = CUST_SENS[k].fg; b.style.borderColor = CUST_SENS[k].fg; }
-        else { b.style.background = '#fff'; b.style.color = '#6b7280'; b.style.borderColor = '#e5e7eb'; }
+    if (prev) prev.addEventListener('click', () => goTo(curIdx() - 1));
+    if (next) next.addEventListener('click', () => goTo(curIdx() + 1));
+    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.i)));
+    // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
+    slides.forEach((s, si) => {
+        const img = s.querySelector('img');
+        if (img) img.addEventListener('click', () => openLightbox(urls, img, si));
     });
+    update();
 }
 
-async function saveCustomer(id) {
-    if (_isSubmitting) return;
-    const g = fid => (document.getElementById(fid) ? document.getElementById(fid).value.trim() : '');
-    const dto = {
-        name: g('cf-name'),
-        summary: g('cf-summary'),
-        sensitivity: g('cf-sens') || null,
-        phone: g('cf-phone'),
-        amount: g('cf-amount'),
-        location: g('cf-location'),
-        moveInDate: g('cf-move'),
-        meetingDate: g('cf-meeting'),
-        loan: g('cf-loan'),
-        memo: g('cf-memo'),
-        meetingAt: g('cf-meetingAt') || null,    // yyyy-MM-ddTHH:mm (오전/오후 포함)
-        contractAt: g('cf-contractAt') || null,
-        balanceOn: g('cf-balanceOn') || null,     // yyyy-MM-dd
-        moveInOn: g('cf-moveInOn') || null
-    };
-    if (!dto.summary && !dto.phone) { showToast('AI 요약 또는 전화번호를 입력하세요'); return; }
-    showLoading(id ? '고객 정보를 저장하는 중…' : '고객을 등록하는 중…');
-    try {
-        if (id) await Api.updateCustomer(id, dto);
-        else await Api.createCustomer(dto);
-        closeModal();
-        if (document.getElementById('customer-list')) await loadCustomers();
-        showToast(id ? '고객 정보가 수정되었습니다' : '고객이 등록되었습니다');
-    } catch (e) {
-        showToast('저장 실패: ' + e.message);
-    } finally {
-        hideLoading();
+// ===== 라이트박스 상태 & 제어 =====
+const _lb = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, moved: false, originRect: null, targetRect: null, animating: false, list: [], idx: 0, swiping: false, swStartX: 0, swStartY: 0 };
+function _lbApply() {
+    const img = document.getElementById('lightbox-img');
+    if (img) img.style.transform = 'translate(' + _lb.x + 'px, ' + _lb.y + 'px) scale(' + _lb.scale + ')';
+}
+// 라이트박스 좌우 이동 UI 갱신
+function _lbUpdateNav() {
+    const prev = document.getElementById('lightbox-prev');
+    const next = document.getElementById('lightbox-next');
+    const counter = document.getElementById('lightbox-counter');
+    const many = _lb.list && _lb.list.length > 1;
+    if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
+    if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
+    if (counter) {
+        counter.classList.toggle('hidden', !many);
+        if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
     }
 }
-
-async function deleteCustomer(id) {
-    if (_isSubmitting) return;
-    if (!confirm('이 고객을 삭제하시겠습니까?')) return;
-    showLoading('고객을 삭제하는 중…');
-    try {
-        await Api.deleteCustomer(id);
-        closeModal();
-        if (document.getElementById('customer-list')) await loadCustomers();
-        showToast('고객이 삭제되었습니다');
-    } catch (e) {
-        showToast('삭제 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
+// 라이트박스에서 다른 이미지로 전환 (확대 상태 초기화)
+function _lbShow(idx) {
+    if (!_lb.list || !_lb.list.length) return;
+    _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, idx));
+    const img = document.getElementById('lightbox-img');
+    if (!img) return;
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+    _lb.originRect = null; // 전환 후에는 제자리 축소 애니메이션 생략
+    img.style.transition = 'opacity 0.15s ease';
+    img.style.opacity = '0';
+    setTimeout(() => {
+        img.src = _lb.list[_lb.idx];
+        img.style.transform = 'none';
+        img.style.borderRadius = '0';
+        img.onload = () => { img.onload = null; img.style.opacity = '1'; };
+        if (img.complete && img.naturalWidth) img.style.opacity = '1';
+    }, 150);
+    _lbUpdateNav();
 }
-
-// ===== 고객 ↔ 매물(건물) 연결 =====
-// 고객 상세(수정 폼)의 '연결된 매물' 목록 마크업
-function custBuildingsHTML(c) {
-    const ids = (c && c.buildingIds) || [];
-    if (!ids.length) return `<div style="font-size:12.5px;color:#9ca3af;padding:6px 2px;">연결된 매물이 없습니다</div>`;
-    return ids.map(bid => {
-        const b = (state.buildings || []).find(x => String(x.id) === String(bid));
-        const nm = b ? (b.name || b.address || ('매물 #' + bid)) : ('삭제된 매물 #' + bid);
-        const addr = b ? (b.address || '') : '';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #eef1f5;border-radius:9px;margin-bottom:6px;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(nm)}</div>
-            ${addr ? `<div style="font-size:11.5px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(addr)}</div>` : ''}
-          </div>
-          <button type="button" onclick="detachCustomerBuilding('${c.id}','${bid}')" title="연결 해제" style="flex-shrink:0;border:none;background:#fef2f2;color:#ef4444;width:28px;height:28px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">${icon('close', 14)}</button>
-        </div>`;
-    }).join('');
+function _rectOf(el) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
 }
+// 메타(스레드/인스타)식: 원본 위치에서 확대되어 나타나고, 닫을 때 제자리로 축소
+function openLightbox(srcOrList, originEl, index) {
+    const list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
+    if (!list.length) return;
+    _lb.list = list;
+    _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
+    const src = list[_lb.idx];
+    const lb = document.getElementById('lightbox');
+    const img = document.getElementById('lightbox-img');
+    const hint = document.getElementById('lightbox-hint');
+    if (!lb || !img) return;
 
-// 로컬 캐시(_customers) 갱신
-function updateCustomerCache(dto) {
-    if (!dto) return;
-    dto.id = String(dto.id);
-    const i = _customers.findIndex(x => x.id === dto.id);
-    if (i >= 0) _customers[i] = dto; else _customers.push(dto);
-}
+    _lbUpdateNav();
 
-// 매물 선택 모달 (고객에게 연결할 건물 고르기)
-function openCustomerBuildingPicker(customerId) {
-    const c = _customers.find(x => x.id === String(customerId));
-    const cname = (c && c.name && c.name.trim()) ? c.name.trim() : '고객';
-    const linked = new Set(((c && c.buildingIds) || []).map(String));
-    document.getElementById('modal-title').textContent = `${cname}님에게 매물 추가`;
+    if (img) img.style.opacity = '1';
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+    _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+    if (hint) hint.style.opacity = '1';
 
-    const all = (state.buildings || []);
-    const rows = all.map(b => {
-        const already = linked.has(String(b.id));
-        const nm = b.name || b.address || ('매물 #' + b.id);
-        const s = ((b.name || '') + ' ' + (b.address || '')).toLowerCase();
-        return `<div class="cust-pick-row" data-s="${escapeHtml(s)}" ${already ? '' : `onclick="attachCustomerBuilding('${customerId}','${b.id}')"`}
-             style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #eef1f5;border-radius:9px;margin-bottom:6px;${already ? 'opacity:.55;' : 'cursor:pointer;'}">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(nm)}</div>
-            ${b.address ? `<div style="font-size:11.5px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(b.address)}</div>` : ''}
-          </div>
-          <span style="flex-shrink:0;font-size:12px;font-weight:800;color:${already ? '#9ca3af' : '#1a56db'};">${already ? '연결됨' : '추가'}</span>
-        </div>`;
-    }).join('');
-
-    document.getElementById('modal-body').innerHTML = `
-      <div class="form-group" style="margin-bottom:10px;">
-        <input id="cust-pick-search" class="form-input" type="text" placeholder="건물명·주소 검색" oninput="filterCustPicker()">
-      </div>
-      <div id="cust-pick-list">${rows || `<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px;">등록된 매물이 없습니다</div>`}</div>
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="showCustomerDetail('${customerId}')">← 뒤로</button>
-    `;
-    showModal();
-}
-
-function filterCustPicker() {
-    const q = (document.getElementById('cust-pick-search')?.value || '').trim().toLowerCase();
-    document.querySelectorAll('#cust-pick-list .cust-pick-row').forEach(r => {
-        r.style.display = (!q || (r.dataset.s || '').includes(q)) ? '' : 'none';
-    });
-}
-
-async function attachCustomerBuilding(customerId, buildingId) {
-    if (_isSubmitting) return;
-    showLoading('매물을 연결하는 중…');
-    try {
-        const updated = await Api.attachCustomerBuilding(customerId, buildingId);
-        updateCustomerCache(updated);
-        if (document.getElementById('customer-list')) renderCustomerList();
-        showToast('매물을 연결했습니다');
-        showCustomerDetail(String(customerId));   // 고객 상세로 복귀(갱신된 목록 반영)
-    } catch (e) {
-        showToast('연결 실패: ' + (e.message || ''));
-    } finally {
-        hideLoading();
-    }
-}
-
-async function detachCustomerBuilding(customerId, buildingId) {
-    if (_isSubmitting) return;
-    showLoading('연결을 해제하는 중…');
-    try {
-        const updated = await Api.detachCustomerBuilding(customerId, buildingId);
-        updateCustomerCache(updated);
-        if (document.getElementById('customer-list')) renderCustomerList();
-        showToast('매물 연결을 해제했습니다');
-        showCustomerDetail(String(customerId));
-    } catch (e) {
-        showToast('해제 실패: ' + (e.message || ''));
-    } finally {
-        hideLoading();
-    }
-}
-
-// =====================================================
-// 사무소 매물 공유 (같은 코드끼리 공유)
-// =====================================================
-function officeCardHTML() {
-    const code = state.officeCode;
-    const members = state.officeMembers || [];
-    const sub = code
-        ? `코드 ${escapeHtml(code)} · 공유 멤버 ${members.length}명`
-        : '코드를 만들거나, 받은 코드로 참여하세요';
-    return `
-    <button type="button" onclick="openOfficeModal()"
-      style="width:100%;box-sizing:border-box;margin:10px 0 2px;padding:14px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;cursor:pointer;
-             display:flex;align-items:center;gap:10px;text-align:left;font-family:inherit;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:800;color:#111827;margin-bottom:3px;display:flex;align-items:center;gap:6px;">${icon('building', 15)} 사무소 매물 공유</div>
-        <div style="font-size:12.5px;color:${code ? '#1a56db' : '#6b7280'};font-weight:${code ? '700' : '400'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sub}</div>
-      </div>
-      <span style="flex-shrink:0;color:#9ca3af;">${icon('back', 16, 'transform:rotate(180deg);')}</span>
-    </button>`;
-}
-
-// 사무소 공유 상세 모달 (코드/멤버/참여/나가기)
-function openOfficeModal() {
-    document.getElementById('modal-title').textContent = '사무소 매물 공유';
-    renderOfficeModalBody();
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" style="width:100%;" onclick="backToSettingsFromOffice()">← 설정으로 돌아가기</button>`;
-    showModal();
-}
-
-// 모달 닫고 설정 화면 갱신(요약 문구에 최신 코드/멤버 반영)
-function backToSettingsFromOffice() {
-    closeModal();
-    if (activeTab === 'settings') showSettingsView();
-    else switchTab('settings');
-}
-
-function renderOfficeModalBody() {
-    const body = document.getElementById('modal-body');
-    if (!body) return;
-    const code = state.officeCode;
-    const members = state.officeMembers || [];
-    const chips = members.length
-        ? members.map(m => `<span style="font-size:12px;font-weight:700;color:#374151;background:#f3f4f6;border-radius:999px;padding:5px 11px;">${escapeHtml(m.name || m.nickname || m.uid)}</span>`).join('')
-        : '<span style="color:#9ca3af;font-size:12.5px;">아직 없음</span>';
-
-    body.innerHTML = code ? `
-      <div style="font-size:12.5px;color:#6b7280;line-height:1.6;margin-bottom:10px;">같은 코드를 가진 중개사끼리 매물을 함께 등록·수정하고 공실표까지 공유합니다.</div>
-      <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px;">우리 사무소 코드</div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:16px;">
-        <div style="flex:1;font-size:20px;font-weight:800;letter-spacing:4px;color:#1a56db;background:#eef4ff;border-radius:10px;padding:12px;text-align:center;">${escapeHtml(code)}</div>
-        <button class="btn-secondary" style="flex-shrink:0;white-space:nowrap;" onclick="copyOfficeCode()">복사</button>
-      </div>
-      <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px;">공유 멤버 ${members.length}명</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;">${chips}</div>
-      <button class="btn-secondary" style="width:100%;color:#ef4444;" onclick="officeLeave()">사무소 공유 나가기</button>
-    ` : `
-      <div style="font-size:12.5px;color:#6b7280;line-height:1.7;margin-bottom:14px;">같은 사무소 직원끼리 매물을 공유해 함께 관리할 수 있어요.<br>코드를 만들어 동료에게 알려주거나, 받은 코드로 참여하세요.</div>
-      <button class="btn-primary" style="width:100%;margin-bottom:16px;" onclick="officeGenerate()">우리 사무소 코드 만들기</button>
-      <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px;">받은 코드로 참여</div>
-      <div style="display:flex;gap:6px;">
-        <input id="office-join-code" class="form-input" type="text" placeholder="사무소 코드 입력" style="flex:1;text-transform:uppercase;">
-        <button class="btn-secondary" style="flex-shrink:0;white-space:nowrap;" onclick="officeJoin()">참여</button>
-      </div>
-    `;
-}
-
-function copyOfficeCode() {
-    const code = state.officeCode || '';
-    if (!code) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(code).then(() => showToast('코드를 복사했습니다')).catch(() => showToast(code));
-    } else {
-        showToast(code);
-    }
-}
-
-async function officeGenerate() {
-    showLoading('사무소 코드를 생성하는 중…');
-    try {
-        applyOfficeState(await Api.createOffice());
-        renderOfficeModalBody();   // 모달 내용 갱신 (설정 화면은 모달 닫을 때 갱신)
-        await reloadBuildingsAfterOffice();
-        showToast('사무소 코드가 생성되었습니다');
-    } catch (e) { alert('코드 생성 실패\n\n' + (e.message || '')); }
-    finally { hideLoading(); }
-}
-
-async function officeJoin() {
-    const code = (document.getElementById('office-join-code') && document.getElementById('office-join-code').value || '').trim();
-    if (!code) { showToast('사무소 코드를 입력하세요'); return; }
-    showLoading('사무소에 참여하는 중…');
-    try {
-        applyOfficeState(await Api.joinOffice(code));
-        renderOfficeModalBody();
-        await reloadBuildingsAfterOffice();
-        showToast('사무소에 참여했습니다');
-    } catch (e) { alert('참여 실패\n\n' + (e.message || '')); }
-    finally { hideLoading(); }
-}
-
-async function officeLeave() {
-    if (!confirm('사무소 공유에서 나가시겠습니까?\n나가면 동료의 매물이 더 이상 내 것으로 표시되지 않습니다.')) return;
-    showLoading('처리 중…');
-    try {
-        applyOfficeState(await Api.leaveOffice());
-        renderOfficeModalBody();
-        await reloadBuildingsAfterOffice();
-        showToast('사무소 공유에서 나갔습니다');
-    } catch (e) { alert('실패\n\n' + (e.message || '')); }
-    finally { hideLoading(); }
-}
-
-// 사무소 변경 후 매물 데이터 새로고침(공실표 공유/‘내 것’ 판정 반영).
-async function reloadBuildingsAfterOffice() {
-    try { if (typeof loadData === 'function') await loadData(false); } catch (_) {}
-}
-
-function showSettingsView() {
-    hideSheetBack('sheet');
-    document.getElementById('sheet-title').textContent = '내 프로필';
-    document.getElementById('sheet-subtitle').textContent = '로그인한 계정 정보';
-
-    const me = getCurrentUser() || {};
-    const name = me.name || me.nickname || '이름 없음';
-
-    document.getElementById('sheet-body').innerHTML = `
-    <div class="profile-page">
-      <!-- 위에 작게: 현재 어떤 소셜 로그인으로 로그인했는지 -->
-      <div class="profile-provider">
-        ${providerBadge(me.provider)}
-        <span>${providerLoginText(me.provider)}</span>
-      </div>
-
-      <!-- 로그인된 사용자 프로필(사진) -->
-      ${avatarHTML(me, 96)}
-
-      <!-- name 값 -->
-      <div class="profile-name">${escapeHtml(name)}</div>
-
-      <!-- [B] edit by smsong - 내 공인중개사사무소 정보 요약 -->
-      ${agencyCardHTML(me) || (isBroker() ? `<div style="margin:6px 0 2px;font-size:12.5px;color:#9ca3af;">공인중개사사무소 정보가 없습니다. ‘내 정보 수정’에서 등록하세요.</div>` : '')}
-      <!-- [E] edit by smsong -->
-
-      ${isBroker() ? officeCardHTML() : ''}
-      ${isBroker() ? `<div id="push-card" style="width:100%;box-sizing:border-box;margin:10px 0 2px;padding:14px;border:1px solid #e5e7eb;border-radius:14px;text-align:left;background:#fff;">${pushCardHTML()}</div>` : ''}
-
-
-      <input type="file" id="profile-file" accept="image/*" style="display:none" onchange="changeProfilePhoto(event)">
-      <div class="profile-actions">
-        ${isAdminUser() ? `<button class="btn-secondary" onclick="openPermissionManager()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">${icon('lock',16)} 권한 관리</button>` : ''}
-        <button class="btn-secondary" onclick="document.getElementById('profile-file').click()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">${icon('camera',16)} 프로필 사진 변경</button>
-        <button class="btn-secondary" onclick="openProfileEdit()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">${icon('edit',16)} 내 정보 수정</button>
-        <button class="btn-secondary" onclick="openTrash()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">${icon('trash',16)} 휴지통</button>
-        <button class="profile-logout" onclick="confirmLogout()">로그아웃</button>
-      </div>
-    </div>
-  `;
-    if (isBroker()) refreshPushCard();
-}
-
-// =====================================================
-// 권한 관리 (관리자 전용) — 유저 목록 + 생성/조회/수정/삭제 토글
-// =====================================================
-async function openPermissionManager() {
-    if (!isAdminUser()) { showToast('관리자만 접근할 수 있습니다'); return; }
-    document.getElementById('modal-title').textContent = '권한 관리';
-    document.getElementById('modal-body').innerHTML =
-        '<div style="padding:28px;text-align:center;color:#9ca3af;font-size:13px;">유저 목록 불러오는 중…</div>';
-    document.getElementById('modal-footer').innerHTML = '';   // 닫기 버튼/영역 제거 (헤더 X로 닫기)
-    showModal();
-    try {
-        const list = await Api.listPermissions();
-        renderPermissionList(list || []);
-    } catch (e) {
-        document.getElementById('modal-body').innerHTML =
-            `<div style="padding:24px;text-align:center;color:#dc2626;font-size:13px;">불러오기 실패: ${escapeHtml(e.message)}</div>`;
-    }
-}
-
-function renderPermissionList(list) {
-    if (!list.length) {
-        document.getElementById('modal-body').innerHTML =
-            '<div style="padding:24px;text-align:center;color:#9ca3af;">등록된 유저가 없습니다</div>';
-        return;
-    }
-    document.getElementById('modal-body').innerHTML =
-        `<div style="font-size:12px;color:#6b7280;margin-bottom:10px;">각 유저의 역할을 정하고 <b>저장</b>을 누르세요. · <b>일반유저</b>=조회만 · <b>중개인</b>=생성·조회·수정·삭제 + 계약자 관리 · <b>관리자</b>=전체(고정)</div>` +
-        list.map(u => {
-            const role = u.admin ? 'admin' : (u.role || 'regular');
-            return `
-      <div class="perm-row" data-user-id="${u.userId}">
-        <div class="perm-user">
-          <div class="perm-name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span>${escapeHtml(u.name || u.nickname || u.uid)}</span>
-            ${u.provider ? providerBadge(u.provider) : ''}
-            ${u.admin ? '<span class="perm-admin">관리자</span>' : ''}
-          </div>
-        </div>
-        ${u.admin ? '<span class="perm-locked">관리자 (고정)</span>' : `
-        <div class="perm-toggles" role="group">
-          <button type="button" class="perm-btn ${role === 'regular' ? 'on' : ''}" data-role="regular" onclick="selectRole(this)">일반유저</button>
-          <button type="button" class="perm-btn ${role === 'broker' ? 'on' : ''}" data-role="broker" onclick="selectRole(this)">중개인</button>
-        </div>
-        <button class="perm-save" onclick="savePermission(${u.userId}, this)">저장</button>`}
-      </div>`;
-        }).join('');
-}
-
-// 역할 버튼 단일 선택 (같은 행 안에서 하나만 on)
-function selectRole(btn) {
-    const row = btn.closest('.perm-row');
-    if (!row) return;
-    row.querySelectorAll('.perm-btn[data-role]').forEach(b => b.classList.toggle('on', b === btn));
-}
-
-async function savePermission(userId, btn) {
-    if (_isSubmitting) return;                 // 진행 중이면 중복 차단
-    const row = btn.closest('.perm-row');
-    if (!row) return;
-    const sel = row.querySelector('.perm-btn[data-role].on');
-    const role = sel ? sel.dataset.role : 'regular';
-    showLoading('권한을 저장하는 중…');          // 전체 로딩 오버레이(다른 조작 차단)
-    try {
-        await Api.updatePermission(userId, { role });
-        showToast('역할을 저장했습니다');
-    } catch (e) {
-        showToast('저장 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// [B] edit by smsong - 회원정보 수정 모달 (이름/닉네임/이메일/휴대폰/주소 + 공인중개사사무소 이름/전화/주소)
-function openProfileEdit() {
-    const me = getCurrentUser() || {};
-    const field = (id, label, val, ph, type) => `
-      <div style="margin-bottom:12px;">
-        <label class="form-label" for="${id}">${label}</label>
-        <input id="${id}" type="${type || 'text'}" class="form-input" value="${escapeHtml(val || '')}" placeholder="${escapeHtml(ph || '')}" autocomplete="off">
-      </div>`;
-    document.getElementById('modal-title').textContent = '내 정보 수정';
-    document.getElementById('modal-body').innerHTML = `
-      ${field('pe-name', '이름', me.name, '실명')}
-      ${field('pe-nickname', '닉네임', me.nickname, '닉네임')}
-      ${field('pe-email', '이메일', me.email, 'example@email.com', 'email')}
-      ${field('pe-phone', '휴대폰', me.phone, '010-0000-0000', 'tel')}
-      ${field('pe-address', '주소', me.address, '주소')}
-      ${isBroker() ? `
-      <div style="display:flex;align-items:center;gap:6px;margin:18px 0 10px;font-size:13px;font-weight:800;color:#1a56db;">
-        ${icon('agency',16)} 공인중개사사무소 정보
-      </div>
-      ${field('pe-agency-name', '사무소 이름', me.agencyName, '○○공인중개사사무소')}
-      ${field('pe-agency-phone', '사무소 전화번호', me.agencyPhone, '02-000-0000', 'tel')}
-      ${field('pe-agency-address', '사무소 주소', me.agencyAddress, '사무소 주소')}
-      ` : ''}
-    `;
-    document.getElementById('modal-footer').innerHTML = `
-      <button class="btn-secondary" onclick="closeModal()">취소</button>
-      <button class="btn-primary" onclick="saveProfileEdit()">저장</button>
-    `;
-    showModal();
-}
-
-async function saveProfileEdit() {
-    if (_isSubmitting) return;
-    const me = getCurrentUser();
-    if (!me || !me.uid) { showToast('로그인 정보를 찾을 수 없습니다'); return; }
-    const v = id => (document.getElementById(id)?.value || '').trim();
-    // uid/id 는 식별/권한용으로 반드시 함께 전송. 나머지는 입력값으로 부분 업데이트.
-    const dto = {
-        uid: me.uid,
-        id: me.id,
-        name: v('pe-name') || me.name,
-        nickname: v('pe-nickname'),
-        email: v('pe-email'),
-        phone: v('pe-phone'),
-        address: v('pe-address')
-    };
-    // 공인중개사사무소 정보 — 관리자/중개인만 수정 폼에 노출됨.
-    // 일반 유저는 입력칸이 없으므로 기존 값을 그대로 유지(빈값 덮어쓰기 방지).
-    if (document.getElementById('pe-agency-name')) {
-        dto.agencyName = v('pe-agency-name');
-        dto.agencyPhone = v('pe-agency-phone');
-        dto.agencyAddress = v('pe-agency-address');
-    } else {
-        dto.agencyName = me.agencyName;
-        dto.agencyPhone = me.agencyPhone;
-        dto.agencyAddress = me.agencyAddress;
-    }
-    try {
-        showLoading('내 정보를 저장하는 중…');
-        const updated = await Api.updateUser(dto);   // 파일 없이 JSON 부분 업데이트
-        const merged = Object.assign({}, me, updated || dto);
-        // 이 폼은 프로필 사진을 수정하지 않는다. 서버 응답에 profileURL/provider 가
-        // null/빈 값으로 와도 기존 값을 유지해, 정보 수정 직후 프로필 이미지가
-        // 잠깐 안 보이는 문제를 방지한다. (DB 값은 그대로이므로 기존 값이 정답)
-        if (me.profileURL && !merged.profileURL) merged.profileURL = me.profileURL;
-        if (me.provider && !merged.provider) merged.provider = me.provider;
-        setCurrentUser(merged);
-        _ownerCache[me.uid] = merged;
-        closeModal();
-        showSettingsView();
-        showToast('내 정보가 저장되었습니다');
-    } catch (err) {
-        showToast('저장 실패: ' + err.message);
-    } finally {
-        hideLoading();
-    }
-}
-// [E] edit by smsong
-
-// 프로필 사진 변경 — 선택한 이미지를 회원수정 API(PUT /user)로 업로드하고 화면/캐시 갱신
-async function changeProfilePhoto(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';                 // 같은 파일 재선택 가능하게 초기화
-    if (!file) return;
-    if (_isSubmitting) return;
-    const me = getCurrentUser();
-    if (!me || !me.uid) { showToast('로그인 정보를 찾을 수 없습니다'); return; }
-    showLoading('프로필 사진을 업로드하는 중…');
-    try {
-        // name 은 함께 보내 기존 값 유지(부분 업데이트). 사진 외 다른 정보는 서버가 그대로 둠.
-        const updated = await Api.updateUser({ uid: me.uid, id: me.id, name: me.name }, file);
-        const merged = Object.assign({}, me, updated || {});   // 응답(UserDTO)의 새 profileURL 반영
-        setCurrentUser(merged);
-        _ownerCache[me.uid] = merged;     // 매물 등록자 카드 캐시도 갱신
-        showSettingsView();
-        showToast('프로필 사진이 변경되었습니다');
-    } catch (err) {
-        showToast('변경 실패: ' + err.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-function saveKakaoKey() {
-    const key = document.getElementById('kakao-key').value.trim();
-    if (key) { localStorage.setItem('kakao_key', key); location.reload(); }
-}
-
-function exportData() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'hakbangnote_backup_' + new Date().toISOString().slice(0,10) + '.json';
-    a.click();
-}
-
-function importData(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async ev => {
-        if (_isSubmitting) return;
-        showLoading('데이터를 가져오는 중…');
-        try {
-            const imported = JSON.parse(ev.target.result);
-            if (!imported.buildings) { showToast('올바른 파일 형식이 아닙니다'); return; }
-            // 각 건물을 호실 포함하여 서버에 생성 (BuildingDTO가 중첩 units 지원)
-            for (const b of imported.buildings) {
-                const dto = {
-                    name: b.name, address: b.address, detailAddress: b.detailAddress, type: b.type,
-                    lat: b.lat, lng: b.lng, memo: b.memo,
-                    units: (b.units || []).map(u => ({
-                        floor: u.floor, name: u.name, type: u.type, status: u.status,
-                        area: u.area, tenant: u.tenant, deposit: u.deposit, rent: u.rent,
-                        manage: u.manage, contractStart: u.contractStart,
-                        contractEnd: u.contractEnd, memo: u.memo
-                    }))
-                };
-                await Api.createBuilding(dto);
-            }
-            await loadData();
-            renderMarkers();
-            updateStats();
-            showBuildingList();
-            showToast('데이터를 가져왔습니다');
-        } catch (err) { showToast('가져오기 실패: ' + err.message); }
-        finally { hideLoading(); }
-    };
-    reader.readAsText(file);
-}
-
-async function resetData() {
-    if (_isSubmitting) return;
-    if (!confirm('서버의 모든 건물·호실 데이터가 삭제됩니다. 계속하시겠습니까?')) return;
-    showLoading('전체 데이터를 초기화하는 중…');
-    try {
-        for (const b of [...state.buildings]) {
-            await Api.deleteBuilding(b.id);
-        }
-        await loadData();
-        renderMarkers();
-        updateStats();
-        showBuildingList();
-        showToast('전체 데이터가 초기화되었습니다');
-    } catch (e) {
-        showToast('초기화 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// =====================================================
-// 네이버 부동산 매물 JSON 가져오기
-// =====================================================
-function openImportNaver() {
-    document.getElementById('modal-title').textContent = '네이버 매물 가져오기';
-    document.getElementById('modal-body').innerHTML = `
-    <div style="font-size:13px;color:#6b7280;margin-bottom:10px;line-height:1.6;">
-      네이버 부동산 매물의 JSON 데이터를 붙여넣으면 건물·호실로 자동 변환됩니다.
-      같은 건물명이 이미 있으면 그 건물에 호실로 추가됩니다.
-    </div>
-    <textarea id="naver-json" class="form-textarea" style="min-height:200px;font-family:monospace;font-size:12px;" placeholder='{ "articleDetail": { ... }, "articleAddition": { ... } }'></textarea>
-  `;
-    document.getElementById('modal-footer').innerHTML = `
-    <button class="btn-secondary" onclick="closeModal()">취소</button>
-    <button class="btn-primary" onclick="importNaverJson()">변환하여 추가</button>
-  `;
-    showModal();
-}
-
-// 네이버 매물 JSON → 앱 건물/호실 구조로 변환
-function convertNaverArticle(raw) {
-    const d = raw.articleDetail || {};
-    const add = raw.articleAddition || {};
-    const floor = raw.articleFloor || {};
-    const space = raw.articleSpace || {};
-    const price = raw.articlePrice || {};
-    const admin = raw.administrationCostInfo || {};
-
-    // 건물명 / 주소 / 좌표
-    const buildingName = d.articleName
-        || ((d.aptName || '') + ' ' + (d.buildingName || '')).trim()
-        || '이름없는 건물';
-    const address = ((d.exposureAddress || add.exposureAddress || '') + ' ' + (d.detailAddress || '')).trim();
-    const lat = parseFloat(d.latitude || add.latitude) || 0;
-    const lng = parseFloat(d.longitude || add.longitude) || 0;
-
-    // 건물 유형 매핑 (상가류 → commercial, 오피스텔 → officetel, 다세대/빌라 → multiplex, 나머지 → house)
-    const typeCode = d.realestateTypeCode || add.realEstateTypeCode || '';
-    let btype = 'house';
-    if (['SG', 'SMS', 'GM', 'GJCG', 'SUG'].includes(typeCode)) btype = 'commercial';
-    else if (['OPST'].includes(typeCode)) btype = 'officetel';
-    else if (['DSD', 'VL', 'YR', 'DDDG'].includes(typeCode)) btype = 'multiplex';
-
-    // 층
-    const floorInfo = add.floorInfo || ''; // 예: "3/25"
-    const unitFloor = parseInt((floorInfo.split('/')[0] || '').replace(/[^0-9]/g, ''))
-        || parseInt(floor.correspondingFloorCount) || 1;
-    const totalFloors = parseInt(floor.totalFloorCount)
-        || parseInt((floorInfo.split('/')[1] || '').replace(/[^0-9]/g, '')) || 1;
-
-    // 면적 (전용 우선)
-    const area = space.exclusiveSpace || parseFloat(d.area2) || space.supplySpace || parseFloat(d.area1) || 0;
-
-    // 가격 (만원 단위)
-    const deposit = price.warrantPrice || price.dealPrice || 0;
-    const rent = price.rentPrice || 0;
-
-    // 관리비 (원 → 만원)
-    let manage = 0;
-    if (admin.etcFeeDetails && admin.etcFeeDetails.etcFeeAmount) {
-        manage = Math.round(admin.etcFeeDetails.etcFeeAmount / 10000);
-    }
-
-    // 거래유형
-    const tradeType = d.tradeTypeName || add.tradeTypeName || '';
-
-    // 호실명 (네이버 매물엔 호수가 없어 층 기준으로 생성)
-    const unitName = unitFloor + '층 매물';
-
-    // 메모 구성
-    const memoParts = [];
-    if (tradeType) memoParts.push(tradeType);
-    if (d.roomCount) memoParts.push(`방${d.roomCount}/욕실${d.bathroomCount || 0}`);
-    const dir = add.direction || d.direction;
-    if (dir) memoParts.push(dir);
-    if (d.articleFeatureDescription) memoParts.push(d.articleFeatureDescription.trim());
-    if (d.moveInTypeName) memoParts.push(d.moveInTypeName);
-    if (add.cpName) memoParts.push('출처:' + add.cpName);
-    const unitMemo = memoParts.join(' | ');
-
-    // 건물 메모 (단지 정보)
-    const bmemoParts = [];
-    if (d.aptHouseholdCount) bmemoParts.push(`${d.aptHouseholdCount}세대`);
-    if (d.aptUseApproveYmd) bmemoParts.push(`${d.aptUseApproveYmd.slice(0, 4)}년 준공`);
-    if (d.aptParkingCountPerHousehold) bmemoParts.push(`세대당주차 ${d.aptParkingCountPerHousehold}`);
-    const buildingMemo = bmemoParts.join(' · ');
-
-    const unit = {
-        id: 'u' + Date.now() + Math.floor(Math.random() * 1000),
-        floor: unitFloor,
-        name: unitName,
-        type: btype,
-        status: 'occupied', // 가격 정보를 화면에 보이게 하기 위해 occupied로 (임차인은 비움)
-        area: Math.round(area * 100) / 100,
-        tenant: '',
-        deposit, rent, manage,
-        contractStart: '',
-        contractEnd: '',
-        memo: unitMemo
-    };
-
-    return { buildingName, address, lat, lng, btype, totalFloors, buildingMemo, unit };
-}
-
-async function importNaverJson() {
-    if (_isSubmitting) return;
-    const txt = document.getElementById('naver-json').value.trim();
-    if (!txt) { showToast('JSON을 붙여넣으세요'); return; }
-
-    let raw;
-    try { raw = JSON.parse(txt); } catch { showToast('JSON 형식이 올바르지 않습니다'); return; }
-    if (!raw.articleDetail && !raw.articleAddition) {
-        showToast('네이버 매물 데이터가 아닙니다');
-        return;
-    }
-
-    const c = convertNaverArticle(raw);
-
-    showLoading('네이버 매물을 가져오는 중…');
-    try {
-        // 같은 건물명이 있으면 그 건물에 호실 추가, 없으면 새 건물 생성
-        const existing = state.buildings.find(x => x.name === c.buildingName);
-        const isNew = !existing;
-        let buildingId;
-
-        if (!existing) {
-            const created = await Api.createBuilding({
-                name: c.buildingName, address: c.address, type: c.btype,
-                lat: c.lat, lng: c.lng, memo: c.buildingMemo,
-                units: []
+    const runAnim = () => {
+        // 확대된 최종(target) 위치 측정
+        img.style.transition = 'none';
+        img.style.transform = 'none';
+        img.style.borderRadius = '0';
+        const target = _rectOf(img);
+        _lb.targetRect = target;
+        const o = _lb.originRect;
+        if (o && target.w && target.h) {
+            const scale = Math.max(o.w / target.w, o.h / target.h);
+            const tx = o.cx - target.cx, ty = o.cy - target.cy;
+            img.style.transformOrigin = 'center center';
+            img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+            img.style.borderRadius = '50%';
+            void img.offsetWidth; // reflow
+            img.style.transition = 'transform 0.34s cubic-bezier(.22,.61,.36,1), border-radius 0.34s ease';
+            requestAnimationFrame(() => {
+                img.style.transform = 'translate(0px,0px) scale(1)';
+                img.style.borderRadius = '0';
             });
-            buildingId = String(created.id);
         } else {
-            buildingId = existing.id;
+            img.style.transition = 'transform 0.2s var(--ease-soft)';
         }
+    };
 
-        await Api.createUnit(buildingId, c.unit);
-        await loadData();
-        closeModal();
-        renderMarkers();
-        updateStats();
-        showToast(isNew ? `'${c.buildingName}' 건물이 추가되었습니다` : `'${c.buildingName}'에 호실이 추가되었습니다`);
+    lb.classList.remove('hidden');
+    lb.style.opacity = '';
+    if (img.src !== src) {
+        img.onload = () => { img.onload = null; runAnim(); };
+        img.src = src;
+        if (img.complete && img.naturalWidth) { img.onload = null; runAnim(); }
+    } else {
+        runAnim();
+    }
+}
+function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    if (!lb || lb.classList.contains('hidden')) return;
+    const img = document.getElementById('lightbox-img');
 
-        if (typeof map !== 'undefined' && map) switchTab('map');
-        selectBuilding(buildingId);
-    } catch (e) {
-        showToast('가져오기 실패: ' + e.message);
-    } finally {
-        hideLoading();
+    // 확대(줌) 상태였다면 먼저 원위치
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+
+    const o = _lb.originRect, target = _lb.targetRect;
+    if (img && o && target && target.w && target.h) {
+        const scale = Math.max(o.w / target.w, o.h / target.h);
+        const tx = o.cx - target.cx, ty = o.cy - target.cy;
+        img.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1), border-radius 0.3s ease';
+        img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+        img.style.borderRadius = '50%';
+        lb.style.transition = 'opacity 0.3s ease';
+        lb.style.opacity = '0';
+        setTimeout(() => {
+            lb.classList.add('hidden');
+            lb.style.opacity = '';
+            lb.style.transition = '';
+            if (img) { img.src = ''; img.style.transition = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
+            _lb.originRect = null; _lb.targetRect = null;
+        }, 300);
+    } else {
+        lb.classList.add('hidden');
+        if (img) { img.src = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
+        _lb.originRect = null; _lb.targetRect = null;
     }
 }
 
-// =====================================================
-// UI HELPERS
-// =====================================================
-function markTab(tab) {
-    activeTab = tab;
-    document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-}
-
-function switchTab(tab) {
-    if (pickerMode) cancelMapPicker();   // 다른 탭으로 가면 위치 설정 모드 해제
-    if (isWebMode()) { closeWebDetail(); document.getElementById('app') && document.getElementById('app').classList.remove('web-panel-collapsed'); }   // 웹: 탭 이동 시 상세 패널 닫고 목록 패널 펼침
-    applyPermUI();                       // 권한에 따라 추가 버튼 표시/숨김
-
-    if (tab === 'map') {
-        markTab('map');
-        listMineOnly = false;
-        showBuildingList();              // 지도와 함께 보일 목록을 peek 콘텐츠로
-        Sheet.collapse();                // 완전히 닫지 않고 살짝 남김(peek)
-        return;
-    }
-
-    // 목록/내목록/임차인관리/설정 — 지도를 배경에 깔아둔 채 시트(폼)로 띄움 (네이버 지도 스타일)
-    markTab(tab);
-    if (tab === 'list') { listMineOnly = false; showBuildingList(); }
-    else if (tab === 'mylist') { listMineOnly = true; showBuildingList(); }
-    else if (tab === 'fav') showFavoritesView();
-    else if (tab === 'stats') showStatsView();
-    else if (tab === 'settings') showSettingsView();
-    Sheet.open('tab', 'full');
-}
-
-// ===== 몰입 모드 — 지도 탭에서 지도를 누르면 상/하단 메뉴가 위아래로 사라짐 =====
-function setImmersive(on) {
-    // 웹(데스크톱) 모드에서는 몰입 모드(상/하단 숨김)를 쓰지 않음 — 패널/지도/헤더 항상 표시
-    if (document.documentElement.classList.contains('mode-web')) return;
-    const app = document.getElementById('app');
-    if (app) app.classList.toggle('chrome-hidden', on);
-    if (on) closeFilterPanel();
-}
-function toggleImmersive() {
-    const app = document.getElementById('app');
-    setImmersive(!(app && app.classList.contains('chrome-hidden')));
-}
-
-// 위치 설정(피커) 중 화면 탭 → 상단(검색/안내바)·하단 메뉴를 숨기고 버튼을 내림(다시 탭하면 복귀)
-function togglePickerImmersive() {
-    const app = document.getElementById('app');
-    if (!app) return;
-    app.classList.toggle('chrome-hidden');
-    closeFilterPanel();
-}
-
-// ===== 필터 패널 — 상단 필터 버튼에서 쑥 나오고 다시 누르면 쑥 들어감 =====
-function openFilterPanel() {
-    const p = document.getElementById('filter-panel');
-    const b = document.getElementById('filter-btn');
-    if (p) p.classList.add('show');
-    if (b) b.classList.add('active');
-}
-function closeFilterPanel() {
-    const p = document.getElementById('filter-panel');
-    const b = document.getElementById('filter-btn');
-    if (p) p.classList.remove('show');
-    if (b) b.classList.remove('active');
-}
-function toggleFilterPanel() {
-    const p = document.getElementById('filter-panel');
-    (p && p.classList.contains('show')) ? closeFilterPanel() : openFilterPanel();
-}
-
-function showModal() {
-    // 모달을 열 때 항상 맨 위에서 시작 (이전 모달의 스크롤 위치가 남지 않도록)
-    const mb = document.getElementById('modal-body');
-    if (mb) mb.scrollTop = 0;
-    const mo = document.getElementById('modal-overlay');
-    if (mo) mo.scrollTop = 0;
-    document.getElementById('modal-overlay').classList.add('show');
-}
-
-function closeModal() {
-    document.getElementById('modal-overlay').classList.remove('show');
-}
-
+let _toastTimer = null;
 function showToast(msg) {
     const t = document.getElementById('toast');
-    t.textContent = msg;
+    if (!t) return;
+    t.innerText = msg;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
 }
 
-// =====================================================
-// 로딩 오버레이 — 매물/호실 저장 등 API 진행 중 전체 화면을 덮어
-//  · 모든 클릭을 가로채 다른 버튼을 못 누르게 막고(중복 호출 방지)
-//  · _isSubmitting 가드로 함수 진입 자체도 차단(이중 안전장치)
-//  · HTML 수정 없이 첫 호출 때 오버레이 DOM을 동적으로 만든다.
-// =====================================================
-let _isSubmitting = false;
-
-// 로딩 표시 세대(generation) — hideLoading 이 먼저 실행돼도
-// 예약된 requestAnimationFrame 이 뒤늦게 'show' 를 다시 붙이지 않도록 무효화한다.
-let _loadingSeq = 0;
-let _loadingWatchdog = null;
-
-function showLoading(text) {
-    _isSubmitting = true;
-    const seq = ++_loadingSeq;
-    let el = document.getElementById('loading-overlay');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'loading-overlay';
-        el.innerHTML =
-            '<div class="loading-box">' +
-            '  <div class="loading-spinner"></div>' +
-            '  <div class="loading-text"></div>' +
-            '</div>';
-        document.body.appendChild(el);
-    }
-    el.querySelector('.loading-text').textContent = text || '처리 중…';
-    // 진행 중 클릭을 흡수 (캡처 단계에서 막아 버튼 onclick 도달 차단)
-    requestAnimationFrame(() => {
-        // 이미 hideLoading 이 호출됐다면(세대 불일치) 표시하지 않는다 → 무한로딩 방지
-        if (seq === _loadingSeq && _isSubmitting) el.classList.add('show');
-    });
-    // 안전장치: 어떤 이유로든 hideLoading 이 누락되면 20초 후 자동 해제
-    if (_loadingWatchdog) clearTimeout(_loadingWatchdog);
-    _loadingWatchdog = setTimeout(() => {
-        if (seq === _loadingSeq) hideLoading();
-    }, 20000);
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function hideLoading() {
-    _isSubmitting = false;
-    _loadingSeq++;                     // 대기 중인 rAF 무효화
-    if (_loadingWatchdog) { clearTimeout(_loadingWatchdog); _loadingWatchdog = null; }
-    const el = document.getElementById('loading-overlay');
-    if (el) el.classList.remove('show');
-}
-
-// =====================================================
-// SEARCH
-// =====================================================
-const searchInput = document.getElementById('search-input');
-const searchResults = document.getElementById('search-results');
-
-// ===== 장소 검색 공용 헬퍼 =====
-// 현재 지도 중심 좌표 (장소를 "가까운 순"으로 정렬하는 기준)
-function mapCenter() {
-    try { if (typeof map !== 'undefined' && map) { const c = map.getCenter(); return { lat: c.lat(), lng: c.lng() }; } } catch (_) {}
-    return { lat: null, lng: null };
-}
-// 입력 디바운스 (검색창 키 입력마다 서버를 때리지 않도록)
-function debounce(fn, ms) {
-    let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); };
-}
-// 카테고리 "음식점>한식" → "음식점 · 한식"
-function fmtCategory(c) { return (c || '').replace(/>/g, ' · '); }
-
-// 선택한 장소로 지도 이동.
-//  · 지역검색 mapx/mapy(±1e7)는 오차가 있어, 도로명/지번 주소로 재지오코딩한 좌표를 우선 사용
-//  · isPicker=true 면 "위치 설정(피커)" 중심을 옮김(건물 위치로 설정), 아니면 일반 패닝
-function gotoPlace(p, isPicker) {
-    if (!p) return;
-    const apply = (lat, lng) => {
-        if (typeof naver === 'undefined' || !map) return;
-        const ll = new naver.maps.LatLng(lat, lng);
-        if (isPicker) {
-            map.setCenter(ll); map.setZoom(17); pickerLatlng = ll;
-            if (typeof pickerSearchResults !== 'undefined' && pickerSearchResults) pickerSearchResults.classList.remove('show');
-        } else {
-            map.panTo(ll); map.setZoom(16);
-            searchResults.classList.remove('show');
-        }
+// ==========================================
+// 4. 신규 모달(상세 수정 / 리스트) 이벤트 바인딩
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    // ===== 다중 이미지 매니저 초기화 (생성/수정 4종) =====
+    const _mkMgr = (gridId, inputId, onTileTap) => {
+        const grid = document.getElementById(gridId);
+        const input = document.getElementById(inputId);
+        if (!grid) return null;
+        const mgr = createMediaManager({ grid, input, onTileTap });
+        if (input) input.addEventListener('change', (e) => { mgr.addFiles(e.target.files); e.target.value = ''; });
+        return mgr;
     };
-    const addr = (p.roadAddress || p.jibunAddress || '').trim();
-    if (addr && typeof naver !== 'undefined') {
-        naver.maps.Service.geocode({ query: addr }, function (status, response) {
-            if (status === naver.maps.Service.Status.OK && response.v2.addresses.length > 0) {
-                const a = response.v2.addresses[0];
-                apply(parseFloat(a.y), parseFloat(a.x));
-            } else if (p.lat != null && p.lng != null) {
-                apply(p.lat, p.lng);                 // 지오코딩 실패 → 지역검색 좌표로 폴백
-            } else {
-                showToast('위치를 찾을 수 없습니다');
-            }
-        });
-    } else if (p.lat != null && p.lng != null) {
-        apply(p.lat, p.lng);
-    } else {
-        showToast('위치를 찾을 수 없습니다');
+    window._memCreateMgr = _mkMgr('memory-media-grid', 'memory-media-input',
+        (it, i, replaceAt) => { if (it.kind === 'file' && typeof openPhotoEditor === 'function') openPhotoEditor(it.file, (nf) => replaceAt(i, nf)); });
+    window._clCreateMgr = _mkMgr('cl-media-grid', 'cl-image');
+    window._memEditMgr = _mkMgr('edit-media-grid', 'edit-media-input');
+    window._clEditMgr = _mkMgr('cl-edit-media-grid', 'cl-edit-image-file');
+
+    // 상세 수정 폼
+    const detailEditForm = document.getElementById('detail-edit-form');
+    if (detailEditForm) {
+        detailEditForm.addEventListener('submit', (e) => { e.preventDefault(); saveDetailEdit(); });
     }
-}
+    const detailEditCancel = document.getElementById('detail-edit-cancel');
+    if (detailEditCancel) detailEditCancel.addEventListener('click', exitDetailEdit);
 
-// 장소 검색 결과를 검색창 드롭다운 HTML로 (places 배열은 onclick 에서 인덱스로 참조 → 따옴표 이스케이프 문제 없음)
-function renderPlaceItems(places, onclickFnName) {
-    return (places || []).map((p, i) => `
-    <div class="search-result-item" onclick="${onclickFnName}(${i})">
-      <div>${escapeHtml(p.name)}${p.category ? ` <span class="search-cat">${escapeHtml(fmtCategory(p.category))}</span>` : ''}</div>
-      <div class="search-result-sub">${escapeHtml(p.roadAddress || p.jibunAddress || '')}</div>
-    </div>`).join('');
-}
+    // 리스트 모달 닫기 (배경 클릭 / X 버튼)
+    const listModal = document.getElementById('list-modal');
+    if (listModal) {
+        listModal.addEventListener('click', (e) => { if (e.target.id === 'list-modal') closeListModal(); });
+    }
+    const listClose = document.getElementById('list-modal-close');
+    if (listClose) listClose.addEventListener('click', closeListModal);
 
-// ===== 상단 검색창 — 내 건물(로컬) + 장소(가까운 순) =====
-let _topbarPlaces = [];
-let _topbarSeq = 0;     // 빠른 타이핑 시 늦게 도착한 응답이 최신 결과를 덮어쓰지 않도록
-function selectTopbarPlace(i) {
-    const p = _topbarPlaces[i];
-    if (!p) return;
-    searchInput.value = p.name;
-    gotoPlace(p, false);
-}
+    // 휴지통 모달 닫기 (배경 클릭 / X 버튼)
+    const trashModal = document.getElementById('trash-modal');
+    if (trashModal) {
+        trashModal.addEventListener('click', (e) => { if (e.target.id === 'trash-modal') closeTrashModal(); });
+    }
+    const trashClose = document.getElementById('trash-modal-close');
+    if (trashClose) trashClose.addEventListener('click', closeTrashModal);
 
-const _runTopbarPlaceSearch = debounce((q, seq) => {
-    const c = mapCenter();
-    Api.searchPlace(q, c.lat, c.lng).then(places => {
-        if (seq !== _topbarSeq) return;             // 더 최신 검색이 있으면 무시
-        _topbarPlaces = places || [];
-        const buildingHtml = searchInput.dataset.buildingHtml || '';
-        const placeHtml = renderPlaceItems(_topbarPlaces, 'selectTopbarPlace');
-        const combined = buildingHtml + placeHtml;
-        searchResults.innerHTML = combined;
-        searchResults.classList.toggle('show', !!combined);
-    }).catch(() => { /* 장소 검색 실패 시 건물 결과만 유지 */ });
-}, 250);
-
-searchInput.addEventListener('input', e => {
-    const raw = e.target.value.trim();
-    const q = raw.toLowerCase();
-    if (!q) { searchResults.classList.remove('show'); searchInput.dataset.buildingHtml = ''; return; }
-
-    // 1) 내 건물(로컬) 즉시 표시
-    const localResults = state.buildings.filter(b =>
-        b.name.toLowerCase().includes(q) || (b.address || '').toLowerCase().includes(q)
-    );
-    const buildingHtml = localResults.map(b => `
-    <div class="search-result-item" onclick="selectBuilding('${b.id}');searchResults.classList.remove('show');searchInput.value='${(b.name || '').replace(/'/g, '')}'">
-      <div>${escapeHtml(b.name)}</div>
-      <div class="search-result-sub">${escapeHtml(b.address || '')}</div>
-    </div>`).join('');
-    searchInput.dataset.buildingHtml = buildingHtml;
-    searchResults.innerHTML = buildingHtml;
-    searchResults.classList.toggle('show', !!buildingHtml);
-
-    // 2) 장소(상호명) 검색 — 지도 중심 기준 가까운 순 (디바운스)
-    if (raw.length >= 1) { _topbarSeq++; _runTopbarPlaceSearch(raw, _topbarSeq); }
+    // ESC 로 리스트 모달도 닫기
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeListModal(); closeTrashModal(); } });
 });
-
-// 함수 이름과 줌 레벨 로직 네이버로 변경
-function gotoNaverResult(lat, lng) {
-    map.panTo(new naver.maps.LatLng(lat, lng));
-    map.setZoom(16);
-}
-
-// 이미지 확대 보기 (라이트박스)
-function openImageViewer(url) {
-    const v = document.getElementById('image-viewer');
-    const img = document.getElementById('image-viewer-img');
-    if (!v || !img) return;
-    img.src = url;
-    v.classList.add('show');
-}
-function closeImageViewer() {
-    const v = document.getElementById('image-viewer');
-    if (v) v.classList.remove('show');
-}
-
-// =====================================================
-// 위치 설정(피커) 모드 — 주소 검색으로 지도 이동
-// 지도 중심(크로스헤어)이 곧 설정 위치이므로, 검색 위치로 중심을 옮긴다
-// =====================================================
-const pickerSearchInput = document.getElementById('picker-search-input');
-const pickerSearchResults = document.getElementById('picker-search-results');
-
-// 검색 결과 위치로 지도 중심 이동 → 그 지점이 건물 위치로 설정됨
-function gotoPickerResult(lat, lng) {
-    const latlng = new naver.maps.LatLng(lat, lng);
-    map.setCenter(latlng);
-    map.setZoom(17);
-    pickerLatlng = latlng;
-    pickerSearchResults.classList.remove('show');
-}
-
-// 위치 설정(피커) 장소 결과 — 인덱스로 참조 (전역: 인라인 onclick 에서 호출)
-let _pickerPlaces = [];
-function selectPickerPlace(i) {
-    const p = _pickerPlaces[i];
-    if (!p) return;
-    if (pickerSearchInput) pickerSearchInput.value = p.name;
-    gotoPlace(p, true);   // 피커 중심을 그 장소로 이동 → 건물 위치로 설정
-}
-
-if (pickerSearchInput) {
-    let _pSeq = 0;             // 최신 검색만 반영
-    let _placeHtml = '';       // 장소(상호명) 결과 HTML
-    let _addrHtml = '';        // 주소(지오코딩) 결과 HTML
-    function renderPicker() {
-        const combined = _placeHtml + _addrHtml;
-        pickerSearchResults.innerHTML = combined;
-        pickerSearchResults.classList.toggle('show', !!combined);
-    }
-    // 장소 검색(가까운 순) — 디바운스로 호출
-    const runPickerPlace = debounce((q, seq) => {
-        const c = mapCenter();
-        Api.searchPlace(q, c.lat, c.lng).then(places => {
-            if (seq !== _pSeq) return;
-            _pickerPlaces = places || [];
-            _placeHtml = renderPlaceItems(_pickerPlaces, 'selectPickerPlace');
-            renderPicker();
-        }).catch(() => { /* 장소 검색 실패 시 주소 결과만 유지 */ });
-    }, 250);
-
-    // 입력 시: 장소(가까운 순) + 주소 후보를 함께 표시
-    pickerSearchInput.addEventListener('input', e => {
-        const q = e.target.value.trim();
-        if (!q || typeof naver === 'undefined') {
-            _placeHtml = ''; _addrHtml = ''; _pickerPlaces = [];
-            pickerSearchResults.classList.remove('show');
-            return;
-        }
-        _pSeq++; const seq = _pSeq;
-
-        // 1) 주소 후보(지오코딩)
-        naver.maps.Service.geocode({ query: q }, function (status, response) {
-            if (seq !== _pSeq) return;
-            if (status === naver.maps.Service.Status.OK && response.v2.addresses.length > 0) {
-                _addrHtml = response.v2.addresses.slice(0, 5).map(p => {
-                    const label = (p.roadAddress || p.jibunAddress || '').replace(/'/g, '');
-                    return `<div class="search-result-item" onclick="gotoPickerResult('${p.y}','${p.x}');document.getElementById('picker-search-input').value='${label}';">
-                        <div>${escapeHtml(p.roadAddress || p.jibunAddress)}</div>
-                        <div class="search-result-sub">${escapeHtml(p.jibunAddress || '')}</div>
-                    </div>`;
-                }).join('');
-            } else {
-                _addrHtml = '';
-            }
-            renderPicker();
-        });
-
-        // 2) 장소(상호명) — 지도 중심 기준 가까운 순
-        runPickerPlace(q, seq);
-    });
-
-    // Enter → 장소 결과가 있으면 가장 가까운 장소로, 없으면 주소 첫 결과로 이동
-    pickerSearchInput.addEventListener('keydown', e => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const q = pickerSearchInput.value.trim();
-        if (!q || typeof naver === 'undefined') return;
-        if (_pickerPlaces.length) { selectPickerPlace(0); return; }
-        naver.maps.Service.geocode({ query: q }, function (status, response) {
-            if (status === naver.maps.Service.Status.OK && response.v2.addresses.length > 0) {
-                const p = response.v2.addresses[0];
-                gotoPickerResult(p.y, p.x);
-                pickerSearchInput.value = p.roadAddress || p.jibunAddress || q;
-            } else {
-                showToast('결과를 찾을 수 없습니다');
-            }
-        });
-    });
-}
-
-document.addEventListener('click', e => {
-    if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
-        searchResults.classList.remove('show');
-    }
-});
-
-// =====================================================
-// FILTER
-// =====================================================
-// =====================================================
-// FILTER — 상단 필터 버튼 + 떠오르는 필터 패널
-// =====================================================
-(function initFilter() {
-    const btn = document.getElementById('filter-btn');
-    const panel = document.getElementById('filter-panel');
-
-    if (btn) btn.addEventListener('click', e => { e.stopPropagation(); toggleFilterPanel(); });
-
-    document.querySelectorAll('#filter-panel .filter-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('#filter-panel .filter-chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            activeFilter = chip.dataset.filter;
-            renderMarkers();
-            // 목록을 보고 있으면 분류 결과를 바로 반영 (지도 시트의 목록 peek 포함)
-            if (!currentBuilding) showBuildingList();
-            closeFilterPanel();
-        });
-    });
-
-    // 패널 바깥을 누르면 닫힘
-    document.addEventListener('click', e => {
-        if (panel && panel.classList.contains('show') &&
-            !panel.contains(e.target) && !(btn && btn.contains(e.target))) {
-            closeFilterPanel();
-        }
-    });
-})();
-
-// =====================================================
-// INIT
-// =====================================================
-// 네이버 지도 키가 없거나 로드 실패 시 보여줄 안내 화면
-async function showMapFallback() {
-    if (!requireAuthOrRedirect()) return;
-    document.getElementById('map').innerHTML = `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;background:#f9fafb;padding:30px;text-align:center;">
-      <div style="margin-bottom:16px;color:#9ca3af;">${icon('map',48,'color:#9ca3af;')}</div>
-      <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:8px;">네이버 지도 API 키가 필요합니다</div>
-      <div style="font-size:13px;color:#6b7280;margin-bottom:20px;line-height:1.6;">
-        1. ncloud.com (네이버 클라우드 플랫폼) 접속<br>
-        2. Application 생성 (Maps) → Client ID 복사<br>
-        3. config.js 의 NAVER_MAP_CLIENT_ID 값 교체<br>
-      </div>
-      <button onclick="switchTab('settings')" style="padding:12px 24px;background:#1a56db;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">API 키 설정하기</button>
-    </div>
-  `;
-    await loadData(true);
-    showBuildingList();
-    showSheet('');
-    updateStats();
-}
-
-// PWA: offline support hint
-window.addEventListener('online', () => showToast('인터넷에 연결되었습니다'));
-window.addEventListener('offline', () => showToast('오프라인 모드 — 데이터는 로컬에 저장됩니다'));
-// =====================================================
-// 반응형 모드 — 앱(모바일/PWA) vs 웹(데스크톱)
-//  · 설치형 PWA(standalone) 또는 좁은 화면  → 앱 모드 (기존 모바일 UI 그대로)
-//  · 넓은 데스크톱 브라우저               → 웹 모드 (좌측 패널 + 우측 지도)
-//  · <html> 에 mode-web / mode-app 클래스를 토글하고, CSS 가 레이아웃을 분기한다.
-// =====================================================
-(function initResponsiveMode() {
-    const WEB_MIN_WIDTH = 1024;   // 이 폭 이상 + 비-PWA 일 때만 웹 레이아웃
-
-    function isStandalone() {
-        return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-            || window.navigator.standalone === true;   // iOS 홈화면 추가 앱
-    }
-    // PC(마우스/트랙패드 = 정밀 포인터) 여부 — 있으면 데스크톱으로 간주
-    function hasFinePointer() {
-        return !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
-    }
-    function isWeb() {
-        if (isStandalone()) return false;
-        // PC 는 줌/창 크기와 무관하게 웹 유지(레이아웃이 깨지는 극단적 축소만 앱으로).
-        if (hasFinePointer()) return window.innerWidth >= 640;
-        // 터치 기기(마우스 없음)는 기존처럼 폭 기준.
-        return window.innerWidth >= WEB_MIN_WIDTH;
-    }
-    function apply() {
-        const root = document.documentElement;
-        const web = isWeb();
-        const changed = root.classList.contains('mode-web') !== web;
-        root.classList.toggle('mode-web', web);
-        root.classList.toggle('mode-app', !web);
-        // 모드가 바뀌면 현재 탭 내용을 다시 그려 레이아웃/썸네일을 새로 반영
-        if (changed) {
-            try {
-                if (typeof activeTab !== 'undefined' && activeTab === 'stats' && typeof showStatsView === 'function') showStatsView();
-                else if (typeof activeTab !== 'undefined' && activeTab === 'settings' && typeof showSettingsView === 'function') showSettingsView();
-                else if (typeof showBuildingList === 'function') showBuildingList();
-            } catch (e) { /* 초기 로드 시점 등은 무시 */ }
-        }
-    }
-
-    apply();   // main.js 파싱 시점에 1차 적용 (initMap 보다 먼저 클래스 확정)
-    let t;
-    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(apply, 150); });
-    if (window.matchMedia) {
-        try { window.matchMedia('(display-mode: standalone)').addEventListener('change', apply); } catch (e) {}
-    }
-})();
-
-// =====================================================
-// 화면 전환 시 항상 맨 위로 스크롤
-//  · 시트 콘텐츠(#sheet-body)가 통째로 교체될 때(=목록↔상세↔현황↔설정, 매물 간 이동 등) scrollTop=0
-//  · 직속 자식 교체만 감지(childList) → 등록자/사무소 카드의 비동기 hydrate(하위 노드 변경)에는 반응하지 않아
-//    사용자가 읽는 중 스크롤이 갑자기 튀지 않는다.
-//  · 모달(#modal-body)은 showModal() 에서 별도로 초기화한다.
-// =====================================================
-(function initScrollReset() {
-    const sb = document.getElementById('sheet-body');
-    if (!sb || !('MutationObserver' in window)) return;
-    let raf = 0;
-    const mo = new MutationObserver(() => {
-        // 같은 프레임 내 여러 mutation 을 한 번으로 합쳐 맨 위로
-        if (raf) return;
-        raf = requestAnimationFrame(() => { raf = 0; sb.scrollTop = 0; });
-    });
-    mo.observe(sb, { childList: true });   // subtree:false → 하위 카드 hydrate 에는 미반응
-})();
-
-// =====================================================
-// 휴지통 (소프트 삭제된 매물) — 설정 메뉴에서 진입
-//  · 삭제 시 휴지통으로 이동 → 30일 후 자동 영구 삭제
-//  · 여기서 복원 또는 즉시 완전 삭제 가능
-// =====================================================
-const TRASH_RETENTION_DAYS = 30;
-
-function trashDaysLeft(deletedAtMillis) {
-    if (!deletedAtMillis) return TRASH_RETENTION_DAYS;
-    const purgeAt = deletedAtMillis + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-    return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
-}
-
-async function openTrash() {
-    document.getElementById('modal-title').textContent = '휴지통';
-    document.getElementById('modal-body').innerHTML = `
-      <div class="trash-note">${icon('info', 15)}<span>휴지통의 매물은 삭제 후 <b>${TRASH_RETENTION_DAYS}일</b>이 지나면 자동으로 영구 삭제됩니다.</span></div>
-      <div id="trash-list"><div class="trash-loading">불러오는 중…</div></div>`;
-    document.getElementById('modal-footer').innerHTML = `<button class="btn-secondary" onclick="closeModal()">닫기</button>`;
-    showModal();
-    try {
-        const items = await Api.getTrash();
-        renderTrashList(items || []);
-    } catch (e) {
-        const el = document.getElementById('trash-list');
-        if (el) el.innerHTML = `<div class="trash-loading" style="color:#dc2626;">불러오기 실패: ${escapeHtml(e.message)}</div>`;
-    }
-}
-
-function renderTrashList(items) {
-    const el = document.getElementById('trash-list');
-    if (!el) return;
-    if (!items.length) {
-        el.innerHTML = `<div class="empty-state" style="padding:28px 0;">
-            <div class="empty-state-icon">${icon('trash', 48, 'color:#9ca3af;')}</div>
-            <div class="empty-state-title">휴지통이 비어 있습니다</div></div>`;
-        return;
-    }
-    el.innerHTML = items.map(b => {
-        const left = trashDaysLeft(b.deletedAt);
-        const emoji = TYPE_EMOJI[b.type] || '🏢';
-        const firstImg = (b.mediaURLs && b.mediaURLs.length) ? b.mediaURLs[0] : '';
-        const thumb = firstImg
-            ? `<div class="building-thumb has-img"><img src="${escapeHtml(firstImg)}" alt="" onerror="this.remove();this.parentElement.classList.remove('has-img')"><span class="building-thumb-emoji">${emoji}</span></div>`
-            : `<div class="building-thumb"><span class="building-thumb-emoji">${emoji}</span></div>`;
-        return `<div class="trash-item">
-            ${thumb}
-            <div style="flex:1;min-width:0;">
-              <div class="trash-item-name">${escapeHtml(b.name || '(이름 없음)')}</div>
-              <div class="trash-item-sub">${escapeHtml(b.address || '')}</div>
-              <div class="trash-item-left">${left > 0 ? `${left}일 후 영구 삭제` : '곧 영구 삭제됩니다'}</div>
-            </div>
-            <div class="trash-actions">
-              <button class="trash-btn restore" onclick="restoreFromTrash('${b.id}')">${icon('restore', 14)} 복원</button>
-              <button class="trash-btn purge" onclick="purgeFromTrash('${b.id}')">${icon('trash', 14)} 완전삭제</button>
-            </div>
-          </div>`;
-    }).join('');
-}
-
-async function restoreFromTrash(id) {
-    if (_isSubmitting) return;
-    showLoading('매물을 복원하는 중…');
-    try {
-        await Api.restoreBuilding(id);
-        await loadData();
-        renderMarkers();
-        updateStats();
-        if (typeof showBuildingList === 'function') showBuildingList();
-        const items = await Api.getTrash();
-        renderTrashList(items || []);
-        showToast('매물을 복원했습니다');
-    } catch (e) {
-        showToast('복원 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-async function purgeFromTrash(id) {
-    if (_isSubmitting) return;
-    if (!confirm('이 매물을 완전히 삭제할까요?\n영구 삭제되며 복구할 수 없습니다.')) return;
-    showLoading('영구 삭제하는 중…');
-    try {
-        await Api.permanentlyDeleteBuilding(id);
-        const items = await Api.getTrash();
-        renderTrashList(items || []);
-        showToast('영구 삭제되었습니다');
-    } catch (e) {
-        showToast('삭제 실패: ' + e.message);
-    } finally {
-        hideLoading();
-    }
-}
