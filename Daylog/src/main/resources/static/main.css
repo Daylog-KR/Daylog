@@ -53,6 +53,18 @@
     --shadow-up: 0 -6px 22px rgba(0, 0, 0, 0.4);
 }
 [data-theme="dark"] body { background: var(--bg-color); }
+/* [B] edit by smsong - 다크모드: 네이버 지도(v3 클래식)를 CSS 필터로 다크 전환. 네이버 앱 다크맵과 유사 */
+[data-theme="dark"] #naver-map {
+    background: #1b1b1d;
+    filter: invert(1) hue-rotate(180deg) brightness(0.93) contrast(0.9);
+}
+/* 마커/현재위치는 역필터로 원래 색상 유지(사진·아이콘 정상) */
+[data-theme="dark"] #naver-map .custom-marker,
+[data-theme="dark"] #naver-map .marker-heart,
+[data-theme="dark"] #naver-map .my-loc-dot {
+    filter: invert(1) hue-rotate(180deg);
+}
+[data-theme="dark"] .map-fallback { background: #1b1b1d; color: var(--gray-500); }
 [data-theme="dark"] img.cal-thumb, [data-theme="dark"] .tl-thumb img, [data-theme="dark"] .lm-thumb img, [data-theme="dark"] .cl-thumb img { filter: brightness(0.92); }
 [data-theme="dark"] .social-badge.sb-google { background: #2a2622; color: #e8e2da; border-color: #3a352f; }
 
