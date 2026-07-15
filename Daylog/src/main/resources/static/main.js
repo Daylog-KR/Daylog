@@ -541,106 +541,239 @@ function showWelcomeModal() {
     modal.classList.remove('hidden');
     setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
 }
-// [B] edit by smsong - #3 폭죽(축포) 연출 전면 개선.
-//  · 기존: 호출할 때마다 fx.innerHTML='' 로 이전 축포를 지워서 "다시 터지면 초기화"되던 문제 → 제거.
-//  · 변경: 호출마다 '배치(batch)' 레이어를 새로 append → 이전 축포가 살아있는 채로 계속 이어서 터짐.
-//    각 배치는 자기 자신만 수명이 끝나면 스스로 제거(다른 배치에 영향 없음).
-//  · 축포 레이어(#welcome-fx)는 body 직속 position:fixed 라, 디데이 폼(모달)을 내려도
-//    이미 떠 있는 축포는 끝까지 떨어진 뒤 사라진다.
-//  · 사방팔방: 터지는 지점을 화면 전체(가로 6~94% / 세로 8~88%)로 확장.
-var WFX_MAX_BATCH = 14; // 동시에 살아있는 축포 배치 최대치(연타해도 DOM 폭주 방지)
+// [B] edit by smsong - #3 축포 엔진 (캔버스 파티클)
+//  ── 왜 다시 만들었나 ────────────────────────────────────────────────────────
+//   기존은 탭 1회마다 span 376개를 만들고 CSS animation 으로 굴렸다. 그래서
+//    · 탭해도 animation-delay(최대 1.1초) 때문에 즉시 안 터짐
+//    · 연타하면 수천 개 노드가 쌓여 프레임이 무너짐(끊김 = '버그'로 보임)
+//    · 노드 정리 타이밍과 탭 타이밍이 엉켜 이전 축포가 튀거나 사라짐
+//   → 캔버스 1장 + requestAnimationFrame 물리 루프로 교체.
+//
+//  ── 동작 ────────────────────────────────────────────────────────────────────
+//   · 탭 1회 = 즉시 터지는 폭죽 1발 + 하늘로 쏘아 올라 정점에서 터지는 포탄 3발
+//     + 위에서 자연스럽게 내려오는 색종이. 전부 중력/공기저항으로 낙하한다.
+//   · 탭할 때마다 파티클을 '추가'만 한다. 초기화·제거가 없으므로
+//     이전 축포 위에 계속 겹쳐서 덮이고, 각자 수명이 끝나면 알아서 사라진다.
+//   · 파티클이 0이 되면 루프가 자동으로 멈춘다(평소 CPU 사용 0).
+//   · #welcome-fx 는 body 직속 position:fixed 라 디데이 폼을 내려도 축포는 끝까지 떨어진다.
+var WFX = (function () {
+    var COLORS = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#e8b4b4', '#c9a27e',
+                  '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a', '#d1cbc1'];
+    var MAX_PARTICLES = 2200;   // 연타 시 상한(넘으면 가장 오래된 것부터 제거)
+    var GRAVITY = 980;          // px/s^2 — 중력
+    var DRAG = 0.86;            // 공기저항(초당 감쇠율)
 
-function fireWelcomeBurst(opts) {
-    var fx = document.getElementById('welcome-fx');
-    if (!fx) return;
-    opts = opts || {};
+    var canvas = null, ctx = null, dpr = 1, vw = 0, vh = 0;
+    var parts = [], raf = 0, last = 0, resizeBound = false;
 
-    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a'];
-    var vw = window.innerWidth || 360;
-    var vh = window.innerHeight || 640;
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
-    // [B] edit by smsong - #3 이번 호출 전용 배치 레이어 (이전 축포와 독립)
-    var batch = document.createElement('div');
-    batch.className = 'wfx-batch';
-    var frag = document.createDocumentFragment();
+    function resize() {
+        if (!canvas) return;
+        dpr = Math.min(window.devicePixelRatio || 1, 2); // 2 초과는 이득 없이 느리기만 함
+        vw = window.innerWidth || 360;
+        vh = window.innerHeight || 640;
+        canvas.width = Math.floor(vw * dpr);
+        canvas.height = Math.floor(vh * dpr);
+        canvas.style.width = vw + 'px';
+        canvas.style.height = vh + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
 
-    var BURSTS = opts.bursts || 9;                   // 터지는 지점 수
-    var SPARKS_PER_BURST = opts.sparks || 34;        // 지점마다 사방으로 튀는 스파크 수
-    var CONFETTI = (opts.confetti === undefined) ? 70 : opts.confetti;
-    var maxDelay = 0;
-    var maxDur = 0;
+    function ensure() {
+        var fx = document.getElementById('welcome-fx');
+        if (!fx) return false;
+        if (!canvas || canvas.parentNode !== fx) {
+            fx.innerHTML = '';
+            canvas = document.createElement('canvas');
+            canvas.className = 'wfx-canvas';
+            fx.appendChild(canvas);
+            ctx = canvas.getContext('2d');
+            resize();
+            if (!resizeBound) {
+                resizeBound = true;
+                window.addEventListener('resize', resize);
+                window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+            }
+        }
+        return true;
+    }
 
-    // ===== 1) 폭죽 터짐: 화면 사방팔방에서 스태거드로 파바박 =====
-    for (var b = 0; b < BURSTS; b++) {
-        // [B] edit by smsong - #3 터지는 위치를 화면 전체로 확장(상단 편중 제거)
-        var cx = vw * (0.06 + Math.random() * 0.88);
-        var cy = vh * (0.08 + Math.random() * 0.80);
-        var burstDelay = Math.random() * 1.1;                          // 0~1.1s 스태거 → 연속으로 터짐
-        var reach = Math.min(vw, vh) * (0.22 + Math.random() * 0.18);  // 터짐 반경
-        var hue = colors[(b + ((Math.random() * 11) | 0)) % colors.length];
-        if (burstDelay > maxDelay) maxDelay = burstDelay;
-        for (var s = 0; s < SPARKS_PER_BURST; s++) {
-            var p = document.createElement('span');
-            p.className = 'wfx-spark';
-            var ang = (Math.PI * 2) * (s / SPARKS_PER_BURST) + (Math.random() * 0.4 - 0.2);
-            var dist = reach * (0.55 + Math.random() * 0.6);
-            var size = 5 + Math.random() * 8;
-            var tx = Math.cos(ang) * dist;
-            var ty = Math.sin(ang) * dist + dist * 0.35;      // 중력 느낌(아래로 살짝 처짐)
-            var dur = 1.5 + Math.random() * 0.7;
-            if (burstDelay + dur > maxDur) maxDur = burstDelay + dur;
-            p.style.left = cx + 'px';
-            p.style.top = cy + 'px';
-            p.style.width = size + 'px';
-            p.style.height = size + 'px';
-            p.style.background = (s % 5 === 0) ? colors[(b + s) % colors.length] : hue;
-            p.style.setProperty('--tx', tx.toFixed(0) + 'px');
-            p.style.setProperty('--ty', ty.toFixed(0) + 'px');
-            p.style.setProperty('--sc', (0.5 + Math.random() * 0.8).toFixed(2));
-            p.style.setProperty('--rot', ((Math.random() * 360 - 180) | 0) + 'deg');
-            p.style.setProperty('--dur', dur.toFixed(2) + 's');
-            p.style.setProperty('--delay', burstDelay.toFixed(2) + 's');
-            if (s % 6 === 0) p.style.borderRadius = '1px'; // 일부는 각진 불꽃
-            frag.appendChild(p);
+    // ===== 파티클 생성기 =====
+
+    // 정점에서 터질 포탄(쏘아 올라가는 동안 꼬리를 남김)
+    function addShell(targetY) {
+        var x = rand(vw * 0.12, vw * 0.88);
+        // 정점이 targetY 가 되도록 초기 속도 역산: v = sqrt(2 * g * h)
+        var h = Math.max(40, vh - targetY);
+        parts.push({
+            k: 'shell', x: x, y: vh + 8,
+            vx: rand(-40, 40), vy: -Math.sqrt(2 * GRAVITY * h),
+            color: pick(COLORS), life: 3, age: 0
+        });
+    }
+
+    // 한 점에서 사방으로 터지는 불꽃
+    function explode(cx, cy, color, count, power) {
+        for (var i = 0; i < count; i++) {
+            var ang = (Math.PI * 2) * (i / count) + rand(-0.18, 0.18);
+            var sp = power * rand(0.45, 1.0);
+            var life = rand(1.1, 2.0);
+            parts.push({
+                k: 'spark', x: cx, y: cy,
+                vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+                r: rand(2.0, 4.6),
+                color: (i % 6 === 0) ? pick(COLORS) : color,
+                life: life, age: 0,
+                sq: (i % 5 === 0) // 일부는 각진 조각
+            });
         }
     }
 
-    // ===== 2) 위에서 떨어지는 색종이(축포 리본 느낌) =====
-    for (var i = 0; i < CONFETTI; i++) {
-        var c = document.createElement('span');
-        c.className = 'wfx-confetti';
-        var startX = vw * Math.random();
-        var startY = -20 - Math.random() * 60;
-        var w = 6 + Math.random() * 7;
-        var h = 9 + Math.random() * 12;
-        var driftX = (Math.random() * 120 - 60);
-        var fallY = vh * (0.85 + Math.random() * 0.4);
-        var cDelay = Math.random() * 0.9;
-        var cDur = 2.0 + Math.random() * 0.7;
-        if (cDelay + cDur > maxDur) maxDur = cDelay + cDur;
-        c.style.left = startX + 'px';
-        c.style.top = startY + 'px';
-        c.style.width = w + 'px';
-        c.style.height = h + 'px';
-        c.style.background = colors[(i + ((Math.random() * 11) | 0)) % colors.length];
-        c.style.setProperty('--tx', driftX.toFixed(0) + 'px');
-        c.style.setProperty('--ty', fallY.toFixed(0) + 'px');
-        c.style.setProperty('--rot', ((Math.random() * 900 - 450) | 0) + 'deg');
-        c.style.setProperty('--dur', cDur.toFixed(2) + 's');
-        c.style.setProperty('--delay', cDelay.toFixed(2) + 's');
-        frag.appendChild(c);
+    // 위에서 팔랑거리며 내려오는 색종이
+    function addRibbons(n) {
+        for (var i = 0; i < n; i++) {
+            parts.push({
+                k: 'ribbon',
+                x: rand(-20, vw + 20), y: rand(-vh * 0.35, -10),
+                vx: rand(-45, 45), vy: rand(90, 190),
+                w: rand(5, 9), h: rand(9, 16),
+                rot: rand(0, Math.PI * 2), vrot: rand(-5, 5),
+                ph: rand(0, Math.PI * 2), pv: rand(4, 9),  // 팔랑임 위상/속도
+                sw: rand(0.5, 1.1),                        // 좌우 흔들림 폭
+                color: pick(COLORS),
+                life: rand(3.2, 5.0), age: 0
+            });
+        }
     }
 
-    batch.appendChild(frag);
-    fx.appendChild(batch);
+    // ===== 탭 1회 = 이 함수 1회 =====
+    function fire(opts) {
+        if (!ensure()) return;
+        opts = opts || {};
+        var scale = opts.scale || 1;
 
-    // [B] edit by smsong - #3 오래된 배치가 너무 쌓이면(연타) 가장 오래된 것부터 정리
-    while (fx.children.length > WFX_MAX_BATCH) fx.removeChild(fx.firstChild);
+        // 1) 즉시 터지는 한 발 — 탭 반응이 바로 보이도록(대기 시간 0)
+        explode(rand(vw * 0.2, vw * 0.8), rand(vh * 0.2, vh * 0.5),
+                pick(COLORS), Math.round(46 * scale), rand(240, 340));
 
-    // [B] edit by smsong - #3 이 배치만 수명 종료 후 스스로 제거(전체 innerHTML 초기화 금지).
-    //  모달을 닫아도 이 타이머는 계속 돌아가므로 축포는 끝까지 떨어진 뒤 사라진다.
-    var life = Math.ceil((maxDur + 0.5) * 1000);
-    setTimeout(function () { if (batch && batch.parentNode) batch.parentNode.removeChild(batch); }, life);
+        // 2) 쏘아 올라가 정점에서 터질 포탄들 — 사방팔방
+        var shells = Math.round((opts.shells || 3) * scale);
+        for (var i = 0; i < shells; i++) addShell(rand(vh * 0.10, vh * 0.45));
+
+        // 3) 위에서 내려오는 색종이
+        addRibbons(Math.round((opts.ribbons || 34) * scale));
+
+        trim();
+        start();
+    }
+
+    function trim() {
+        var over = parts.length - MAX_PARTICLES;
+        if (over > 0) parts.splice(0, over); // 오래된 것부터 정리
+    }
+
+    // ===== 루프 =====
+    function start() {
+        if (raf) return;
+        last = 0;
+        raf = requestAnimationFrame(step);
+    }
+
+    function step(ts) {
+        if (!last) last = ts;
+        var dt = (ts - last) / 1000;
+        last = ts;
+        if (dt > 0.05) dt = 0.05;      // 탭 전환 복귀 시 순간이동 방지
+        if (dt <= 0) dt = 0.016;
+
+        var drag = Math.pow(DRAG, dt);
+        ctx.clearRect(0, 0, vw, vh);
+
+        for (var i = parts.length - 1; i >= 0; i--) {
+            var p = parts[i];
+            p.age += dt;
+
+            if (p.k === 'shell') {
+                p.vy += GRAVITY * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                // 정점 도달(상승→하강 전환) 순간 폭발
+                if (p.vy >= 0) {
+                    explode(p.x, p.y, p.color, 40, rand(230, 330));
+                    parts.splice(i, 1);
+                    continue;
+                }
+                // 꼬리
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.ellipse(p.x, p.y, 1.8, 5.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                continue;
+            }
+
+            if (p.k === 'spark') {
+                p.vx *= drag; p.vy *= drag;
+                p.vy += GRAVITY * 0.55 * dt;   // 불꽃은 중력을 조금 약하게(둥실 느낌)
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                var t = p.age / p.life;
+                if (t >= 1 || p.y > vh + 40) { parts.splice(i, 1); continue; }
+                ctx.globalAlpha = (t < 0.65) ? 1 : (1 - (t - 0.65) / 0.35); // 끝에서만 페이드
+                ctx.fillStyle = p.color;
+                var r = p.r * (1 - t * 0.45);
+                if (p.sq) {
+                    ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                continue;
+            }
+
+            // ribbon
+            p.ph += p.pv * dt;
+            p.vy += GRAVITY * 0.16 * dt;              // 종이라 천천히 가속
+            if (p.vy > 260) p.vy = 260;               // 종단속도
+            p.x += (p.vx + Math.sin(p.ph) * 60 * p.sw) * dt;
+            p.y += p.vy * dt;
+            p.rot += p.vrot * dt;
+            var rt = p.age / p.life;
+            if (p.y > vh + 30 || rt >= 1) { parts.splice(i, 1); continue; }
+            ctx.globalAlpha = (rt < 0.8) ? 1 : (1 - (rt - 0.8) / 0.2);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.scale(Math.cos(p.ph) * 0.8 + 0.2, 1); // 앞뒤로 뒤집히는 팔랑임
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            ctx.restore();
+        }
+
+        ctx.globalAlpha = 1;
+
+        if (parts.length) {
+            raf = requestAnimationFrame(step);
+        } else {
+            raf = 0;                 // 파티클이 없으면 루프 정지(평소 CPU 0)
+            ctx.clearRect(0, 0, vw, vh);
+        }
+    }
+
+    // 탭이 백그라운드로 갔다 오면 dt 튀는 것 방지
+    document.addEventListener('visibilitychange', function () { last = 0; });
+
+    return { fire: fire };
+})();
+
+// 기존 호출부 호환(환영 모달 · 디데이 폼에서 그대로 fireWelcomeBurst() 사용)
+function fireWelcomeBurst(opts) {
+    // 이벤트 객체가 그대로 넘어와도 안전하도록 옵션만 골라 쓴다
+    var o = (opts && typeof opts === 'object' && !opts.type) ? opts : null;
+    WFX.fire(o || {});
 }
 // [E] edit by smsong
 function closeWelcomeModal() {
@@ -5366,11 +5499,17 @@ function showDDayInfo() {
     html += '</div>';
     body.innerHTML = html;
     // [B] edit by smsong - #4 '우리가 만난 날' 탭마다 축포 + 열릴 때 1회
+    // [B] edit by smsong - #3 탭할 때마다 축포를 '겹쳐서' 추가.
+    //  click 대신 pointerdown → 손가락이 닿는 즉시 터짐(모바일 click 지연/스크롤 취소 영향 없음).
     var _cel = document.getElementById('dday-celebrate');
     if (_cel) {
-        _cel.addEventListener('click', function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); });
+        var _fireEv = ('onpointerdown' in window) ? 'pointerdown' : 'click';
+        _cel.addEventListener(_fireEv, function () {
+            if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst();
+        });
         if (since) setTimeout(function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); }, 180);
     }
+    // [E] edit by smsong
     if (canEdit) {
         var saveBtn = document.getElementById('dday-edit-save');
         if (saveBtn) saveBtn.addEventListener('click', saveDday);

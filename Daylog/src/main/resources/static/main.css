@@ -658,10 +658,14 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .welcome-fx {
     position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden;
 }
-/* [B] edit by smsong - #3 축포 '배치' 레이어. 터질 때마다 이 레이어가 하나씩 추가되고,
-   자기 수명이 끝나면 자기 자신만 제거된다 → 연타해도 이전 축포가 초기화되지 않고 계속 이어서 터짐.
-   #welcome-fx 는 body 직속 position:fixed 이므로 디데이 폼(모달)을 내려도 축포는 끝까지 떨어진다. */
-.welcome-fx .wfx-batch { position: absolute; inset: 0; pointer-events: none; }
+/* [B] edit by smsong - #3 축포는 이제 캔버스 1장으로 그린다(파티클 엔진, main.js 의 WFX).
+   탭할 때마다 파티클만 추가되므로 이전 축포 위에 계속 겹쳐서 덮인다.
+   #welcome-fx 는 body 직속 position:fixed 이므로 디데이 폼(모달)을 내려도 축포는 끝까지 떨어진다.
+   아래 .wfx-spark / .wfx-confetti 규칙은 더 이상 쓰이지 않지만(캔버스로 대체) 호환을 위해 남겨둠. */
+.welcome-fx .wfx-canvas {
+    position: absolute; inset: 0; display: block;
+    width: 100%; height: 100%; pointer-events: none;
+}
 /* [E] edit by smsong */
 /* [B] edit by smsong - 커다란 링 제거. 여러 지점에서 터지는 '폭죽' 스파크 + 떨어지는 색종이.
    원점(터지는 위치)은 JS 가 left/top(px)로 지정 → 화면 곳곳에서 파바박 터짐. */
