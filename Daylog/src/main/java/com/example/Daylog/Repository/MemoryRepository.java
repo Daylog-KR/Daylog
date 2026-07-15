@@ -18,6 +18,13 @@ public interface MemoryRepository extends JpaRepository<MemoryEntity, Long> {
     // [smsong] 방 스코프: 해당 방의 정상 추억만
     List<MemoryEntity> findByRoomIdAndDeletedFalse(Long roomId);
 
+    // [B] edit by smsong - #2 '오늘의 추억' 리마인더용
+    //  해당 방에 지정 기간(= 오늘 00:00:00 ~ 23:59:59.999999999) 으로 기록된 '정상(휴지통 아님)' 추억이 하나라도 있는지.
+    //  기준 필드는 createdAt — 달력/타임라인이 '추억 날짜'로 쓰는 값과 동일하다
+    //  (realCreatedAt 은 DB 실제 저장 시각이라 사진 촬영일로 덮인 경우 달력과 어긋난다).
+    boolean existsByRoomIdAndDeletedFalseAndCreatedAtBetween(Long roomId, LocalDateTime start, LocalDateTime end);
+    // [E] edit by smsong
+
     // [smsong] 방 스코프 휴지통: 내가 이 방에서 휴지통으로 보낸 추억
     List<MemoryEntity> findByOwnerUidAndRoomIdAndDeletedTrue(String uid, Long roomId);
 

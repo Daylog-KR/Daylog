@@ -23,6 +23,49 @@ window.addEventListener('pageshow', function () {
 });
 // [E] edit by smsong
 
+// [B] edit by smsong - #1 다크 모드 (main 설정 메뉴)
+//  · 저장 키 'daylog_theme' 는 rooms.js 와 완전히 동일 → rooms 에서 켠 다크가 main 에서도 그대로 유지되고,
+//    main 에서 바꾼 값이 rooms 로도 그대로 전달된다(페이지별 불일치/충돌 없음).
+//  · FOUC 방지용 선반영 스크립트는 main.html <head> 에 이미 있음.
+//  · 다른 탭/창에서 바꾼 경우에도 storage 이벤트로 즉시 동기화한다.
+(function daylogTheme() {
+    var THEME_KEY = 'daylog_theme';
+    function isDark() { try { return localStorage.getItem(THEME_KEY) === 'dark'; } catch (e) { return false; } }
+    function applyTheme() {
+        var dark = isDark();
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        // 모바일 주소창 색상도 함께 전환
+        try {
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', dark ? '#171513' : '#9c6644');
+        } catch (e) {}
+        var btn = document.getElementById('btn-dark-toggle');
+        if (btn) {
+            btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+            btn.classList.toggle('on', dark); // CSS 스위치(해/달 + 노브 슬라이드) 처리
+        }
+    }
+    function toggleTheme() {
+        var next = !isDark();
+        try { localStorage.setItem(THEME_KEY, next ? 'dark' : 'light'); } catch (e) {}
+        applyTheme();
+    }
+    function bind() {
+        var btn = document.getElementById('btn-dark-toggle');
+        if (btn && !btn.__bound) { btn.__bound = true; btn.addEventListener('click', toggleTheme); }
+        applyTheme();
+    }
+    // 다른 탭(rooms.html 등)에서 테마가 바뀌면 이 탭에도 즉시 반영
+    window.addEventListener('storage', function (e) { if (!e || e.key === THEME_KEY) applyTheme(); });
+    // bfcache 복귀 시에도 최신 값으로 재반영
+    window.addEventListener('pageshow', applyTheme);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') bind();
+    else document.addEventListener('DOMContentLoaded', bind);
+    window.Daylog = window.Daylog || {};
+    window.Daylog.applyTheme = applyTheme;
+})();
+// [E] edit by smsong
+
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
@@ -498,28 +541,44 @@ function showWelcomeModal() {
     modal.classList.remove('hidden');
     setTimeout(fireWelcomeBurst, 120); // 로고 팝 애니메이션 직후 축포(팡)
 }
-// [B] edit by smsong - 폭죽(축포) 연출: 화면 곳곳에서 여러 번 '파바박' 터지는 스파크 + 위에서 떨어지는 색종이.
-//  커다란 원(링)은 제거. 스파크 수를 크게 늘리고, 전체 지속을 약 2.6초로 길게.
-function fireWelcomeBurst() {
+// [B] edit by smsong - #3 폭죽(축포) 연출 전면 개선.
+//  · 기존: 호출할 때마다 fx.innerHTML='' 로 이전 축포를 지워서 "다시 터지면 초기화"되던 문제 → 제거.
+//  · 변경: 호출마다 '배치(batch)' 레이어를 새로 append → 이전 축포가 살아있는 채로 계속 이어서 터짐.
+//    각 배치는 자기 자신만 수명이 끝나면 스스로 제거(다른 배치에 영향 없음).
+//  · 축포 레이어(#welcome-fx)는 body 직속 position:fixed 라, 디데이 폼(모달)을 내려도
+//    이미 떠 있는 축포는 끝까지 떨어진 뒤 사라진다.
+//  · 사방팔방: 터지는 지점을 화면 전체(가로 6~94% / 세로 8~88%)로 확장.
+var WFX_MAX_BATCH = 14; // 동시에 살아있는 축포 배치 최대치(연타해도 DOM 폭주 방지)
+
+function fireWelcomeBurst(opts) {
     var fx = document.getElementById('welcome-fx');
     if (!fx) return;
-    fx.innerHTML = '';
-    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a'];
+    opts = opts || {};
 
+    var colors = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#d1cbc1', '#e8b4b4', '#c9a27e', '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a'];
     var vw = window.innerWidth || 360;
     var vh = window.innerHeight || 640;
+
+    // [B] edit by smsong - #3 이번 호출 전용 배치 레이어 (이전 축포와 독립)
+    var batch = document.createElement('div');
+    batch.className = 'wfx-batch';
     var frag = document.createDocumentFragment();
 
-    // ===== 1) 폭죽 터짐: 여러 지점에서 스태거드로 파바박 =====
-    var BURSTS = 9;                       // 터지는 지점 수(여러 번 터짐)
-    var SPARKS_PER_BURST = 34;            // 지점마다 사방으로 튀는 스파크 수
+    var BURSTS = opts.bursts || 9;                   // 터지는 지점 수
+    var SPARKS_PER_BURST = opts.sparks || 34;        // 지점마다 사방으로 튀는 스파크 수
+    var CONFETTI = (opts.confetti === undefined) ? 70 : opts.confetti;
+    var maxDelay = 0;
+    var maxDur = 0;
+
+    // ===== 1) 폭죽 터짐: 화면 사방팔방에서 스태거드로 파바박 =====
     for (var b = 0; b < BURSTS; b++) {
-        // 터지는 위치: 화면 상단~중앙(가로 전체, 세로 10~65%)
-        var cx = vw * (0.1 + Math.random() * 0.8);
-        var cy = vh * (0.1 + Math.random() * 0.55);
-        var burstDelay = Math.random() * 1.1;                 // 0~1.1s 사이 스태거 → 연속으로 터짐
-        var reach = Math.min(vw, vh) * (0.22 + Math.random() * 0.18); // 터짐 반경
-        var hue = colors[b % colors.length];
+        // [B] edit by smsong - #3 터지는 위치를 화면 전체로 확장(상단 편중 제거)
+        var cx = vw * (0.06 + Math.random() * 0.88);
+        var cy = vh * (0.08 + Math.random() * 0.80);
+        var burstDelay = Math.random() * 1.1;                          // 0~1.1s 스태거 → 연속으로 터짐
+        var reach = Math.min(vw, vh) * (0.22 + Math.random() * 0.18);  // 터짐 반경
+        var hue = colors[(b + ((Math.random() * 11) | 0)) % colors.length];
+        if (burstDelay > maxDelay) maxDelay = burstDelay;
         for (var s = 0; s < SPARKS_PER_BURST; s++) {
             var p = document.createElement('span');
             p.className = 'wfx-spark';
@@ -528,17 +587,18 @@ function fireWelcomeBurst() {
             var size = 5 + Math.random() * 8;
             var tx = Math.cos(ang) * dist;
             var ty = Math.sin(ang) * dist + dist * 0.35;      // 중력 느낌(아래로 살짝 처짐)
+            var dur = 1.5 + Math.random() * 0.7;
+            if (burstDelay + dur > maxDur) maxDur = burstDelay + dur;
             p.style.left = cx + 'px';
             p.style.top = cy + 'px';
             p.style.width = size + 'px';
             p.style.height = size + 'px';
-            // 같은 폭죽은 비슷한 색 계열 + 가끔 다른 색 섞기
             p.style.background = (s % 5 === 0) ? colors[(b + s) % colors.length] : hue;
             p.style.setProperty('--tx', tx.toFixed(0) + 'px');
             p.style.setProperty('--ty', ty.toFixed(0) + 'px');
             p.style.setProperty('--sc', (0.5 + Math.random() * 0.8).toFixed(2));
             p.style.setProperty('--rot', ((Math.random() * 360 - 180) | 0) + 'deg');
-            p.style.setProperty('--dur', (1.5 + Math.random() * 0.7).toFixed(2) + 's');
+            p.style.setProperty('--dur', dur.toFixed(2) + 's');
             p.style.setProperty('--delay', burstDelay.toFixed(2) + 's');
             if (s % 6 === 0) p.style.borderRadius = '1px'; // 일부는 각진 불꽃
             frag.appendChild(p);
@@ -546,7 +606,6 @@ function fireWelcomeBurst() {
     }
 
     // ===== 2) 위에서 떨어지는 색종이(축포 리본 느낌) =====
-    var CONFETTI = 70;
     for (var i = 0; i < CONFETTI; i++) {
         var c = document.createElement('span');
         c.className = 'wfx-confetti';
@@ -556,23 +615,32 @@ function fireWelcomeBurst() {
         var h = 9 + Math.random() * 12;
         var driftX = (Math.random() * 120 - 60);
         var fallY = vh * (0.85 + Math.random() * 0.4);
+        var cDelay = Math.random() * 0.9;
+        var cDur = 2.0 + Math.random() * 0.7;
+        if (cDelay + cDur > maxDur) maxDur = cDelay + cDur;
         c.style.left = startX + 'px';
         c.style.top = startY + 'px';
         c.style.width = w + 'px';
         c.style.height = h + 'px';
-        c.style.background = colors[i % colors.length];
+        c.style.background = colors[(i + ((Math.random() * 11) | 0)) % colors.length];
         c.style.setProperty('--tx', driftX.toFixed(0) + 'px');
         c.style.setProperty('--ty', fallY.toFixed(0) + 'px');
         c.style.setProperty('--rot', ((Math.random() * 900 - 450) | 0) + 'deg');
-        c.style.setProperty('--dur', (2.0 + Math.random() * 0.7).toFixed(2) + 's');
-        c.style.setProperty('--delay', (Math.random() * 0.9).toFixed(2) + 's');
+        c.style.setProperty('--dur', cDur.toFixed(2) + 's');
+        c.style.setProperty('--delay', cDelay.toFixed(2) + 's');
         frag.appendChild(c);
     }
 
-    fx.appendChild(frag);
+    batch.appendChild(frag);
+    fx.appendChild(batch);
 
-    // 애니메이션 종료 후 정리 (스태거 최대 ~1.1s + 지속 ~2.7s 여유)
-    setTimeout(function () { if (fx) fx.innerHTML = ''; }, 3200);
+    // [B] edit by smsong - #3 오래된 배치가 너무 쌓이면(연타) 가장 오래된 것부터 정리
+    while (fx.children.length > WFX_MAX_BATCH) fx.removeChild(fx.firstChild);
+
+    // [B] edit by smsong - #3 이 배치만 수명 종료 후 스스로 제거(전체 innerHTML 초기화 금지).
+    //  모달을 닫아도 이 타이머는 계속 돌아가므로 축포는 끝까지 떨어진 뒤 사라진다.
+    var life = Math.ceil((maxDur + 0.5) * 1000);
+    setTimeout(function () { if (batch && batch.parentNode) batch.parentNode.removeChild(batch); }, life);
 }
 // [E] edit by smsong
 function closeWelcomeModal() {
@@ -3436,8 +3504,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnTrash = document.getElementById('btn-trash');
     if (btnTrash) btnTrash.addEventListener('click', openTrashModal);
     // [smsong] 방 목록으로 이동 (다른 방 선택 가능)
+    // [B] edit by smsong - #4 설정 메뉴 [방 목록] 도 상단 좌측 로고와 똑같이 확인(confirm) 후 이동
     const btnRooms = document.getElementById('btn-rooms');
-    if (btnRooms) btnRooms.addEventListener('click', () => { location.href = 'rooms.html'; });
+    if (btnRooms) btnRooms.addEventListener('click', () => {
+        if (confirm('방 목록으로 이동합니다.')) location.href = 'rooms.html';
+    });
+    // [E] edit by smsong
     // [B] edit by smsong - #1 로고 클릭 핸들러는 아래 navLogo(confirm) 하나로 통일 (중복 무조건 이동 제거)
     const logoHome = document.getElementById('logo-home');
     if (logoHome) { logoHome.setAttribute('tabindex', '0'); }
@@ -3625,7 +3697,7 @@ document.addEventListener('DOMContentLoaded', () => {
         var container = document.getElementById('member-view');
         if (!container) return;
         var _rt = getRoomType();
-        var typeName = (_rt === 'FAMILY') ? '가족' : (_rt === 'ACQUAINTANCE') ? '지인' : '친구'; // [B] edit by smsong - 지인 추가
+        var typeName = (_rt === 'FAMILY') ? '가족' : (_rt === 'ACQUAINTANCE') ? '지인' : (_rt === 'PERSONAL') ? '개인' : '친구'; // [B] edit by smsong - #5 개인(PERSONAL) 추가
         var head = document.createElement('div');
         head.className = 'member-view-head';
         head.textContent = typeName + ' 구성원 ' + members.length + '명';

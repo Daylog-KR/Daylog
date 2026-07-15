@@ -8,6 +8,13 @@ jwt:
   secret: ${JWT_CODE}
   expiration: ${JWT_TIME}
 
+daylog:
+  reminder:
+    enabled: true
+    interval-hours: 3     # 시간조정: ← 3 → 5 또는 8
+    start-hour: 9
+    end-hour: 21
+
 google:
   cloud:
     credentials:

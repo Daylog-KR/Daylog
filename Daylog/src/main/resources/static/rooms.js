@@ -117,13 +117,22 @@ function typeLabel(type) {
     if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
     if (type === 'FAMILY') return { label: '가족', cls: 'family' };
     if (type === 'ACQUAINTANCE') return { label: '지인', cls: 'acquaintance' }; // [B] edit by smsong
+    if (type === 'PERSONAL') return { label: '개인', cls: 'personal' };         // [B] edit by smsong - #5 개인
     return { label: '커플', cls: 'couple' };
 }
+// [B] edit by smsong - #6 만난 날짜 행을 display 토글이 아닌 .open 클래스로 부드럽게 펼침/접힘
+function setDdayRowOpen(open) {
+    if (!ddayRow) return;
+    ddayRow.classList.toggle('open', !!open);
+    ddayRow.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (!open && ddayInput) { try { ddayInput.blur(); } catch (e) {} } // 접힐 때 iOS 날짜 피커가 남지 않도록
+}
+// [E] edit by smsong
 function updateTypeChips() {
     document.querySelectorAll('.type-chip').forEach(ch => {
         ch.classList.toggle('active', !!selectedType && ch.dataset.type === selectedType);
     });
-    if (ddayRow) ddayRow.style.display = (selectedType === 'COUPLE') ? 'flex' : 'none';
+    setDdayRowOpen(selectedType === 'COUPLE'); // [B] edit by smsong - #6
 }
 
 // ===== 유틸 =====
@@ -577,7 +586,7 @@ function openModal(mode) {
         modalInput.placeholder = '예: 우리의 추억';
         modalInput.classList.remove('code');
         modalInput.maxLength = 30;
-        typeRow.style.display = 'flex';
+        typeRow.style.display = 'grid'; // [B] edit by smsong - #5 칩 5개 → 그리드 레이아웃
         selectedType = null; // [smsong] 아무 타입도 선택되지 않은 상태로 시작
         updateTypeChips();
         if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 대표 이미지 첨부
@@ -591,7 +600,7 @@ function openModal(mode) {
         modalInput.classList.add('code');
         modalInput.maxLength = 8;
         typeRow.style.display = 'none';
-        if (ddayRow) ddayRow.style.display = 'none';
+        setDdayRowOpen(false); // [B] edit by smsong - #6
         if (imgPickerRow) imgPickerRow.style.display = 'none'; // [smsong] 입장 모드엔 이미지 없음
         if (pasteRow) pasteRow.style.display = 'block'; // [B] edit by smsong - 코드 붙여넣기 노출
     }
@@ -610,7 +619,7 @@ function openRenameModal(r) {
     modalInput.classList.remove('code');
     modalInput.maxLength = 30;
     typeRow.style.display = 'none';
-    if (ddayRow) ddayRow.style.display = 'none';
+    setDdayRowOpen(false); // [B] edit by smsong - #6
     if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 이름 수정 시 대표 이미지도 변경 가능
     resetRoomImagePicker(r.imageUrl || r.thumbnailUrl || '');
     if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong

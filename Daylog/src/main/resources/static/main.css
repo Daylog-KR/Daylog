@@ -658,6 +658,11 @@ body[data-active-tab="tab-checklist"] #btn-checklist-add { display: flex; }
 .welcome-fx {
     position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden;
 }
+/* [B] edit by smsong - #3 축포 '배치' 레이어. 터질 때마다 이 레이어가 하나씩 추가되고,
+   자기 수명이 끝나면 자기 자신만 제거된다 → 연타해도 이전 축포가 초기화되지 않고 계속 이어서 터짐.
+   #welcome-fx 는 body 직속 position:fixed 이므로 디데이 폼(모달)을 내려도 축포는 끝까지 떨어진다. */
+.welcome-fx .wfx-batch { position: absolute; inset: 0; pointer-events: none; }
+/* [E] edit by smsong */
 /* [B] edit by smsong - 커다란 링 제거. 여러 지점에서 터지는 '폭죽' 스파크 + 떨어지는 색종이.
    원점(터지는 위치)은 JS 가 left/top(px)로 지정 → 화면 곳곳에서 파바박 터짐. */
 .welcome-fx .wfx-spark {
@@ -2010,6 +2015,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .setting-toggle.on .ui-switch .sw-knob { transform: translateX(22px); }
 .setting-toggle.on .ui-switch .sw-knob .sw-on { display: block; }
 .setting-toggle.on .ui-switch .sw-knob .sw-off { display: none; }
+/* [B] edit by smsong - #1 다크 모드 토글 변형: 노브에 ON/OFF 대신 해/달 아이콘 (rooms.css 와 동일 규칙) */
+.ui-switch .sw-sun { display: block; }
+.ui-switch .sw-moon { display: none; }
+.setting-toggle.dark .ui-switch .sw-knob .sw-on, .setting-toggle.dark .ui-switch .sw-knob .sw-off { display: none !important; }
+.setting-toggle.dark.on .ui-switch { background: #7a6f63; }
+.setting-toggle.dark.on .ui-switch .sw-sun { display: none; }
+.setting-toggle.dark.on .ui-switch .sw-moon { display: block; }
+/* [E] edit by smsong */
 
 /* ---- 검색어(제목/내용/위치) 검색 행 (타임라인 · 가볼곳 공용) ---- */
 .filter-search-row { display: flex; gap: 8px; align-items: center; }

@@ -84,7 +84,7 @@ public class RoomService {
     }
 
     // ===== 생성 =====
-    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY", "ACQUAINTANCE"); // [B] edit by smsong - 지인(ACQUAINTANCE) 추가
+    private static final java.util.Set<String> VALID_TYPES = java.util.Set.of("COUPLE", "FRIEND", "FAMILY", "ACQUAINTANCE", "PERSONAL"); // [B] edit by smsong - #5 개인(PERSONAL) 추가
 
     @Transactional
     public RoomDTO createRoom(String uid, String name, String type, String coupleSince) {
