@@ -32,6 +32,53 @@ function authHeaders(withJson) {
     return h;
 }
 
+// [B] edit by smsong : 로그인 유지(슬라이딩 만료) — 만료 임박 시 서버에 갱신 요청해 새 토큰으로 교체.
+var _REFRESH_LEAD_MS = 5 * 60 * 1000;
+var _refreshing = null;
+var _expireTimer = null;
+function _tokenExpMs() { const p = decodeJwt(getToken()); return (p && p.exp) ? p.exp * 1000 : 0; }
+function refreshToken() {
+    if (_refreshing) return _refreshing;
+    const cur = getToken();
+    if (!cur) return Promise.resolve(false);
+    _refreshing = fetch(API_BASE + '/user/refresh', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + cur }
+    }).then(function (res) {
+        if (!res.ok) return false;
+        return res.json().then(function (data) {
+            const nt = data && (data.token || data.accessToken || data.jwt);
+            if (nt) {
+                localStorage.setItem(TOKEN_KEY, nt);
+                try { if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user)); } catch (_) {}
+                scheduleTokenRefresh();
+                return true;
+            }
+            return false;
+        });
+    }).catch(function () { return false; }).then(function (ok) { _refreshing = null; return ok; });
+    return _refreshing;
+}
+function ensureFreshToken() {
+    const t = getToken();
+    if (!t) return Promise.resolve(false);
+    const exp = _tokenExpMs();
+    if (!exp) return Promise.resolve(true);
+    const left = exp - Date.now();
+    if (left > _REFRESH_LEAD_MS) return Promise.resolve(true);
+    if (left <= 0) return Promise.resolve(false);
+    return refreshToken();
+}
+function scheduleTokenRefresh() {
+    if (_expireTimer) clearTimeout(_expireTimer);
+    const exp = _tokenExpMs();
+    if (!exp) return;
+    const left = exp - Date.now();
+    if (left <= 0) return;
+    const refreshAt = Math.max(left - _REFRESH_LEAD_MS, 0);
+    _expireTimer = setTimeout(function () { refreshToken(); }, Math.min(refreshAt, 2147483000));
+}
+// [E] edit by smsong
+
 // [B] edit by smsong - 권한 API(reject-seen/dismiss)는 방을 X-Room-Id 헤더로 구분
 function roomHeaders(roomId) {
     const h = authHeaders(false);
@@ -66,6 +113,17 @@ const uid = payload && (payload.sub || payload.uid || payload.username || payloa
 const validSession = !!token && !!payload && !expired && !!uid;
 if (!validSession) {
     gotoLoginCleared(AUTH_EXPIRED_MSG);
+}
+
+// [B][E] edit by smsong : 로그인 유지 — 유효 세션이면 자동 갱신 스케줄 + 앱 복귀 시 갱신
+if (validSession) {
+    scheduleTokenRefresh();
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        const p = decodeJwt(getToken());
+        const ok = !!(p && (!p.exp || Date.now() < p.exp * 1000));
+        if (ok) { ensureFreshToken(); scheduleTokenRefresh(); }
+    });
 }
 
 // ===== 엘리먼트 =====
@@ -882,8 +940,15 @@ document.querySelectorAll('.type-chip').forEach(ch => {
 // [B] edit by smsong - 로그아웃은 프로필 패널 안 버튼으로 이동
 function doLogout() {
     if (!confirm('로그아웃 하시겠어요?')) return;
-    AUTH_KEYS.forEach(k => localStorage.removeItem(k));
-    location.replace('login.html');
+    // [B][E] edit by smsong : 서버의 이 기기 세션도 제거(기기 목록에서 사라지도록) 후 로컬 정리
+    var token = getToken();
+    var done = function () { AUTH_KEYS.forEach(k => localStorage.removeItem(k)); location.replace('login.html'); };
+    if (token) {
+        try {
+            fetch(API_BASE + '/user/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+                .then(done).catch(done);
+        } catch (_) { done(); }
+    } else { done(); }
 }
 const _btnProfileLogout = document.getElementById('btn-profile-logout');
 if (_btnProfileLogout) _btnProfileLogout.addEventListener('click', doLogout);

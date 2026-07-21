@@ -39,6 +39,63 @@ public class UserController {
         return ResponseEntity.ok(userService.login(userDTO.getUid(), userDTO.getPassword()));
     }
 
+    // [B] edit by smsong : 토큰 갱신(로그인 유지). Authorization 헤더의 현재 토큰을 새 토큰으로 교체.
+    @Operation(summary = "토큰 갱신 (로그인 유지)")
+    @PostMapping("/refresh")
+    public ResponseEntity<JWTDTO> refresh(@RequestHeader(value = "Authorization", required = false) String header) {
+        if (header == null || header.isBlank()) return ResponseEntity.status(401).build();
+        String token = header.startsWith("Bearer ") ? header.substring(7) : header;
+        try {
+            return ResponseEntity.ok(userService.refreshToken(token));
+        } catch (Exception e) {
+            return ResponseEntity.status(401).build();
+        }
+    }
+
+    // 현재 기기 로그아웃(이 토큰 세션만 제거)
+    @Operation(summary = "로그아웃 (현재 기기)")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader(value = "Authorization", required = false) String header) {
+        if (header != null && !header.isBlank()) {
+            String token = header.startsWith("Bearer ") ? header.substring(7) : header;
+            userService.logoutDevice(token);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    // OAuth 로그인 후 기기 등록. 다른 기기 있고 force=false 면 409 + 기기목록.
+    @Operation(summary = "기기 등록 (OAuth 로그인 후)")
+    @PostMapping("/register-device")
+    public ResponseEntity<?> registerDevice(
+            @RequestHeader(value = "Authorization", required = false) String header,
+            @RequestBody com.example.Daylog.DTO.LoginRequestDTO req,
+            @RequestHeader(value = "User-Agent", required = false) String ua) {
+        if (header == null || header.isBlank()) return ResponseEntity.status(401).build();
+        String token = header.startsWith("Bearer ") ? header.substring(7) : header;
+        if (req.getUserAgent() == null) req.setUserAgent(ua);
+        try {
+            userService.registerDevice(token, req.getDeviceId(), req.getDeviceName(),
+                    req.getUserAgent(), req.isForce());
+            return ResponseEntity.noContent().build();
+        } catch (com.example.Daylog.Exception.DeviceConflictException e) {
+            return ResponseEntity.status(409).body(e.getDetail());
+        } catch (Exception e) {
+            return ResponseEntity.status(401).build();
+        }
+    }
+
+    // 내 로그인 기기 목록
+    @Operation(summary = "내 로그인 기기 목록")
+    @GetMapping("/devices/{uid}")
+    public ResponseEntity<?> myDevices(@PathVariable("uid") String uid,
+                                       @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null || !userDetails.getUsername().equals(uid)) {
+            return ResponseEntity.status(403).build();
+        }
+        return ResponseEntity.ok(userService.myDevices(uid));
+    }
+    // [E] edit by smsong
+
     // 전체 회원 조회
     @Operation(summary = "전체 회원 조회")
     @GetMapping("/all/{uid}")

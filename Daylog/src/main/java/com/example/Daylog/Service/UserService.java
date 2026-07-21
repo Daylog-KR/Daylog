@@ -5,6 +5,7 @@ import com.example.Daylog.Config.OAuthProperties.*;
 import com.example.Daylog.Config.OAuthProperties.GoogleOAuthProperties;
 import com.example.Daylog.Config.OAuthProperties.KakaoOAuthProperties;
 import com.example.Daylog.Config.OAuthProperties.NaverOAuthProperties;
+import com.example.Daylog.DTO.DeviceConflictDTO;
 import com.example.Daylog.DTO.JWTDTO;
 import com.example.Daylog.DTO.UserDTO;
 import com.example.Daylog.Entity.*;
@@ -43,6 +44,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserSessionRepository userSessionRepository;   // [B][E] edit by smsong : 로그인 기기 세션
     private final RestTemplate restTemplate;
     private final KakaoOAuthProperties kakaoOAuthProperties;
     private final NaverOAuthProperties naverOAuthProperties;
@@ -103,6 +105,103 @@ public class UserService {
         logger.info("로그인 성공! 새로운 토큰이 발급되었습니다");
         return new JWTDTO(token, UserDTO.entityToDto(userEntity));
     }
+
+    // [B] edit by smsong - 토큰 갱신(로그인 유지). 현재 토큰의 기기 세션을 새 토큰으로 교체.
+    //   토큰이 세션 테이블에 없으면(다른 기기가 강제 로그인으로 밀어냄) 갱신 거부 → 재로그인.
+    @org.springframework.transaction.annotation.Transactional
+    public JWTDTO refreshToken(String token) {
+        String uid;
+        try { uid = jwtTokenProvider.getUidFromToken(token); }
+        catch (Exception e) { throw new IllegalArgumentException("유효하지 않은 토큰"); }
+        if (uid == null) throw new IllegalArgumentException("유효하지 않은 토큰");
+
+        UserSessionEntity session = userSessionRepository.findByToken(token).orElse(null);
+        if (session == null) throw new IllegalArgumentException("세션이 종료되었습니다");
+
+        String newToken = jwtTokenProvider.generateToken(uid);
+        session.setToken(newToken);
+        session.setLastSeenAt(java.time.LocalDateTime.now());
+        userSessionRepository.save(session);
+
+        UserEntity userEntity = userRepository.findByUid(uid)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
+        return new JWTDTO(newToken, UserDTO.entityToDto(userEntity));
+    }
+
+    // 현재 기기 로그아웃 — 이 토큰의 세션만 제거(다른 기기는 유지)
+    @org.springframework.transaction.annotation.Transactional
+    public void logoutDevice(String token) {
+        userSessionRepository.findByToken(token).ifPresent(userSessionRepository::delete);
+    }
+
+    // 내 로그인 기기 목록
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<DeviceConflictDTO.DeviceInfo> myDevices(String uid) {
+        return userSessionRepository.findByUid(uid).stream()
+                .map(s -> DeviceConflictDTO.DeviceInfo.builder()
+                        .deviceName(s.getDeviceName())
+                        .userAgent(s.getUserAgent())
+                        .lastSeenAt(s.getLastSeenAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    // OAuth 로그인 후 기기 등록(토큰 기반).
+    //   · 같은 deviceId 세션이 있으면 토큰만 갱신
+    //   · 다른 기기 세션 있고 force=false → DeviceConflictException(확인 요청)
+    //   · force=true → 다른 기기 세션 제거 후 이 기기 등록
+    @org.springframework.transaction.annotation.Transactional
+    public String registerDevice(String token, String deviceId, String deviceName,
+                                 String userAgent, boolean force) {
+        String uid;
+        try { uid = jwtTokenProvider.getUidFromToken(token); }
+        catch (Exception e) { throw new IllegalArgumentException("유효하지 않은 토큰"); }
+        if (uid == null) throw new IllegalArgumentException("유효하지 않은 토큰");
+        if (deviceId == null || deviceId.isBlank()) return token;   // 기기ID 없으면 세션 없이 통과
+
+        List<UserSessionEntity> sessions = userSessionRepository.findByUid(uid);
+        UserSessionEntity mine = sessions.stream()
+                .filter(s -> deviceId.equals(s.getDeviceId())).findFirst().orElse(null);
+        List<UserSessionEntity> others = sessions.stream()
+                .filter(s -> !deviceId.equals(s.getDeviceId()))
+                .collect(Collectors.toList());
+
+        if (!others.isEmpty() && !force && mine == null) {
+            List<DeviceConflictDTO.DeviceInfo> infos = others.stream()
+                    .map(s -> DeviceConflictDTO.DeviceInfo.builder()
+                            .deviceName(s.getDeviceName())
+                            .userAgent(s.getUserAgent())
+                            .lastSeenAt(s.getLastSeenAt())
+                            .build())
+                    .collect(Collectors.toList());
+            throw new com.example.Daylog.Exception.DeviceConflictException(
+                    DeviceConflictDTO.builder().requiresConfirmation(true).devices(infos).build());
+        }
+
+        if (force && !others.isEmpty()) {
+            userSessionRepository.deleteAll(others);
+            logger.info("강제 로그인 — 기존 {}개 기기 세션 종료", others.size());
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (mine != null) {
+            mine.setToken(token);
+            mine.setLastSeenAt(now);
+            if (deviceName != null && !deviceName.isBlank()) mine.setDeviceName(deviceName);
+            if (userAgent != null) mine.setUserAgent(userAgent);
+            userSessionRepository.save(mine);
+        } else {
+            userSessionRepository.save(UserSessionEntity.builder()
+                    .uid(uid).deviceId(deviceId)
+                    .deviceName(deviceName != null && !deviceName.isBlank() ? deviceName : "내 기기")
+                    .userAgent(userAgent)
+                    .token(token)
+                    .createdAt(now).lastSeenAt(now)
+                    .build());
+        }
+        return token;
+    }
+    // [E] edit by smsong
 
     // 전체 회원 조회
     public List<UserDTO> getAllUsers(String uid, UserDetails userDetails) {

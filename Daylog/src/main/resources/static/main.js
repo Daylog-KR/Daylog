@@ -117,6 +117,57 @@ function isTokenValid() {
     return true;
 }
 
+// [B] edit by smsong : 로그인 유지(슬라이딩 만료) — 만료 임박 시 서버에 갱신 요청해 새 토큰으로 교체.
+var _REFRESH_LEAD_MS = 5 * 60 * 1000;
+var _refreshing = null;
+var _expireTimer = null;
+function _tokenExpMs() { const p = decodeJwt(getToken()); return (p && p.exp) ? p.exp * 1000 : 0; }
+function refreshToken() {
+    if (_refreshing) return _refreshing;
+    const cur = getToken();
+    if (!cur) return Promise.resolve(false);
+    _refreshing = fetch(API_BASE_URL + '/user/refresh', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + cur }
+    }).then(function (res) {
+        if (!res.ok) return false;
+        return res.json().then(function (data) {
+            const nt = data && (data.token || data.accessToken || data.jwt);
+            if (nt) {
+                localStorage.setItem(TOKEN_KEY, nt);
+                try { if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user)); } catch (_) {}
+                scheduleTokenRefresh();
+                return true;
+            }
+            return false;
+        });
+    }).catch(function () { return false; }).then(function (ok) { _refreshing = null; return ok; });
+    return _refreshing;
+}
+function ensureFreshToken() {
+    const t = getToken();
+    if (!t) return Promise.resolve(false);
+    const exp = _tokenExpMs();
+    if (!exp) return Promise.resolve(true);
+    const left = exp - Date.now();
+    if (left > _REFRESH_LEAD_MS) return Promise.resolve(true);
+    if (left <= 0) return Promise.resolve(false);
+    return refreshToken();
+}
+function scheduleTokenRefresh() {
+    if (_expireTimer) clearTimeout(_expireTimer);
+    const exp = _tokenExpMs();
+    if (!exp) return;
+    const left = exp - Date.now();
+    if (left <= 0) return;
+    const refreshAt = Math.max(left - _REFRESH_LEAD_MS, 0);
+    _expireTimer = setTimeout(function () {
+        refreshToken().then(function (ok) {
+            if (!ok) { /* 갱신 실패 → 다음 요청에서 401 로 로그인 유도 */ }
+        });
+    }, Math.min(refreshAt, 2147483000));
+}
+// [E] edit by smsong
+
 function authHeaders(withJson) {
     const h = {};
     if (withJson) h['Content-Type'] = 'application/json';
@@ -149,8 +200,23 @@ function requireAuthOrRedirect() {
     if (!isTokenValid()) { redirectToLogin(); return false; }
     // [smsong] 방 미선택 시 방 목록으로 (방 스코프 진입 강제)
     if (!localStorage.getItem('selectedRoomId')) { location.replace('rooms.html'); return false; }
+    // [B][E] edit by smsong : 로그인 유지 — 만료 임박 자동 갱신 스케줄(중복 호출은 내부에서 정리)
+    scheduleTokenRefresh();
     return true;
 }
+
+// [B] edit by smsong : 명시적 로그아웃 — 서버의 이 기기 세션을 먼저 제거(기기 목록에서 사라지도록) 후 이동.
+function serverLogoutThenRedirect(msg) {
+    var token = getToken();
+    var done = function () { redirectToLogin(msg); };
+    if (!token) { done(); return; }
+    try {
+        fetch(API_BASE_URL + '/user/logout', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+        }).then(done).catch(done);
+    } catch (_) { done(); }
+}
+// [E] edit by smsong
 
 // 공통 fetch 응답 처리
 async function handleResponse(res) {
@@ -1270,6 +1336,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // 페이지 진입 시 가장 먼저 인증 체크
     if (!requireAuthOrRedirect()) return;
 
+    // [B][E] edit by smsong : 앱 복귀 시 만료 임박이면 토큰 갱신(로그인 유지)
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        if (isTokenValid()) { ensureFreshToken(); scheduleTokenRefresh(); }
+    });
+
     // [B] edit by smsong - 접근 권한은 서버(권한 메뉴/DB) 기준으로 판정 (loadMyPermission)
     //  하드코딩 이름 즉시 차단은 제거 — DB에서 승인된 사용자도 통과해야 하므로 서버 응답으로 게이트.
     //  (서버 조회 실패 시에만 loadMyPermission 내부에서 이름 기반으로 폴백 차단)
@@ -1472,7 +1544,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var _btnLogout = document.getElementById('btn-logout');
     if (_btnLogout) _btnLogout.addEventListener('click', (e) => {
         e.preventDefault();
-        if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
+        if (confirm('로그아웃을 진행합니다.')) serverLogoutThenRedirect('로그아웃 되었습니다.');
     });
 
     // [B] edit by smsong - main 상단 좌측 Daylog 로고 → 확인 후 방 목록으로 이동 (main 페이지 전용)
@@ -3648,7 +3720,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logoHome) { logoHome.setAttribute('tabindex', '0'); }
     const btnProfileLogout = document.getElementById('btn-profile-logout');
     if (btnProfileLogout) btnProfileLogout.addEventListener('click', () => {
-        if (confirm('로그아웃을 진행합니다.')) redirectToLogin('로그아웃 되었습니다.');
+        if (confirm('로그아웃을 진행합니다.')) serverLogoutThenRedirect('로그아웃 되었습니다.');
     });
     // [smsong] 방장 전용 권한 관리(접근/CRUD/내보내기) 모달 열기/닫기
     const btnPermAdmin = document.getElementById('btn-perm-admin');

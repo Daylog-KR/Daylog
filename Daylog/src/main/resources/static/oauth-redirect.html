@@ -203,7 +203,17 @@
 
             const data = await response.json();
 
+            // [B][E] edit by smsong : 기기 식별자는 로그인과 무관하게 유지해야 한다.
+            //   localStorage.clear() 가 지우기 전에 백업했다가 복원(같은 기기가 매번 새 기기로 잡히는 것 방지).
+            var _keepDeviceId = localStorage.getItem('deviceId');
+            var _keepDeviceName = localStorage.getItem('deviceName');
+            var _keepTheme = localStorage.getItem('daylog_theme') || localStorage.getItem('THEME');
+
             localStorage.clear();
+
+            if (_keepDeviceId) localStorage.setItem('deviceId', _keepDeviceId);
+            if (_keepDeviceName) localStorage.setItem('deviceName', _keepDeviceName);
+            if (_keepTheme) { try { localStorage.setItem('daylog_theme', _keepTheme); } catch (_) {} }
 
             // 데이터 키 네임셋을 고정하여 저장 (main.js 로그아웃 시 일괄 삭제 대상)
             const token = data.token || data.accessToken || data.jwt || '';
@@ -213,13 +223,100 @@
 
             sessionStorage.removeItem('provider');
 
-            window.location.href = SUCCESS_REDIRECT;
+            // [B] edit by smsong : 기기 등록 — 다른 기기에 로그인돼 있으면 확인 후 강제 로그인.
+            //   기기 이름은 User-Agent 로 자동 생성("Android · Chrome" 등), 입력창 없이 매끄럽게.
+            await registerThisDevice(token);
+            // [E] edit by smsong
         } catch (error) {
             console.error('OAuth 로그인 처리 오류:', error);
             alert('로그인 처리 중 오류가 발생했습니다.');
             window.location.href = LOGIN_PAGE;
         }
     });
+
+    // [B] edit by smsong : ===== 기기 등록 유틸 (Daylog 는 auth.js 가 없어 인라인) =====
+    var DEVICE_ID_KEY = 'deviceId';
+    var DEVICE_NAME_KEY = 'deviceName';
+    function getDeviceId() {
+        try {
+            var id = localStorage.getItem(DEVICE_ID_KEY);
+            if (!id) {
+                id = (window.crypto && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+                localStorage.setItem(DEVICE_ID_KEY, id);
+            }
+            return id;
+        } catch (_) { return 'dev-unknown'; }
+    }
+    function autoDeviceName() {
+        var ua = navigator.userAgent || '';
+        var os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad'
+               : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac'
+               : /Windows/.test(ua) ? 'Windows PC' : /Linux/.test(ua) ? 'Linux' : '기기';
+        var br = /CriOS|Chrome/.test(ua) ? 'Chrome' : /FxiOS|Firefox/.test(ua) ? 'Firefox'
+               : /Edg/.test(ua) ? 'Edge' : /Safari/.test(ua) ? 'Safari' : '';
+        return br ? (os + ' · ' + br) : os;
+    }
+    function shortUA(ua) {
+        var os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad'
+               : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac'
+               : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '기기';
+        var br = /Chrome|CriOS/.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox'
+               : /Edg/.test(ua) ? 'Edge' : /Safari/.test(ua) ? 'Safari' : '';
+        return br ? (os + '·' + br) : os;
+    }
+
+    async function registerThisDevice(token) {
+        // localStorage.clear() 후이므로 deviceId 는 새로 생성될 수 있음(기기 재설치와 동일 취급).
+        var deviceId = getDeviceId();
+        var deviceName = localStorage.getItem(DEVICE_NAME_KEY) || '';
+        if (!deviceName) {
+            deviceName = autoDeviceName();
+            try { localStorage.setItem(DEVICE_NAME_KEY, deviceName); } catch (_) {}
+        }
+        var ok = await sendRegister(token, deviceId, deviceName, false);
+        if (ok === 'conflict') return;   // 다이얼로그가 이어서 처리
+        window.location.href = SUCCESS_REDIRECT;
+    }
+
+    async function sendRegister(token, deviceId, deviceName, force) {
+        try {
+            var res = await fetch(BACKEND_BASE + '/user/register-device', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ deviceId: deviceId, deviceName: deviceName, force: force })
+            });
+            if (res.status === 204) return true;
+            if (res.status === 409) {
+                var detail = await res.json().catch(function () { return {}; });
+                showDeviceConflict(detail, token, deviceId, deviceName);
+                return 'conflict';
+            }
+            return false;
+        } catch (_) { return false; }
+    }
+
+    function showDeviceConflict(detail, token, deviceId, deviceName) {
+        var devices = (detail && detail.devices) || [];
+        var names = devices.map(function (d) {
+            return '· ' + (d.deviceName || '알 수 없는 기기')
+                + (d.userAgent ? ' (' + shortUA(d.userAgent) + ')' : '');
+        }).join('\n');
+        var msg = '다른 기기에 이미 로그인되어 있습니다.\n\n' + names + '\n\n'
+            + '해당 기기를 로그아웃하고 이 기기(' + deviceName + ')로 로그인할까요?';
+        if (window.confirm(msg)) {
+            sendRegister(token, deviceId, deviceName, true).then(function (ok) {
+                if (ok === true) window.location.href = SUCCESS_REDIRECT;
+                else { alert('기기 등록에 실패했어요. 다시 시도해 주세요.'); window.location.href = LOGIN_PAGE; }
+            });
+        } else {
+            // 취소 → 로그인 중단
+            try { localStorage.removeItem('accessToken'); localStorage.removeItem('currentUser'); localStorage.removeItem('auth'); } catch (_) {}
+            window.location.href = LOGIN_PAGE;
+        }
+    }
+    // [E] edit by smsong
 </script>
 </body>
 </html>
