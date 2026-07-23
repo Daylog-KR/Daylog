@@ -7699,14 +7699,15 @@ document.addEventListener('DOMContentLoaded', () => {
         var rows = '';
         it.s.forEach(function (s) {
             var time = s.allDay ? '종일' : (s.startTime ? String(s.startTime).substring(0, 5) : '종일');
-            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '">' +
+            // [B] edit by smsong - #22 행을 누르면 일정 상세. 완료 체크만 따로 동작.
+            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '" data-id="' + s.id + '">' +
                 '<button type="button" class="cw-check" data-id="' + s.id + '" data-done="' + (s.done ? '1' : '0') + '" aria-label="완료">' +
                 (s.done ? icon('check', 14) : '') + '</button>' +
                 '<div class="cw-row-main"><div class="cw-row-title">' + esc(s.title) +
                 '<span class="cw-tag sch">일정</span></div>' +
                 '<div class="cw-row-sub">' + esc(time) + (s.content ? ' · ' + esc(s.content) : '') + '</div></div>' +
-                '<button type="button" class="cw-row-edit" data-id="' + s.id + '" aria-label="수정">' + icon('edit', 15) + '</button>' +
                 '</div>';
+            // [E] edit by smsong
         });
         it.c.forEach(function (c) {
             var meta = (typeof checklistType === 'function') ? checklistType(c.type) : { label: '', emoji: '' };
@@ -7733,12 +7734,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     .catch(function () { showToast('변경 실패'); });
             });
         });
-        // 일정 수정
-        box.querySelectorAll('.cw-row-edit').forEach(function (b) {
-            b.addEventListener('click', function (e) {
-                e.stopPropagation();
-                var id = b.getAttribute('data-id');
-                openScheduleForm(key, _schedules.find(function (x) { return String(x.id) === String(id); }));
+        // [B][E] edit by smsong - #22 일정 행 → 상세 열기
+        box.querySelectorAll('.cw-row.sch').forEach(function (r) {
+            r.addEventListener('click', function () {
+                var id = r.getAttribute('data-id');
+                var sc = _schedules.find(function (x) { return String(x.id) === String(id); });
+                if (sc) openScheduleDetail(sc, key); else showToast('일정을 찾을 수 없습니다');
             });
         });
         // 체크리스트 → 상세
@@ -7770,6 +7771,95 @@ document.addEventListener('DOMContentLoaded', () => {
             _pendingPlanned = null;
             showToast('체크리스트 추가를 열 수 없습니다');
         }
+    }
+
+    // ===================== 일정 상세 =====================
+    //  추억/가볼곳 상세와 같은 흐름 — 목록에서 누르면 상세가 뜨고, 그 안에서 수정·휴지통.
+    //  일정은 사진이 없어 몰입형 시트 대신 카드형으로 띄운다.
+    function closeScheduleDetail() {
+        var e = document.getElementById('cw-detail');
+        if (e && e.parentNode) e.parentNode.removeChild(e);
+    }
+
+    function openScheduleDetail(s, dateKey) {
+        if (!s) return;
+        closeScheduleDetail();
+
+        var dt = new Date(dkey(s.scheduleDate));
+        var when = dt.getFullYear() + '년 ' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 ' +
+                   ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()] + '요일';
+        var time = s.allDay ? '종일' : (s.startTime ? String(s.startTime).substring(0, 5) : '종일');
+
+        // 작성자 (추억/가볼곳 상세와 동일하게 표시)
+        var u = (Daylog.usersByUid && s.ownerUid) ? Daylog.usersByUid[s.ownerUid] : null;
+        var who = '';
+        if (u) {
+            who = (u.nickname && String(u.nickname).trim()) ? u.nickname
+                : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
+        }
+        var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
+
+        // 권한 — 추억/가볼곳과 동일한 판정을 그대로 쓴다
+        var canEdit = (typeof canManageObject === 'function') ? canManageObject(s) : true;
+        var canTrash = (typeof canTrashObject === 'function') ? canTrashObject(s) : true;
+
+        var ov = document.createElement('div');
+        ov.id = 'cw-detail';
+        ov.innerHTML =
+            '<div class="cw-dt-card" role="dialog" aria-modal="true" aria-label="일정 상세">' +
+                '<div class="cw-dt-top">' +
+                    '<span class="cw-dt-kind">' + icon('calendar', 13) + ' 일정</span>' +
+                    '<div class="cw-dt-act">' +
+                        (canEdit ? '<button type="button" class="cw-dt-btn" id="cw-dt-edit" title="수정" aria-label="수정">' + icon('edit', 16) + '</button>' : '') +
+                        (canTrash ? '<button type="button" class="cw-dt-btn danger" id="cw-dt-trash" title="휴지통" aria-label="휴지통">' + icon('trash', 16) + '</button>' : '') +
+                        '<button type="button" class="cw-dt-btn" id="cw-dt-close" aria-label="닫기">&times;</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="cw-dt-when">' + esc(when) + '<span class="cw-dt-sep">·</span>' + esc(time) + '</div>' +
+                '<h3 class="cw-dt-title' + (s.done ? ' done' : '') + '">' + esc(s.title) + '</h3>' +
+                '<button type="button" class="cw-dt-done' + (s.done ? ' on' : '') + '" id="cw-dt-done">' +
+                    '<span class="cw-dt-box">' + (s.done ? icon('check', 13) : '') + '</span>' +
+                    (s.done ? '완료했어요' : '아직 안 했어요') + '</button>' +
+                (s.content ? '<div class="cw-dt-body">' + esc(s.content).replace(/\n/g, '<br>') + '</div>' : '') +
+                '<div class="cw-dt-who">' +
+                    '<span class="cw-dt-avatar" style="background-image:url(\'' + photo + '\')"></span>' +
+                    esc(who || '작성자') +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) closeScheduleDetail(); });
+        document.getElementById('cw-dt-close').addEventListener('click', closeScheduleDetail);
+
+        // 완료 토글 — 상세에서 바로
+        document.getElementById('cw-dt-done').addEventListener('click', function () {
+            var next = !s.done;
+            withLoading(fetch(api() + '/api/schedules/' + s.id + '/done?done=' + next, { method: 'PUT', headers: hdr(true) })
+                .then(Daylog.handleResponse), '저장 중...')
+                .then(function () { return loadCalendarData(true); })
+                .then(function () {
+                    render();
+                    var fresh = _schedules.find(function (x) { return String(x.id) === String(s.id); });
+                    if (fresh) openScheduleDetail(fresh, dateKey); else closeScheduleDetail();
+                })
+                .catch(function () { showToast('변경 실패'); });
+        });
+
+        var eb = document.getElementById('cw-dt-edit');
+        if (eb) eb.addEventListener('click', function () {
+            closeScheduleDetail();
+            openScheduleForm(dateKey || dkey(s.scheduleDate), s);
+        });
+
+        var tb = document.getElementById('cw-dt-trash');
+        if (tb) tb.addEventListener('click', function () {
+            if (!confirm('이 일정을 휴지통으로 옮기시겠습니까?')) return;
+            withLoading(fetch(api() + '/api/schedules/' + s.id + '/trash', { method: 'PUT', headers: hdr(true) })
+                .then(Daylog.handleResponse), '이동 중...')
+                .then(function () { return loadCalendarData(true); })
+                .then(function () { closeScheduleDetail(); render(); showToast('휴지통으로 옮겼어요'); })
+                .catch(function () { showToast('이동 실패'); });
+        });
     }
 
     // ===================== 일정 작성/수정 폼 =====================
@@ -8125,7 +8215,40 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-check{width:22px;height:22px;flex:none;border:2px solid var(--gray-200);border-radius:7px;background:transparent;' +
             'display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;padding:0;}',
             '.cw-row.done .cw-check{background:#2e9e5b;border-color:#2e9e5b;}',
-            '.cw-row-edit{border:none;background:transparent;color:var(--gray-400);cursor:pointer;padding:4px;flex:none;}',
+            '.cw-row.sch{cursor:pointer;}',
+            // ===== #22 일정 상세 카드 =====
+            '#cw-detail{position:fixed;inset:0;z-index:2720;background:rgba(45,38,32,.52);' +
+            'display:flex;align-items:center;justify-content:center;padding:22px;animation:cwFade .18s ease;}',
+            '#cw-detail .cw-dt-card{width:100%;max-width:360px;max-height:86dvh;overflow-y:auto;' +
+            'background:var(--white);border-radius:22px;padding:16px 20px 20px;' +
+            'animation:cwPop .3s cubic-bezier(.2,.8,.3,1);}',
+            '.cw-dt-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}',
+            '.cw-dt-kind{display:inline-flex;align-items:center;gap:5px;font-size:0.72rem;font-weight:700;' +
+            'color:#2e6e56;background:#e3f1e8;border-radius:999px;padding:5px 10px;line-height:1;}',
+            '.cw-dt-act{display:flex;align-items:center;gap:4px;}',
+            '.cw-dt-btn{width:32px;height:32px;border:none;border-radius:50%;background:transparent;' +
+            'color:var(--gray-500);font-size:1.35rem;line-height:1;cursor:pointer;' +
+            'display:flex;align-items:center;justify-content:center;padding:0;}',
+            '.cw-dt-btn:active{background:var(--gray-100);}',
+            '.cw-dt-btn.danger{color:#b5462f;}',
+            '.cw-dt-when{font-size:0.76rem;color:var(--gray-400);display:flex;align-items:center;gap:7px;margin-bottom:7px;}',
+            '.cw-dt-sep{color:var(--gray-200);}',
+            '.cw-dt-title{margin:0 0 14px;font-family:var(--font-logo),var(--font-main);font-size:1.3rem;' +
+            'font-weight:600;line-height:1.36;color:var(--gray-800);word-break:keep-all;}',
+            '.cw-dt-title.done{text-decoration:line-through;color:var(--gray-400);}',
+            '.cw-dt-done{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--gray-200);' +
+            'border-radius:13px;padding:11px 13px;background:transparent;cursor:pointer;font-family:inherit;' +
+            'font-size:0.85rem;font-weight:600;color:var(--gray-500);}',
+            '.cw-dt-done.on{border-color:#2e9e5b;color:#2e6e56;background:#f2f9f5;}',
+            '.cw-dt-box{width:20px;height:20px;flex:none;border:2px solid var(--gray-200);border-radius:6px;' +
+            'display:flex;align-items:center;justify-content:center;color:#fff;}',
+            '.cw-dt-done.on .cw-dt-box{background:#2e9e5b;border-color:#2e9e5b;}',
+            '.cw-dt-body{margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-100);' +
+            'font-size:0.9rem;line-height:1.75;color:var(--gray-600);white-space:pre-line;word-break:break-word;}',
+            '.cw-dt-who{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:13px;' +
+            'border-top:1px solid var(--gray-100);font-size:0.8rem;color:var(--gray-500);}',
+            '.cw-dt-avatar{width:24px;height:24px;border-radius:50%;background-size:cover;' +
+            'background-position:center;flex:none;}',
             '.cw-ic{flex:none;display:inline-flex;}',
             '.cw-tag{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:999px;flex:none;}',
             '.cw-tag.sch{background:#e3f1e8;color:#2e6e56;}',
