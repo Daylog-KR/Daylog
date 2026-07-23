@@ -198,6 +198,16 @@ window.addEventListener('pageshow', function () {
 
         function buildRows() {
             rows = o.rowsOf(items.slice(0, loaded)) || [];
+            // [B] edit by smsong - #35 키 중복 제거.
+            //  같은 키가 두 번 나오면 재사용 맵(mounted)이 뒤엣것으로 덮여
+            //  앞의 엘리먼트가 추적 밖으로 새어 나가고, 행이 복제되어 쌓인다.
+            var seen = Object.create(null);
+            for (var i = 0; i < rows.length; i++) {
+                var k = String(rows[i].key);
+                if (seen[k] == null) seen[k] = 0;
+                else rows[i].key = k + '#' + (++seen[k]);
+            }
+            // [E] edit by smsong
             prefetchRows();     // [B][E] edit by smsong - #33
         }
 
@@ -257,6 +267,13 @@ window.addEventListener('pageshow', function () {
 
         function dropMounted() {
             mounted = {};
+            // [B] edit by smsong - #35 반드시 실제 DOM 도 함께 비운다.
+            //  mount() 의 feedEl.innerHTML='' 은 rowsEl 을 '떼어낼' 뿐, rowsEl 자신의 자식은 그대로 남는다.
+            //  재사용 맵만 비우면 그 자식들이 추적 불가능한 잔여 노드가 되어 계속 쌓이고,
+            //  목록이 반복해서 끝없이 이어지는 것처럼 보였다.
+            //  (예전 코드는 매번 rowsEl.innerHTML='' 을 했기 때문에 드러나지 않던 문제)
+            if (rowsEl) rowsEl.innerHTML = '';
+            // [E] edit by smsong
         }
 
         function renderWindow(s, e) {
@@ -284,6 +301,17 @@ window.addEventListener('pageshow', function () {
                 if (el && el.parentNode === rowsEl) rowsEl.removeChild(el);
                 delete mounted[key];
             }
+
+            // [B] edit by smsong - #35 안전망: 재사용 맵이 추적하지 못하는 잔여 노드를 걷어낸다.
+            //  (키가 겹치거나 외부에서 DOM 을 건드린 경우에도 행이 중복 누적되지 않게 한다)
+            var keep = (typeof Set === 'function') ? new Set(order) : null;
+            for (var c = rowsEl.firstChild; c; ) {
+                var nxt = c.nextSibling;
+                var stale = keep ? !keep.has(c) : (order.indexOf(c) < 0);
+                if (stale) rowsEl.removeChild(c);
+                c = nxt;
+            }
+            // [E] edit by smsong
 
             // 순서 맞추기 — 이미 제자리인 행은 DOM 을 건드리지 않는다
             var cur = rowsEl.firstChild;
@@ -9027,17 +9055,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     }
 
+    // [B] edit by smsong - #34 번호는 '아래에서 위로' 매긴다.
+    //  맨 아래가 1, 위로 갈수록 커진다. (표시 순서 자체는 그대로 — 맨 위가 먼저 보이는 추억)
     function renumber(listEl) {
         var kids = listEl.children;
-        for (var i = 0; i < kids.length; i++) {
+        var n = kids.length;
+        for (var i = 0; i < n; i++) {
             var no = kids[i].querySelector('.mo-no');
-            if (no) no.textContent = String(i + 1);
+            if (no) no.textContent = String(n - i);   // 위 → n … 아래 → 1
             var up = kids[i].querySelector('.mo-up');
             var dn = kids[i].querySelector('.mo-down');
             if (up) up.disabled = (i === 0);
-            if (dn) dn.disabled = (i === kids.length - 1);
+            if (dn) dn.disabled = (i === n - 1);
         }
     }
+    // [E] edit by smsong
 
     // 드래그 정렬 (포인터 이벤트 — 마우스/터치 공용)
     function bindDrag(listEl) {
@@ -9124,7 +9156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
             var sub = [m.placeName, m.address].filter(Boolean).join(' ');
             return '<li class="mo-row" data-id="' + esc(m.id) + '">' +
-                '<span class="mo-no">' + (i + 1) + '</span>' +
+                '<span class="mo-no">' + (items.length - i) + '</span>' +   // [B][E] #34 맨 아래가 1
                 '<div class="mo-thumb">' + (thumb
                     ? '<img src="' + esc(thumb) + '" data-full="' + esc(cover) + '" alt="" decoding="async" ' +
                       'onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">'
