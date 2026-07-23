@@ -63,6 +63,15 @@ spring:
   application:
     name: REMS
 
+  # [B] edit by smsong - #21 JSON 의 null 을 원시 타입(boolean/int 등)에 매핑할 때
+  #  400 으로 죽이지 않고 기본값(false/0)으로 접는다.
+  #  클라이언트가 필드를 빼먹거나 null 로 보내도 API 가 통째로 실패하지 않는다.
+  #    (Cannot map `null` into type `boolean` 방지)
+  jackson:
+    deserialization:
+      fail-on-null-for-primitives: false
+  # [E] edit by smsong
+
   # [B] edit by smsong - 스케줄러가 3개(추억 리마인더 / 다녀온 곳 기념일 / 커플 기념일)라
   #  기본 풀 크기 1이면 하나가 오래 돌 때 나머지가 밀린다. 2~3으로 여유를 준다.
   task:

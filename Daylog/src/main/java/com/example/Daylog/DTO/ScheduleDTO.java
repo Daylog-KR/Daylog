@@ -20,10 +20,13 @@ public class ScheduleDTO {
     private String content;
     private LocalDate scheduleDate;   // 달력 날짜 (필수)
     private LocalTime startTime;      // 종일이면 null
-    private boolean allDay;
-    private boolean done;
+    // [B] edit by smsong - #21 원시 boolean 대신 래퍼로 받는다.
+    //  클라이언트가 값을 빼먹거나 null 로 보내도 400 이 나지 않고 기본값으로 처리된다.
+    private Boolean allDay;
+    private Boolean done;
+    private Boolean deleted;
+    // [E] edit by smsong
     private String color;
-    private boolean deleted;
     private String ownerUid;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -51,17 +54,22 @@ public class ScheduleDTO {
                 .build();
     }
 
+    // null 을 기본값으로 접는다 (allDay 는 안 주면 '종일'로 본다)
+    public boolean isAllDayOrDefault() { return allDay == null || allDay; }
+    public boolean isDoneOrDefault()   { return done != null && done; }
+
     public ScheduleEntity dtoToEntity(UserEntity owner) {
+        boolean ad = isAllDayOrDefault();
         return ScheduleEntity.builder()
                 .id(id)
                 .title(title)
                 .content(content)
                 .scheduleDate(scheduleDate)
-                .startTime(allDay ? null : startTime)
-                .allDay(allDay)
-                .done(done)
+                .startTime(ad ? null : startTime)
+                .allDay(ad)
+                .done(isDoneOrDefault())
                 .color(color)
-                .deleted(deleted)
+                .deleted(deleted != null && deleted)
                 .owner(owner)
                 .createdAt(createdAt)
                 .build();

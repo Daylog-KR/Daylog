@@ -108,9 +108,10 @@ public class ScheduleService {
         if (dto.getTitle() != null && !dto.getTitle().isBlank()) s.setTitle(dto.getTitle());
         if (dto.getContent() != null) s.setContent(dto.getContent());
         if (dto.getScheduleDate() != null) s.setScheduleDate(dto.getScheduleDate());
-        s.setAllDay(dto.isAllDay());
-        s.setStartTime(dto.isAllDay() ? null : dto.getStartTime());
-        s.setDone(dto.isDone());
+        boolean allDay = dto.isAllDayOrDefault();   // [B][E] #21 null 이면 종일로
+        s.setAllDay(allDay);
+        s.setStartTime(allDay ? null : dto.getStartTime());
+        s.setDone(dto.isDoneOrDefault());
         if (dto.getColor() != null) s.setColor(dto.getColor());
 
         s.setUpdatedAt(LocalDateTime.now());

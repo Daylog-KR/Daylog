@@ -7816,14 +7816,18 @@ document.addEventListener('DOMContentLoaded', () => {
             var date = document.getElementById('cw-date').value;
             if (!title) { showToast('무엇을 할지 입력해주십시오'); return; }
             if (!date) { showToast('날짜를 선택해주십시오'); return; }
+            // [B] edit by smsong - #21 null 값을 아예 담지 않는다.
+            //  JSON 에 null 로 실려 가면 서버의 원시 타입(boolean 등)에 매핑되며 400 이 난다.
+            //  (Cannot map `null` into type `boolean`)
             var body = {
                 title: title,
                 content: document.getElementById('cw-content').value.trim(),
                 scheduleDate: date,
-                allDay: allday.checked,
-                startTime: allday.checked ? null : (timeEl.value ? timeEl.value + ':00' : null),
-                done: editing ? !!s.done : false
+                allDay: !!allday.checked,
+                done: editing ? !!(s && s.done) : false
             };
+            if (!allday.checked && timeEl.value) body.startTime = timeEl.value + ':00';
+            // [E] edit by smsong
             var url = editing ? (api() + '/api/schedules/' + s.id)
                               : (api() + '/api/schedules?uid=' + encodeURIComponent(Daylog.currentUid));
             withLoading(fetch(url, { method: editing ? 'PUT' : 'POST', headers: hdr(true), body: JSON.stringify(body) })
