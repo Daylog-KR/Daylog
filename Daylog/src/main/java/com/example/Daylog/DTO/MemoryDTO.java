@@ -28,6 +28,10 @@ public class MemoryDTO {
     private String ownerUid;
     private boolean deleted;
     private LocalDateTime createdAt;
+    // [B] edit by smsong - #34 같은 날짜 안에서의 표시 순서 (null = 미지정 → 최신순).
+    //  조회 전용: dtoToEntity 에는 넣지 않는다. 일반 수정 저장이 순서를 덮어쓰면 안 되기 때문.
+    private Integer sortOrder;
+    // [E] edit by smsong
     // [B] edit by smsong - 마지막 수정 시각/수정자 (조회 전용)
     private LocalDateTime updatedAt;
     private String lastEditorUid;
@@ -58,6 +62,7 @@ public class MemoryDTO {
                 .ownerUid(ownerUid)
                 .deleted(e.isDeleted())
                 .createdAt(e.getCreatedAt())
+                .sortOrder(e.getSortOrder())   // [B][E] edit by smsong - #34
                 // [B] edit by smsong - 마지막 수정 정보 (없으면 생성 시점/작성자로 폴백 → 기존 레코드 호환)
                 .updatedAt(e.getUpdatedAt() != null ? e.getUpdatedAt() : e.getCreatedAt())
                 .lastEditorUid(e.getLastEditorUid() != null ? e.getLastEditorUid() : ownerUid)

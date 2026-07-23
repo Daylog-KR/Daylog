@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map; // [B][E] edit by smsong - #12
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/memories")
@@ -43,6 +43,24 @@ public class MemoryController {
                                                           @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(memoryService.getAllMemories(uid, roomId, userDetails));
     }
+
+    // ===== [B] edit by smsong - #34 추억 표시 순서 저장 =====
+    //  body: { "items": [ { "id": 12, "sortOrder": 0 }, { "id": 7, "sortOrder": 1 } ] }
+    //
+    //  ⚠ 아래 @PutMapping("/{id}") 와 경로가 겹쳐 보이지만, 스프링은 리터럴 경로("/order")를
+    //     경로 변수("/{id}")보다 우선해서 매칭한다. 그래도 헷갈릴 여지를 줄이려고
+    //     이 메서드를 /{id} 핸들러보다 위에 둔다.
+    @PutMapping("/order")
+    public ResponseEntity<Void> updateOrder(@RequestBody Map<String, List<Map<String, Object>>> body,
+                                            @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) return ResponseEntity.status(403).build();
+        if (roomId == null) return ResponseEntity.badRequest().build();
+        memoryService.updateOrder(userDetails.getUsername(), roomId,
+                (body == null ? null : body.get("items")), userDetails);
+        return ResponseEntity.noContent().build();
+    }
+    // [E] edit by smsong
 
     // 본인 소유 추억 수정 (제목/내용/날짜 + 이미지 정렬/추가/삭제) — multipart
     @SneakyThrows

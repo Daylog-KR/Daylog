@@ -4,6 +4,7 @@ import com.example.Daylog.Entity.MemoryEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -32,6 +33,11 @@ public interface MemoryRepository extends JpaRepository<MemoryEntity, Long> {
     @org.springframework.data.jpa.repository.Modifying
     @Query("UPDATE memories m SET m.roomId = :roomId WHERE m.roomId IS NULL")
     int assignNullRoom(@Param("roomId") Long roomId);
+
+    // [B] edit by smsong - #34 순서 저장용: 지정한 id 들 중 '이 방'의 추억만 한 번에 가져온다.
+    //  다른 방 id 가 섞여 들어와도 여기서 걸러지고, 건별 findById 보다 쿼리도 1회로 끝난다.
+    List<MemoryEntity> findByIdInAndRoomId(List<Long> ids, Long roomId);
+    // [E] edit by smsong
 
     // 내가 휴지통으로 보낸 추억 목록
     List<MemoryEntity> findByOwnerUidAndDeletedTrue(String uid);

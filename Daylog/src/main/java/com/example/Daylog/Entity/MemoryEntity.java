@@ -3,6 +3,7 @@ package com.example.Daylog.Entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +53,18 @@ public class MemoryEntity {
 
     // [smsong] 소속 방(공유 공간) — 이 방의 멤버끼리만 공유
     private Long roomId;
+
+    // [B] edit by smsong - #34 같은 날짜 안에서의 사용자 지정 표시 순서 (작을수록 앞).
+    //  · 타임라인 리스트의 날짜 줄 [순서] 버튼에서 지정한다.
+    //  · null = 미지정 → 프론트가 기존과 동일하게 '최신순'으로 처리한다.
+    //  ⚠ nullable 로 둔 이유: 데이터가 이미 있는 테이블에 NOT NULL 컬럼을 기본값 없이 추가하면
+    //     ddl-auto=update 가 실패하고 Hibernate 는 로그만 남긴 채 넘어간다
+    //     (ChecklistEntity.archived 때 겪었던 것과 같은 문제).
+    //  ⚠ 컬럼명을 display_order 로 둔 이유: 위 mediaUrls 의 @OrderColumn 이 이미 sort_order 를
+    //     쓰고 있어(memory_media 테이블) 이름이 겹쳐 보이는 혼선을 피하기 위함.
+    @Column(name = "display_order")
+    private Integer sortOrder;
+    // [E] edit by smsong
 
     // 작성자 연관관계 (BuildingEntity 패턴 참고)
     @ManyToOne(fetch = FetchType.LAZY)

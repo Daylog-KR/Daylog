@@ -4335,10 +4335,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const items = [...memoryList]
                 .filter(function (m) { return ((m.createdAt || '').substring(0, 10) || '날짜미상') === dateKey; })
                 .sort(sortByDateDesc);
-            Daylog.openMemoryOrder(dateKey, items, function () {
-                // 저장된 순서를 즉시 반영 — 타임라인/그리드/지도/목록 모두 sortByDateDesc 를 쓴다
-                renderTimeline([...memoryList].sort(sortByDateDesc));
-                try { refreshMapMarkers(); } catch (err) {}
+            Daylog.openMemoryOrder(dateKey, items, function (serverOk) {
+                if (serverOk) {
+                    // 서버에 저장됐으면 sortOrder 를 포함해 다시 받아온다 (다른 기기와 동일한 순서 보장)
+                    loadMemoriesFromServer();
+                } else {
+                    // 로컬에만 저장된 경우 — 현재 목록을 그대로 다시 정렬해 보여준다
+                    renderTimeline([...memoryList].sort(sortByDateDesc));
+                    try { refreshMapMarkers(); } catch (err) {}
+                }
             });
         });
         // [E] edit by smsong
@@ -9073,18 +9078,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 저장: 로컬 즉시 반영 + 서버 시도
+    //  · 서버가 성공하면 로컬 오버라이드를 지운다. 남겨두면 다른 기기에서 바꾼 순서를
+    //    이 기기의 옛 값이 계속 덮어써서 기기마다 다른 순서로 보이게 된다.
+    //  · 서버가 실패하면(엔드포인트 미배포/네트워크) 로컬 값이 남아 화면 순서는 유지된다.
     function persist(ids) {
         var payload = ids.map(function (id, i) { return { id: id, sortOrder: i }; });
         payload.forEach(function (p) { Daylog._orderMap[String(p.id)] = p.sortOrder; });
-        try { localStorage.setItem('daylog_memory_order', JSON.stringify(Daylog._orderMap)); } catch (e) {}
+        save();
+
+        function save() {
+            try { localStorage.setItem('daylog_memory_order', JSON.stringify(Daylog._orderMap)); } catch (e) {}
+        }
 
         if (!(Daylog && Daylog.api)) return Promise.resolve(false);
         return fetch(Daylog.api + '/api/memories/order', {
             method: 'PUT',
             headers: Daylog.authHeaders(true),
             body: JSON.stringify({ items: payload })
-        }).then(function (r) { return !!(r && r.ok); })
-          .catch(function () { return false; });
+        }).then(function (r) {
+            var ok = !!(r && r.ok);
+            if (ok) {
+                payload.forEach(function (p) { delete Daylog._orderMap[String(p.id)]; });
+                save();     // 서버가 진실 → 로컬 오버라이드 제거
+            }
+            return ok;
+        }).catch(function () { return false; });
     }
 
     /**
@@ -9179,7 +9197,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof showToast === 'function') {
                     showToast(serverOk ? '순서를 저장했어요' : '순서를 이 기기에 저장했어요 (서버 반영 실패)');
                 }
-                if (typeof onSaved === 'function') onSaved();
+                if (typeof onSaved === 'function') onSaved(serverOk);
             });
         });
     };

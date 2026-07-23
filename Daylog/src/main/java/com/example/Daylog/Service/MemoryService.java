@@ -19,7 +19,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;   // [B][E] edit by smsong - #34
 import java.util.List;
+import java.util.Map;             // [B][E] edit by smsong - #34
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -215,6 +217,55 @@ public class MemoryService {
         return MemoryDTO.entityToDto(saved);
     }
 
+    // [B] edit by smsong - #34 추억 표시 순서 일괄 저장.
+    //  요청 본문: [{ "id": 12, "sortOrder": 0 }, { "id": 7, "sortOrder": 1 }, ...]
+    //
+    //  권한: 방 멤버 + 편집 권한(requireCanEdit)까지만 본다.
+    //   · 순서는 '방 전체가 함께 보는 목록의 배치'라서, 게시글별 작성자 검사(requireOwnerOrAdmin)는 걸지 않는다.
+    //     그걸 걸면 남이 올린 추억이 하나라도 섞인 날짜는 순서를 못 바꾸게 된다.
+    //   · '일반' 등급(canEdit=false)은 requireCanEdit 에서 막힌다.
+    //
+    //  다른 방의 id 가 섞여 들어와도 findByIdInAndRoomId 가 걸러낸다.
+    @Transactional
+    public void updateOrder(String uid, Long roomId, List<Map<String, Object>> items, UserDetails userDetails) {
+        getAuthorizedUser(uid, userDetails);
+        roomService.requireMember(uid, roomId);
+        permissionService.requireCanEdit(uid, roomId);
+        if (items == null || items.isEmpty()) return;
+
+        // id → sortOrder 로 정리 (잘못된 값은 건너뛴다)
+        //  Jackson 이 JSON 숫자를 Integer/Long/Double 중 무엇으로 주든 동일하게 처리한다.
+        Map<Long, Integer> wanted = new LinkedHashMap<>();
+        for (Map<String, Object> it : items) {
+            if (it == null || it.get("id") == null) continue;
+            try {
+                Object rawId = it.get("id");
+                Long id = (rawId instanceof Number)
+                        ? ((Number) rawId).longValue()
+                        : Long.valueOf(String.valueOf(rawId).trim());
+
+                Object so = it.get("sortOrder");
+                Integer order;
+                if (so == null || String.valueOf(so).isBlank()) {
+                    order = null;                                   // null 로 보내면 '미지정'으로 되돌린다
+                } else if (so instanceof Number) {
+                    order = ((Number) so).intValue();
+                } else {
+                    order = Integer.valueOf(String.valueOf(so).trim());
+                }
+                wanted.put(id, order);
+            } catch (NumberFormatException ignore) { }
+        }
+        if (wanted.isEmpty()) return;
+
+        List<MemoryEntity> targets = memoryRepository.findByIdInAndRoomId(new ArrayList<>(wanted.keySet()), roomId);
+        for (MemoryEntity m : targets) {
+            m.setSortOrder(wanted.get(m.getId()));
+        }
+        memoryRepository.saveAll(targets);
+    }
+    // [E] edit by smsong
+
     @Transactional(readOnly = true)
     public List<MemoryDTO> getAllMemories(String uid, Long roomId, UserDetails userDetails) {
         roomService.requireMember(uid, roomId); // [smsong] 방 멤버만 조회
@@ -355,21 +406,21 @@ public class MemoryService {
     //  권한 없는 항목이 섞여도 나머지는 처리하고 실패한 id 만 돌려준다.
 
     @Transactional
-    public java.util.Map<String, Object> bulkTrash(List<Long> ids, UserDetails userDetails) {
+    public Map<String, Object> bulkTrash(List<Long> ids, UserDetails userDetails) {
         return bulkRun(ids, userDetails, "trash");
     }
 
     @Transactional
-    public java.util.Map<String, Object> bulkDelete(List<Long> ids, UserDetails userDetails) {
+    public Map<String, Object> bulkDelete(List<Long> ids, UserDetails userDetails) {
         return bulkRun(ids, userDetails, "delete");
     }
 
     @Transactional
-    public java.util.Map<String, Object> bulkRestore(List<Long> ids, UserDetails userDetails) {
+    public Map<String, Object> bulkRestore(List<Long> ids, UserDetails userDetails) {
         return bulkRun(ids, userDetails, "restore");
     }
 
-    private java.util.Map<String, Object> bulkRun(List<Long> ids, UserDetails userDetails, String op) {
+    private Map<String, Object> bulkRun(List<Long> ids, UserDetails userDetails, String op) {
         int ok = 0;
         List<Long> failed = new ArrayList<>();
         if (ids != null) {
@@ -384,7 +435,7 @@ public class MemoryService {
                 }
             }
         }
-        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        Map<String, Object> res = new java.util.HashMap<>();
         res.put("success", ok);
         res.put("failed", failed);
         return res;
