@@ -31,6 +31,8 @@ public class ChecklistDTO {
     private LocalDate visitedDate; // 다녀온 날짜 (선택)
     // [B] edit by smsong - #12
     private LocalDate plannedDate; // 갈 예정일 (달력 표시용)
+    private String remind1;        // [B][E] #27 NONE / SAME_DAY / D1 / D2 / W1
+    private String remind2;
     private boolean archived;      // 보관함 여부
     private LocalDateTime archivedAt;
     // [E] edit by smsong
@@ -68,6 +70,8 @@ public class ChecklistDTO {
                 .visitedDate(e.getVisitedDate())
                 // [B] edit by smsong - #12
                 .plannedDate(e.getPlannedDate())
+                .remind1(e.getRemind1())
+                .remind2(e.getRemind2())
                 .archived(e.isArchived())
                 .archivedAt(e.getArchivedAt())
                 // [E] edit by smsong
@@ -98,6 +102,8 @@ public class ChecklistDTO {
                 .visited(visited)
                 .visitedDate(visitedDate)
                 .plannedDate(plannedDate)   // [B][E] edit by smsong - #12
+                .remind1(remind1)
+                .remind2(remind2)
                 .owner(owner)
                 .createdAt(createdAt)
                 .build();

@@ -871,6 +871,7 @@ const ICON_PATHS = {
     plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
     heart:    '<path d="M20.8 5.1a5.4 5.4 0 0 0-7.7 0L12 6.2l-1.1-1.1a5.4 5.4 0 1 0-7.7 7.6l1.1 1.1L12 21l7.7-7.2 1.1-1.1a5.4 5.4 0 0 0 0-7.6z"/>',
     comment:  '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-4-.9L3 20l1.1-4.9A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/>',
+    bell:     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
     sparkle:  '<path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z"/><path d="M19 13l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>',
     image:    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>',
@@ -3495,6 +3496,9 @@ document.addEventListener('DOMContentLoaded', () => {
             visited: visited,
             visitedDate: (visited && visitedDate) ? visitedDate : null,
             plannedDate: plannedDate,   // [B][E] edit by smsong - #13 갈 예정일
+            // [B][E] edit by smsong - #27 예정일 알림 (예정일 없으면 무의미하므로 null)
+            remind1: plannedDate ? (Daylog._remindVal ? Daylog._remindVal('cl-r1') : null) : null,
+            remind2: plannedDate ? (Daylog._remindVal ? Daylog._remindVal('cl-r2') : null) : null,
             mediaOrder: clMgr ? clMgr.getMediaOrder() : []
         };
         const fd = new FormData();
@@ -5316,7 +5320,15 @@ function enterChecklistEdit(item) {
     // [B] edit by smsong - #13 갈 예정일 채우기 (입력칸이 없으면 먼저 주입)
     if (Daylog._injectPlannedInputs) Daylog._injectPlannedInputs();
     var _pd = document.getElementById('cl-edit-planned-date');
-    if (_pd) _pd.value = item.plannedDate ? String(item.plannedDate).substring(0, 10) : '';
+    if (_pd) {
+        _pd.value = item.plannedDate ? String(item.plannedDate).substring(0, 10) : '';
+        // [B][E] edit by smsong - #27 알림 값 복원 + 표시 동기화
+        var _r1 = document.getElementById('cl-edit-r1'), _r2 = document.getElementById('cl-edit-r2');
+        if (_r1) _r1.value = item.remind1 || 'NONE';
+        if (_r2) _r2.value = item.remind2 || 'NONE';
+        var _rb = document.getElementById('cl-edit-planned-date-rm');
+        if (_rb) _rb.classList.toggle('hidden', !_pd.value);
+    }
     // [E] edit by smsong
     const editLbl = chk.closest('.cl-check-label');
     if (editLbl) editLbl.classList.toggle('checked', !!item.visited);
@@ -5409,6 +5421,9 @@ function saveChecklistEdit() {
         visitedDate: (visited && visitedDate) ? visitedDate : null,
         // [B][E] edit by smsong - #13 갈 예정일 (빈 값이면 null → 달력에서 해제)
         plannedDate: (document.getElementById('cl-edit-planned-date') || {}).value || null,
+        // [B][E] edit by smsong - #27 예정일 알림
+        remind1: Daylog._remindVal ? Daylog._remindVal('cl-edit-r1') : null,
+        remind2: Daylog._remindVal ? Daylog._remindVal('cl-edit-r2') : null,
         mediaOrder: order
     };
     // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
@@ -7478,6 +7493,36 @@ document.addEventListener('DOMContentLoaded', () => {
     var _pendingPlanned = null;   // 달력에서 체크리스트를 추가할 때 넘길 갈 예정일
     var _loaded = false;
 
+    // [B] edit by smsong - #27 예정 알림 설정 (1차 / 2차)
+    //  값은 백엔드 EventReminderScheduler 와 동일한 코드를 쓴다.
+    var REMIND_OPTS = [
+        ['NONE',     '없음'],
+        ['SAME_DAY', '이벤트 당일 (오전 9시)'],
+        ['D1',       '1일 전 (오전 9시)'],
+        ['D2',       '2일 전 (오전 9시)'],
+        ['W1',       '1주 전 (오전 9시)']
+    ];
+    function remindLabel(code) {
+        for (var i = 0; i < REMIND_OPTS.length; i++) if (REMIND_OPTS[i][0] === code) return REMIND_OPTS[i][1];
+        return '없음';
+    }
+    function remindSelect(id, val) {
+        var v = val || 'NONE';
+        var o = REMIND_OPTS.map(function (x) {
+            return '<option value="' + x[0] + '"' + (x[0] === v ? ' selected' : '') + '>' + x[1] + '</option>';
+        }).join('');
+        return '<select id="' + id + '" class="cw-in cw-sel">' + o + '</select>';
+    }
+    function remindVal(id) {
+        var el = document.getElementById(id);
+        var v = el ? el.value : 'NONE';
+        return (v && v !== 'NONE') ? v : null;   // 없음이면 null 로 보내 해제
+    }
+    Daylog._remindSelect = remindSelect;
+    Daylog._remindVal = remindVal;
+    Daylog._remindLabel = remindLabel;
+    // [E] edit by smsong
+
     function api() { return Daylog.api; }
     function hdr(json) { return Daylog.authHeaders(json); }
     function esc(s) { return escapeHtml(s == null ? '' : String(s)); }
@@ -7752,11 +7797,12 @@ document.addEventListener('DOMContentLoaded', () => {
         it.s.forEach(function (s) {
             var time = s.allDay ? '종일' : (s.startTime ? String(s.startTime).substring(0, 5) : '종일');
             // [B] edit by smsong - #22 행을 누르면 일정 상세. 완료 체크만 따로 동작.
-            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '" data-id="' + s.id + '">' +
-                '<button type="button" class="cw-check" data-id="' + s.id + '" data-done="' + (s.done ? '1' : '0') + '" aria-label="완료">' +
-                (s.done ? icon('check', 14) : '') + '</button>' +
+            var rmOn = (s.remind1 && s.remind1 !== 'NONE') || (s.remind2 && s.remind2 !== 'NONE');
+            rows += '<div class="cw-row sch" data-id="' + s.id + '">' +
+                '<span class="cw-ic">' + icon('calendar', 15, 'color:#2e9e5b;') + '</span>' +
                 '<div class="cw-row-main"><div class="cw-row-title">' + esc(s.title) +
-                '<span class="cw-tag sch">일정</span></div>' +
+                '<span class="cw-tag sch">일정</span>' +
+                (rmOn ? '<span class="cw-bell" title="알림 예약됨">' + icon('bell', 12) + '</span>' : '') + '</div>' +
                 '<div class="cw-row-sub">' + esc(time) + (s.content ? ' · ' + esc(s.content) : '') + '</div></div>' +
                 '</div>';
             // [E] edit by smsong
@@ -7774,18 +7820,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         box.innerHTML = html + '<div class="cw-dp-list">' + rows + '</div>';
 
-        // 일정 완료 토글
-        box.querySelectorAll('.cw-check').forEach(function (b) {
-            b.addEventListener('click', function (e) {
-                e.stopPropagation();
-                var id = b.getAttribute('data-id'), next = b.getAttribute('data-done') !== '1';
-                withLoading(fetch(api() + '/api/schedules/' + id + '/done?done=' + next, { method: 'PUT', headers: hdr(true) })
-                    .then(Daylog.handleResponse), '저장 중...')
-                    .then(function () { return loadCalendarData(true); })
-                    .then(function () { render(); })
-                    .catch(function () { showToast('변경 실패'); });
-            });
-        });
         // [B][E] edit by smsong - #22 일정 행 → 상세 열기
         box.querySelectorAll('.cw-row.sch').forEach(function (r) {
             r.addEventListener('click', function () {
@@ -7868,10 +7902,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     '</div>' +
                 '</div>' +
                 '<div class="cw-dt-when">' + esc(when) + '<span class="cw-dt-sep">·</span>' + esc(time) + '</div>' +
-                '<h3 class="cw-dt-title' + (s.done ? ' done' : '') + '">' + esc(s.title) + '</h3>' +
-                '<button type="button" class="cw-dt-done' + (s.done ? ' on' : '') + '" id="cw-dt-done">' +
-                    '<span class="cw-dt-box">' + (s.done ? icon('check', 13) : '') + '</span>' +
-                    (s.done ? '완료했어요' : '아직 안 했어요') + '</button>' +
+                '<h3 class="cw-dt-title">' + esc(s.title) + '</h3>' +
+                // [B][E] edit by smsong - #27 예약된 알림 표시
+                '<div class="cw-dt-rm">' +
+                    '<div class="cw-dt-rm-row"><span class="cw-rm-no">1차</span>' +
+                        '<span class="' + (s.remind1 && s.remind1 !== 'NONE' ? 'on' : '') + '">' + esc(remindLabel(s.remind1)) + '</span></div>' +
+                    '<div class="cw-dt-rm-row"><span class="cw-rm-no">2차</span>' +
+                        '<span class="' + (s.remind2 && s.remind2 !== 'NONE' ? 'on' : '') + '">' + esc(remindLabel(s.remind2)) + '</span></div>' +
+                '</div>' +
                 (s.content ? '<div class="cw-dt-body">' + esc(s.content).replace(/\n/g, '<br>') + '</div>' : '') +
                 '<div class="cw-dt-who">' +
                     '<span class="cw-dt-avatar" style="background-image:url(\'' + photo + '\')"></span>' +
@@ -7882,20 +7920,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ov.addEventListener('click', function (e) { if (e.target === ov) closeScheduleDetail(); });
         document.getElementById('cw-dt-close').addEventListener('click', closeScheduleDetail);
-
-        // 완료 토글 — 상세에서 바로
-        document.getElementById('cw-dt-done').addEventListener('click', function () {
-            var next = !s.done;
-            withLoading(fetch(api() + '/api/schedules/' + s.id + '/done?done=' + next, { method: 'PUT', headers: hdr(true) })
-                .then(Daylog.handleResponse), '저장 중...')
-                .then(function () { return loadCalendarData(true); })
-                .then(function () {
-                    render();
-                    var fresh = _schedules.find(function (x) { return String(x.id) === String(s.id); });
-                    if (fresh) openScheduleDetail(fresh, dateKey); else closeScheduleDetail();
-                })
-                .catch(function () { showToast('변경 실패'); });
-        });
 
         var eb = document.getElementById('cw-dt-edit');
         if (eb) eb.addEventListener('click', function () {
@@ -7942,6 +7966,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     '<input type="time" id="cw-time" class="cw-in cw-time"' + ((!editing || s.allDay) ? ' disabled' : '') +
                     ' value="' + esc(editing && s.startTime ? String(s.startTime).substring(0, 5) : '') + '">' +
                 '</div>' +
+                // [B][E] edit by smsong - #27 예정 알림
+                '<label class="cw-lb">알림 <span class="cw-opt">방 멤버 모두에게 갑니다</span></label>' +
+                '<div class="cw-rm-row"><span class="cw-rm-no">1차</span>' + remindSelect('cw-r1', editing ? s.remind1 : null) + '</div>' +
+                '<div class="cw-rm-row"><span class="cw-rm-no">2차</span>' + remindSelect('cw-r2', editing ? s.remind2 : null) + '</div>' +
                 '<button type="button" class="cw-save" id="cw-save">' + (editing ? '저장하기' : '추가하기') + '</button>' +
                 (editing ? '<button type="button" class="cw-del" id="cw-del">' + icon('trash', 14) + ' 휴지통으로</button>' : '') +
             '</div>';
@@ -7965,9 +7993,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: title,
                 content: document.getElementById('cw-content').value.trim(),
                 scheduleDate: date,
-                allDay: !!allday.checked,
-                done: editing ? !!(s && s.done) : false
+                allDay: !!allday.checked
             };
+            // [B][E] edit by smsong - #27 알림 (없음이면 키를 안 보내 해제)
+            var _r1 = remindVal('cw-r1'), _r2 = remindVal('cw-r2');
+            body.remind1 = _r1; body.remind2 = _r2;
             if (!allday.checked && timeEl.value) body.startTime = timeEl.value + ':00';
             // [E] edit by smsong
             var url = editing ? (api() + '/api/schedules/' + s.id)
@@ -7995,15 +8025,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===================== 갈 예정일 입력 주입 =====================
     function injectPlannedInputs() {
-        [['cl-visited-date', 'cl-planned-date'], ['cl-edit-visited-date', 'cl-edit-planned-date']].forEach(function (p) {
+        [['cl-visited-date', 'cl-planned-date', 'cl-r1', 'cl-r2'],
+         ['cl-edit-visited-date', 'cl-edit-planned-date', 'cl-edit-r1', 'cl-edit-r2']].forEach(function (p) {
             var anchor = document.getElementById(p[0]);
             if (!anchor || document.getElementById(p[1])) return;
             var group = anchor.closest('.form-group') || anchor.parentElement;
             var wrap = document.createElement('div');
             wrap.className = 'form-group cw-planned-group';
-            wrap.innerHTML = '<label>갈 예정일 <span class="cw-opt">선택 · 체크리스트 달력에 표시됩니다</span></label>' +
-                             '<input type="date" id="' + p[1] + '">';
+            // [B] edit by smsong - #27 갈 예정일 + 그 날에 대한 알림(1차/2차)
+            //  예정일이 없으면 알림도 의미가 없으므로 입력칸을 숨긴다.
+            wrap.innerHTML =
+                '<label>갈 예정일 <span class="cw-opt">선택 · 체크리스트 달력에 표시됩니다</span></label>' +
+                '<input type="date" id="' + p[1] + '">' +
+                '<div class="cw-rm-block hidden" id="' + p[1] + '-rm">' +
+                    '<label class="cw-rm-lb">알림 <span class="cw-opt">방 멤버 모두에게 갑니다</span></label>' +
+                    '<div class="cw-rm-row"><span class="cw-rm-no">1차</span>' + remindSelect(p[2], null) + '</div>' +
+                    '<div class="cw-rm-row"><span class="cw-rm-no">2차</span>' + remindSelect(p[3], null) + '</div>' +
+                '</div>';
             group.parentNode.insertBefore(wrap, group.nextSibling);
+
+            var dateEl = document.getElementById(p[1]);
+            var rmBox = document.getElementById(p[1] + '-rm');
+            function sync() { rmBox.classList.toggle('hidden', !dateEl.value); }
+            dateEl.addEventListener('change', sync);
+            dateEl.addEventListener('input', sync);
+            sync();
+            // [E] edit by smsong
         });
     }
     Daylog._injectPlannedInputs = injectPlannedInputs;
@@ -8262,9 +8309,8 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-row-main{flex:1;min-width:0;}',
             '.cw-row-title{font-size:0.9rem;font-weight:600;color:var(--gray-800);display:flex;align-items:center;gap:6px;}',
             '.cw-row-sub{font-size:0.75rem;color:var(--gray-400);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-            '.cw-check{width:22px;height:22px;flex:none;border:2px solid var(--gray-200);border-radius:7px;background:transparent;' +
-            'display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;padding:0;}',
-            '.cw-row.done .cw-check{background:#2e9e5b;border-color:#2e9e5b;}',
+            // #27 알림 예약 표시
+            '.cw-bell{display:inline-flex;color:var(--primary);flex:none;}',
             '.cw-row.sch{cursor:pointer;}',
             // ===== #22 일정 상세 카드 =====
             '#cw-detail{position:fixed;inset:0;z-index:2720;background:rgba(45,38,32,.52);' +
@@ -8285,14 +8331,11 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-dt-sep{color:var(--gray-200);}',
             '.cw-dt-title{margin:0 0 14px;font-family:var(--font-logo),var(--font-main);font-size:1.3rem;' +
             'font-weight:600;line-height:1.36;color:var(--gray-800);word-break:keep-all;}',
-            '.cw-dt-title.done{text-decoration:line-through;color:var(--gray-400);}',
-            '.cw-dt-done{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--gray-200);' +
-            'border-radius:13px;padding:11px 13px;background:transparent;cursor:pointer;font-family:inherit;' +
-            'font-size:0.85rem;font-weight:600;color:var(--gray-500);}',
-            '.cw-dt-done.on{border-color:#2e9e5b;color:#2e6e56;background:#f2f9f5;}',
-            '.cw-dt-box{width:20px;height:20px;flex:none;border:2px solid var(--gray-200);border-radius:6px;' +
-            'display:flex;align-items:center;justify-content:center;color:#fff;}',
-            '.cw-dt-done.on .cw-dt-box{background:#2e9e5b;border-color:#2e9e5b;}',
+            // #27 상세의 알림 요약
+            '.cw-dt-rm{border:1px solid var(--gray-200);border-radius:13px;padding:4px 13px;}',
+            '.cw-dt-rm-row{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:0.84rem;color:var(--gray-400);}',
+            '.cw-dt-rm-row+.cw-dt-rm-row{border-top:1px solid var(--gray-100);}',
+            '.cw-dt-rm-row span.on{color:var(--primary-dark);font-weight:600;}',
             '.cw-dt-body{margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-100);' +
             'font-size:0.9rem;line-height:1.75;color:var(--gray-600);white-space:pre-line;word-break:break-word;}',
             '.cw-dt-who{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:13px;' +
@@ -8342,6 +8385,15 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-switch{display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
             '.cw-switch input{width:17px;height:17px;accent-color:var(--primary);}',
             '.cw-time{flex:1;}',
+            // #27 알림 선택 줄
+            '.cw-sel{appearance:none;-webkit-appearance:none;background-image:none;}',
+            '.cw-rm-row{display:flex;align-items:center;gap:10px;margin-top:8px;}',
+            '.cw-rm-no{flex:none;width:26px;font-size:0.74rem;font-weight:700;color:var(--gray-400);}',
+            '.cw-rm-block{margin-top:12px;padding-top:12px;border-top:1px dashed var(--gray-200);}',
+            '.cw-rm-lb{display:block;margin-bottom:4px;font-size:0.82rem;color:var(--gray-500);font-weight:500;}',
+            '.cw-rm-block select{width:100%;box-sizing:border-box;border:1px solid var(--gray-200);border-radius:12px;' +
+            'padding:11px;font-family:inherit;font-size:0.88rem;color:var(--gray-800);background:var(--white);}',
+            '.cw-rm-row .cw-in{flex:1;}',
             '.cw-save{margin-top:18px;width:100%;border:none;border-radius:14px;padding:14px;background:var(--primary);' +
             'color:#fff;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;}',
             '.cw-save:active{transform:scale(.99);}',

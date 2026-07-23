@@ -43,6 +43,10 @@ public interface ChecklistRepository extends JpaRepository<ChecklistEntity, Long
     List<ChecklistEntity> findByDeletedTrueAndTrashedAtBefore(LocalDateTime cutoff);
     // [E] edit by smsong
 
+    // [B][E] edit by smsong - #27 알림 스케줄러용: 그 날짜에 갈 예정인 체크리스트
+    //  (휴지통/보관함 제외 — 이미 다녀온 곳에 예정 알림을 보내지 않는다)
+    List<ChecklistEntity> findByPlannedDateAndDeletedFalseAndArchivedFalse(LocalDate plannedDate);
+
     // [B] edit by smsong - #4 '1년 전 오늘 다녀왔어요' 리마인더용.
     //  '다녀왔어요' 로 표시되고 휴지통이 아닌 가볼곳 중, 다녀온 날짜가 지정일(= N년 전 오늘)인 것.
     //  VisitAnniversaryScheduler 가 하루 1회 호출한다.

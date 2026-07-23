@@ -251,6 +251,9 @@ public class ChecklistService {
         c.setVisitedDate(dto.isVisited() ? dto.getVisitedDate() : null);
         // [B] edit by smsong - #12 갈 예정일 (달력 표시용). null 로 보내면 해제된다.
         c.setPlannedDate(dto.getPlannedDate());
+        // [B] edit by smsong - #27 알림 예약. 예정일이 없으면 알림도 의미가 없으므로 함께 해제한다.
+        c.setRemind1(dto.getPlannedDate() != null ? dto.getRemind1() : null);
+        c.setRemind2(dto.getPlannedDate() != null ? dto.getRemind2() : null);
         // [E] edit by smsong
 
         // [B] edit by smsong - 위치 수정 반영: lat/lng 이 함께 넘어온 경우에만 위치 갱신

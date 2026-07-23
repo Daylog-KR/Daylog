@@ -20,6 +20,15 @@ daylog:
     zone: Asia/Seoul
     years: "1,2,3"         # 문자열로 파싱되어야 하므로 따옴표 권장 ("1" 이면 1년 전만)
     link: main.html
+  # [B] edit by smsong - #27 일정 / 체크리스트 예정 알림 (1차·2차, 매일 오전 9시 판정)
+  #  각 항목의 remind1 / remind2 값에 따라 당일·1일 전·2일 전·1주 전에 방 멤버에게 발송
+  event-reminder:
+    enabled: true
+    cron: "0 0 9 * * *"
+    zone: Asia/Seoul
+    link: main.html
+  # [E] edit by smsong
+
   # [B] edit by smsong - #11 커플 기념일(100일 단위 / N주년) 푸시
   #  · 커플 방의 coupleSince 기준으로 오늘이 100일/200일… 또는 N주년이면
   #    coupleLeftUid / coupleRightUid 두 사람에게 각각 알림을 보낸다.

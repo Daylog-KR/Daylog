@@ -40,9 +40,16 @@ public class ScheduleEntity {
     @Builder.Default
     private boolean allDay = true;
 
-    /** 완료 체크 */
-    @Column(nullable = false)
-    private boolean done;
+
+    // [B] edit by smsong - #27 푸시 알림 예약 (1차 / 2차)
+    //  값: NONE / SAME_DAY / D1 / D2 / W1  — 매일 오전 9시에 도는 ReminderScheduler 가 읽는다.
+    //  둘 다 기본은 NONE(알림 없음).
+    @Column(length = 16)
+    private String remind1;
+
+    @Column(length = 16)
+    private String remind2;
+    // [E] edit by smsong
 
     /** 달력 점 색상 (#RRGGBB). 없으면 프론트 기본색 */
     @Column(length = 16)

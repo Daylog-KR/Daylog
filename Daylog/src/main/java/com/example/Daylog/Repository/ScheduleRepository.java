@@ -17,6 +17,9 @@ public interface ScheduleRepository extends JpaRepository<ScheduleEntity, Long> 
     List<ScheduleEntity> findByRoomIdAndDeletedFalseAndScheduleDateBetweenOrderByScheduleDateAsc(
             Long roomId, LocalDate from, LocalDate to);
 
+    // [B][E] edit by smsong - #27 알림 스케줄러용: 그 날짜의 정상 일정
+    List<ScheduleEntity> findByScheduleDateAndDeletedFalse(LocalDate scheduleDate);
+
     /** 내가 휴지통으로 보낸 일정 */
     List<ScheduleEntity> findByOwnerUidAndRoomIdAndDeletedTrue(String uid, Long roomId);
 

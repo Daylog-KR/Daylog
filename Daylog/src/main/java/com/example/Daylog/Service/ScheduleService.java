@@ -111,22 +111,11 @@ public class ScheduleService {
         boolean allDay = dto.isAllDayOrDefault();   // [B][E] #21 null 이면 종일로
         s.setAllDay(allDay);
         s.setStartTime(allDay ? null : dto.getStartTime());
-        s.setDone(dto.isDoneOrDefault());
         if (dto.getColor() != null) s.setColor(dto.getColor());
+        // [B][E] edit by smsong - #27 알림 예약 (null 로 보내면 해제)
+        s.setRemind1(dto.getRemind1());
+        s.setRemind2(dto.getRemind2());
 
-        s.setUpdatedAt(LocalDateTime.now());
-        s.setLastEditorUid(userDetails.getUsername());
-        return ScheduleDTO.entityToDto(scheduleRepository.save(s));
-    }
-
-    /** 완료 체크만 토글 — 목록에서 바로 누를 수 있게 별도 엔드포인트 */
-    @Transactional
-    public ScheduleDTO setDone(Long id, boolean done, UserDetails userDetails) {
-        ScheduleEntity s = find(id);
-        roomService.requireMember(userDetails.getUsername(), s.getRoomId());
-        permissionService.requireCanEdit(userDetails.getUsername(), s.getRoomId());
-        // 완료 체크는 방 멤버 누구나 가능 (작성자 제한 없음 — 함께 쓰는 일정이므로)
-        s.setDone(done);
         s.setUpdatedAt(LocalDateTime.now());
         s.setLastEditorUid(userDetails.getUsername());
         return ScheduleDTO.entityToDto(scheduleRepository.save(s));

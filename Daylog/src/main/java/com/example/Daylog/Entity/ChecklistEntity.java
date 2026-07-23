@@ -66,6 +66,17 @@ public class ChecklistEntity {
     // [B] edit by smsong - #12 갈 예정일 — 체크리스트 달력에 이 날짜로 표시된다
     private LocalDate plannedDate;
 
+    // [B] edit by smsong - #27 푸시 알림 예약 (1차 / 2차)
+    //  값: NONE / SAME_DAY / D1 / D2 / W1  — 매일 오전 9시에 도는 ReminderScheduler 가 읽는다.
+    //  둘 다 기본은 NONE(알림 없음).
+    @Column(length = 16)
+    private String remind1;
+
+    @Column(length = 16)
+    private String remind2;
+    // [E] edit by smsong
+
+
     // [B] edit by smsong - #12 보관함 플래그
     //  '다녀왔습니다' 로 추억이 만들어진 뒤 원본을 휴지통이 아니라 보관함으로 옮긴다.
     //  · archived=true 는 일반 화면(지도/목록)에 절대 노출되지 않는다.

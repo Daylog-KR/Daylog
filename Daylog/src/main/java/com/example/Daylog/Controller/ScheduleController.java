@@ -46,14 +46,6 @@ public class ScheduleController {
         return ResponseEntity.ok(scheduleService.update(id, dto, userDetails));
     }
 
-    /** 완료 토글만 (목록에서 체크박스로 바로) */
-    @PutMapping("/{id}/done")
-    public ResponseEntity<ScheduleDTO> toggleDone(@PathVariable("id") Long id,
-                                                  @RequestParam("done") boolean done,
-                                                  @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(scheduleService.setDone(id, done, userDetails));
-    }
-
     /** 휴지통으로 */
     @PutMapping("/{id}/trash")
     public ResponseEntity<Void> moveToTrash(@PathVariable("id") Long id,

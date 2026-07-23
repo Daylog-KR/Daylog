@@ -23,8 +23,9 @@ public class ScheduleDTO {
     // [B] edit by smsong - #21 원시 boolean 대신 래퍼로 받는다.
     //  클라이언트가 값을 빼먹거나 null 로 보내도 400 이 나지 않고 기본값으로 처리된다.
     private Boolean allDay;
-    private Boolean done;
     private Boolean deleted;
+    private String remind1;   // [B][E] #27 NONE / SAME_DAY / D1 / D2 / W1
+    private String remind2;
     // [E] edit by smsong
     private String color;
     private String ownerUid;
@@ -43,7 +44,8 @@ public class ScheduleDTO {
                 .scheduleDate(e.getScheduleDate())
                 .startTime(e.getStartTime())
                 .allDay(e.isAllDay())
-                .done(e.isDone())
+                .remind1(e.getRemind1())
+                .remind2(e.getRemind2())
                 .color(e.getColor())
                 .deleted(e.isDeleted())
                 .ownerUid(ownerUid)
@@ -56,7 +58,6 @@ public class ScheduleDTO {
 
     // null 을 기본값으로 접는다 (allDay 는 안 주면 '종일'로 본다)
     public boolean isAllDayOrDefault() { return allDay == null || allDay; }
-    public boolean isDoneOrDefault()   { return done != null && done; }
 
     public ScheduleEntity dtoToEntity(UserEntity owner) {
         boolean ad = isAllDayOrDefault();
@@ -67,7 +68,8 @@ public class ScheduleDTO {
                 .scheduleDate(scheduleDate)
                 .startTime(ad ? null : startTime)
                 .allDay(ad)
-                .done(isDoneOrDefault())
+                .remind1(remind1)
+                .remind2(remind2)
                 .color(color)
                 .deleted(deleted != null && deleted)
                 .owner(owner)
