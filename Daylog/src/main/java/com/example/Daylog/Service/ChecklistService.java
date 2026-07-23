@@ -388,6 +388,21 @@ public class ChecklistService {
         return ChecklistDTO.entityToDto(checklistRepository.save(c));
     }
 
+    /**
+     * 달력용 조회 — 휴지통(deleted)만 제외하고 보관함(archived)은 포함한다.
+     *  · 지도/목록에서는 보관함이 빠지지만, 달력에는 '다녀온 기록'으로 남아야 하기 때문.
+     *  · 그래서 달력에서 완전히 사라지는 시점은 '영구 삭제' 뿐이다.
+     *    (프론트는 영구 삭제 전에 "달력에서도 사라집니다" 확인창을 띄운다)
+     */
+    @Transactional(readOnly = true)
+    public List<ChecklistDTO> getForCalendar(String uid, Long roomId, UserDetails userDetails) {
+        roomService.requireMember(uid, roomId);
+        permissionService.requireAccess(uid, roomId);
+        return checklistRepository.findByRoomIdAndDeletedFalse(roomId).stream()
+                .map(ChecklistDTO::entityToDto)
+                .collect(Collectors.toList());
+    }
+
     /** 보관함 목록 (방 전체 공유 — 작성자 제한 없음) */
     @Transactional(readOnly = true)
     public List<ChecklistDTO> getArchived(String uid, Long roomId, UserDetails userDetails) {

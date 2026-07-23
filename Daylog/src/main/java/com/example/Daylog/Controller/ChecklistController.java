@@ -99,6 +99,14 @@ public class ChecklistController {
         return ResponseEntity.ok(checklistService.unarchive(id, userDetails));
     }
 
+    /** 달력용 목록 — 보관함 포함, 휴지통 제외 */
+    @GetMapping("/calendar/{uid}")
+    public ResponseEntity<List<ChecklistDTO>> getForCalendar(@PathVariable("uid") String uid,
+                                                             @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                             @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.getForCalendar(uid, roomId, userDetails));
+    }
+
     /** 보관함 목록 (방 전체 공유) */
     @GetMapping("/archive/{uid}")
     public ResponseEntity<List<ChecklistDTO>> getArchived(@PathVariable("uid") String uid,

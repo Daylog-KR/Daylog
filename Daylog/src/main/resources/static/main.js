@@ -3210,7 +3210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
                 if (mapMode === 'checklist') renderActiveMapMarkers();
             })
-            .catch(err => console.error("체크리스트 로드 실패:", err)), '체크리스트을 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error("체크리스트 로드 실패:", err)), '체크리스트를 불러오는 중...'); // [smsong] 로딩
     }
 
     // 가볼곳 마커 — 사진 대신 제목 말풍선, 타입별 색상, 방문 표시
@@ -3339,7 +3339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.DaylogFeed || !scrollEl) {   // 안전 폴백 — 예전처럼 한 번에 그림
             feedEl.innerHTML = '';
             if (!sorted.length) {
-                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트이 없습니다</p></div>';
+                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트가 없습니다</p></div>';
                 return;
             }
             sorted.forEach(item => feedEl.appendChild(_clCardEl(item)));
@@ -3354,7 +3354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollEl: scrollEl,
                 pageSize: 5,
                 windowRows: 10,
-                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트이 없습니다</p></div>',
+                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트가 없습니다</p></div>',
                 rowsOf: function (list) {
                     return list.map(function (c) {
                         return { key: 'c:' + c.id, type: 'card', item: c, est: 132 };
@@ -3445,8 +3445,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // [B] edit by smsong - '다녀왔습니다'로 추가하면 추억으로 기록하고, 가볼곳은 제거(추억으로 이동)
                 if (created && created.visited) {
                     ensureMemoryForChecklist(created)
-                        .then((made) => { showToast('다녀온 곳이라 추억으로 기록했어요'); })
-                        .then(() => trashChecklistQuietly(created.id)) // 원본 가볼곳 제거
+                        .then((made) => { showToast('다녀온 곳이라 추억으로 기록하고 보관함에 담았어요'); })
+                        .then(() => archiveChecklistQuietly(created.id)) // 원본 가볼곳 제거
                         .catch(err => console.warn('추억 이동 실패', err))
                         .finally(() => {
                             // [B] edit by smsong - #3 추억/가볼곳 모두 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
@@ -3455,7 +3455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                         });
                 } else {
-                    showToast('체크리스트을 추가했습니다');
+                    showToast('체크리스트를 추가했습니다');
                     loadChecklistsFromServer().then(function () {
                         if (mapMode !== 'checklist') setMapMode('checklist');
                         else refreshMapMarkers();
@@ -5217,8 +5217,8 @@ function saveChecklistEdit() {
             // [B] edit by smsong - 처음으로 '다녀옴'이 되면 추억으로 기록하고 가볼곳은 제거(추억으로 이동)
             if (updated && updated.visited && !wasVisited) {
                 ensureMemoryForChecklist(updated)
-                    .then((made) => { showToast('다녀온 곳이라 추억으로 옮겼어요'); })
-                    .then(() => trashChecklistQuietly(updated.id)) // 원본 가볼곳 제거
+                    .then((made) => { showToast('다녀온 곳이라 추억으로 기록하고 보관함에 담았어요'); })
+                    .then(() => archiveChecklistQuietly(updated.id)) // 원본 가볼곳 제거
                     .catch(err => console.warn('추억 이동 실패', err))
                     .finally(() => {
                         // [B] edit by smsong - #3 추억/가볼곳 새로고침 후 지도를 추억 모드로 → 새 추억 마커 즉시 표시
@@ -5236,16 +5236,21 @@ function saveChecklistEdit() {
         .finally(() => { if (btn) { btn.disabled = false; btn.innerText = '저장하기'; } });
 }
 
-// [B] edit by smsong - '다녀옴' 추억 자동생성 후 원본 가볼곳을 조용히 휴지통으로 제거(확인창/토스트 없음).
-//  추억은 같은 이미지 URL 을 참조하고, 휴지통/영구삭제는 GCS 원본을 지우지 않으므로 이미지 유실 없음.
-function trashChecklistQuietly(id) {
+// [B] edit by smsong - #12 '다녀옴' 추억 자동생성 후 원본 체크리스트를 조용히 '보관함'으로 이동.
+//  · 예전에는 휴지통으로 보냈으나, 30일 뒤 자동 삭제되면 달력 기록까지 사라져 버렸다.
+//  · 보관함은 지도/목록에는 안 뜨고 달력과 [설정 > 보관함]에서만 보인다. 자동 삭제도 없다.
+//  · 달력에서 완전히 사라지는 시점은 '영구 삭제' 뿐이다.
+function archiveChecklistQuietly(id) {
     if (id == null) return Promise.resolve();
-    return fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) })
+    return fetch(`${Daylog.api}/api/checklists/${id}/archive`, { method: 'PUT', headers: Daylog.authHeaders(true) })
         .then(Daylog.handleResponse).catch(() => {});
 }
+// 이전 이름 호환 (혹시 남은 호출부가 있어도 보관함으로 동작)
+function trashChecklistQuietly(id) { return archiveChecklistQuietly(id); }
+// [E] edit by smsong
 
 function trashChecklist(id) {
-    if (!confirm('이 체크리스트을 휴지통으로 옮기시겠습니까?')) return;
+    if (!confirm('이 체크리스트를 휴지통으로 옮기시겠습니까?')) return;
     withLoading(fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '휴지통으로 이동 중...')
         .then(Daylog.handleResponse)
         .then(() => { showToast('휴지통으로 이동했습니다'); closeChecklistDetail(); Daylog.reloadChecklists(); })
@@ -5973,7 +5978,7 @@ function restoreChecklist(id) {
 }
 
 function deleteChecklistForever(id) {
-    if (!confirm('이 체크리스트을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
+    if (!confirm('이 체크리스트를 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
     withLoading(fetch(`${Daylog.api}/api/checklists/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
         .then(Daylog.handleResponse)
         .then(() => { showToast('영구 삭제했습니다'); openTrashModal(); })
@@ -6083,7 +6088,7 @@ function openCommentedListModal(title, entries) {
                     if (m) openDetailModal(m, true); else showToast('원본 추억을 찾을 수 없습니다');
                 } else {
                     const c = (Daylog.checklists || []).find(x => String(x.id) === String(e.itemId));
-                    if (c) openChecklistDetail(c, true); else showToast('원본 체크리스트을 찾을 수 없습니다');
+                    if (c) openChecklistDetail(c, true); else showToast('원본 체크리스트를 찾을 수 없습니다');
                 }
             });
             body.appendChild(row);
@@ -6240,7 +6245,7 @@ function openMemoryListModal(title, items) {
 function openChecklistListModal(title, items) {
     Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
     _lmOpen(title, items, 'checklist',
-        '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>표시할 체크리스트이 없습니다</p></div>');
+        '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>표시할 체크리스트가 없습니다</p></div>');
 }
 
 function closeListModal() {
