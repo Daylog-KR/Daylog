@@ -391,19 +391,28 @@ window.addEventListener('pageshow', function () {
     function s(sel, body) { return g([sel], body); }
 
     var css = [
+        // ================= 겹침 순서 =================
+        //  상단바 .navbar 는 z:100, 상세 시트는 z:90 이라 시트 위쪽 60px 이 상단바 뒤에 깔린다.
+        //  → 닫기/수정/휴지통 칩이 통째로 가려지고 사진 윗부분도 잘려 보였다.
+        //  몰입형 조회일 때만 시트를 상단바 위로 올리고(110), 하단 네비는 계속 시트 위에 보이도록 120 으로 올린다.
+        //  (다른 모달들은 z:2000 이라 하단 네비 120 은 영향 없음. 목록 위에 띄우는 .over-modal(2100) 은 제외.)
+        '.bottom-nav{z-index:120;}',
+        '.modal.detail-sheet:not(.over-modal):has(#detail-view:not(.hidden) .dtl),' +
+        '.modal.detail-sheet:not(.over-modal):has(#cl-detail-view:not(.hidden) .dtl){z-index:110;}',
+
         // ================= 시트 껍데기: 화면 꽉 채우기 =================
         s('', '{height:100dvh;max-height:100dvh;min-height:100dvh;border-radius:0;box-shadow:none;background:var(--bg-color);}'),
         s(' .sheet-body', '{padding:0;}'),
 
-        // 드래그 핸들 — 사진 위 반투명 알약 (안내 문구는 몰입형에서 제거)
-        s(' .sheet-handle', '{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:0;right:0;z-index:6;padding:6px 0;}'),
+        // 드래그 핸들 — 좌우 칩 사이 가운데. 세 요소가 한 줄로 정렬된다(⌄ ···· ⋯)
+        s(' .sheet-handle', '{position:absolute;top:calc(env(safe-area-inset-top) + 29px);left:0;right:0;z-index:6;padding:0;}'),
         s(' .sheet-handle::before', '{width:38px;height:4px;background:rgba(253,251,247,.62);}'),
         s(' .sheet-handle::after', '{content:none;}'),
 
         // 헤더 — 사진 위에 뜨는 원형 칩. row-reverse 라 닫기가 왼쪽, 수정/휴지통이 오른쪽.
         s(' .detail-modal-header',
           '{position:absolute;top:0;left:0;right:0;z-index:7;margin:0;border:none;background:none;' +
-          'padding:calc(env(safe-area-inset-top) + 24px) 14px 0;' +
+          'padding:calc(env(safe-area-inset-top) + 14px) 14px 0;' +
           'display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;}'),
         s(' .detail-modal-header .detail-header-actions', '{gap:9px;}'),
         g([' .detail-modal-header .close-modal',
@@ -421,9 +430,9 @@ window.addEventListener('pageshow', function () {
         //  · padding-top = 헤더(닫기/수정/휴지통)가 앉는 밴드. 사진이 헤더에 가리지 않게 그만큼 내린다.
         //  · height 는 Daylog._fitDetailStage() 가 '밴드 + 원본비율 높이 + 겹침' 으로 인라인 지정한다.
         //    아래 값은 이미지 로드 전 잠깐 쓰이는 기본값(레이아웃 점프 방지용).
-        s(' .dtl-stage', '{box-sizing:border-box;padding-top:calc(env(safe-area-inset-top) + 66px);' +
+        s(' .dtl-stage', '{box-sizing:border-box;padding-top:calc(env(safe-area-inset-top) + 58px);' +
                          'height:56dvh;min-height:0;background:#241f1b;}'),
-        s(' .dtl-stage.empty', '{height:calc(env(safe-area-inset-top) + 66px + 12dvh);min-height:0;background:var(--primary);}'),
+        s(' .dtl-stage.empty', '{height:calc(env(safe-area-inset-top) + 58px + 12dvh);min-height:0;background:var(--primary);}'),
         s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
         // contain — 계산이 1~2px 어긋나도 사진이 잘리지 않고 여백으로 처리된다
         s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:contain;}'),
