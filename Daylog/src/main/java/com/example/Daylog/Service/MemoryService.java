@@ -351,6 +351,46 @@ public class MemoryService {
         return result;
     }
 
+    // ===== [B] edit by smsong - #12 일괄 처리 (휴지통 선택 모드) =====
+    //  권한 없는 항목이 섞여도 나머지는 처리하고 실패한 id 만 돌려준다.
+
+    @Transactional
+    public java.util.Map<String, Object> bulkTrash(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "trash");
+    }
+
+    @Transactional
+    public java.util.Map<String, Object> bulkDelete(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "delete");
+    }
+
+    @Transactional
+    public java.util.Map<String, Object> bulkRestore(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "restore");
+    }
+
+    private java.util.Map<String, Object> bulkRun(List<Long> ids, UserDetails userDetails, String op) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                try {
+                    if ("trash".equals(op)) moveToTrash(id, userDetails);
+                    else if ("delete".equals(op)) permanentDelete(id, userDetails);
+                    else restoreMemory(id, userDetails);
+                    ok++;
+                } catch (Exception e) {
+                    failed.add(id);
+                }
+            }
+        }
+        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        res.put("success", ok);
+        res.put("failed", failed);
+        return res;
+    }
+    // [E] edit by smsong
+
     // 스케줄러용: 보관 기간(30일) 경과한 휴지통 추억 일괄 영구 삭제
     @Transactional
     public int purgeExpiredTrash() {

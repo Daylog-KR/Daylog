@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map; // [B][E] edit by smsong - #12
 
 @RestController
 @RequestMapping("/api/memories")
@@ -78,6 +79,27 @@ public class MemoryController {
         memoryService.permanentDelete(id, userDetails);
         return ResponseEntity.ok().build();
     }
+
+    // ===== [B] edit by smsong - #12 일괄 처리 (휴지통 선택 모드) =====
+
+    @PostMapping("/bulk/trash")
+    public ResponseEntity<Map<String, Object>> bulkTrash(@RequestBody Map<String, List<Long>> body,
+                                                         @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.bulkTrash(body.get("ids"), userDetails));
+    }
+
+    @PostMapping("/bulk/delete")
+    public ResponseEntity<Map<String, Object>> bulkDelete(@RequestBody Map<String, List<Long>> body,
+                                                          @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.bulkDelete(body.get("ids"), userDetails));
+    }
+
+    @PostMapping("/bulk/restore")
+    public ResponseEntity<Map<String, Object>> bulkRestore(@RequestBody Map<String, List<Long>> body,
+                                                           @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(memoryService.bulkRestore(body.get("ids"), userDetails));
+    }
+    // [E] edit by smsong
 
     // 내가 휴지통으로 보낸 추억 목록
     @GetMapping("/trash/{uid}")

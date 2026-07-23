@@ -2100,7 +2100,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // 즉시 캐시 화면을 보여주고(이미 그려져 있음), 백그라운드에서 조용히 최신화.
             // 데이터가 실제로 바뀐 경우에만 다시 그리므로 전환 속도 유지 + 깜빡임 없음.
             if (targetTab === 'tab-profile') loadProfiles();
-            if (targetTab === 'tab-checklist') loadChecklistsFromServer();
+            if (targetTab === 'tab-checklist') {
+                loadChecklistsFromServer();
+                // [B][E] edit by smsong - #13 달력 보기 상태면 달력 데이터도 갱신
+                if (Daylog._calendarView && Daylog._calendarView() === 'calendar' && Daylog._reloadCalendar) Daylog._reloadCalendar();
+            }
             if (targetTab === 'tab-timeline') loadMemoriesFromServer();
         });
     });
@@ -3407,6 +3411,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!title) { showToast('제목을 입력해주십시오'); return; }
         const visited = document.getElementById('cl-visited').checked;
         const visitedDate = document.getElementById('cl-visited-date').value;
+        // [B][E] edit by smsong - #13 갈 예정일 (체크리스트 달력 표시용)
+        const plannedDate = (document.getElementById('cl-planned-date') || {}).value || null;
         const clMgr = window._clCreateMgr;
         const clFiles = clMgr ? clMgr.getNewFiles() : [];
         const hasImage = clFiles.length > 0;
@@ -3427,6 +3433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             type: window._clSelectedType || 'ETC',
             visited: visited,
             visitedDate: (visited && visitedDate) ? visitedDate : null,
+            plannedDate: plannedDate,   // [B][E] edit by smsong - #13 갈 예정일
             mediaOrder: clMgr ? clMgr.getMediaOrder() : []
         };
         const fd = new FormData();
@@ -5099,6 +5106,11 @@ function enterChecklistEdit(item) {
     chk.checked = !!item.visited;
     date.disabled = !item.visited;
     date.value = item.visitedDate ? String(item.visitedDate).substring(0, 10) : '';
+    // [B] edit by smsong - #13 갈 예정일 채우기 (입력칸이 없으면 먼저 주입)
+    if (Daylog._injectPlannedInputs) Daylog._injectPlannedInputs();
+    var _pd = document.getElementById('cl-edit-planned-date');
+    if (_pd) _pd.value = item.plannedDate ? String(item.plannedDate).substring(0, 10) : '';
+    // [E] edit by smsong
     const editLbl = chk.closest('.cl-check-label');
     if (editLbl) editLbl.classList.toggle('checked', !!item.visited);
 
@@ -5188,6 +5200,8 @@ function saveChecklistEdit() {
         type: window._clEditSelectedType || item.type || 'ETC',
         visited: visited,
         visitedDate: (visited && visitedDate) ? visitedDate : null,
+        // [B][E] edit by smsong - #13 갈 예정일 (빈 값이면 null → 달력에서 해제)
+        plannedDate: (document.getElementById('cl-edit-planned-date') || {}).value || null,
         mediaOrder: order
     };
     // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
@@ -5862,6 +5876,8 @@ function closeTrashModal() {
 function renderTrash(memories, comments, checklists) {
     const body = document.getElementById('trash-modal-body');
     if (!body) return;
+    // [B][E] edit by smsong - #13 렌더 후 선택 모드 툴바 부착
+    setTimeout(function () { if (Daylog._setupTrashSelect) Daylog._setupTrashSelect(); }, 0);
     checklists = checklists || [];
 
     if (!memories.length && !comments.length && !checklists.length) {
@@ -5880,7 +5896,7 @@ function renderTrash(memories, comments, checklists) {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
             const thumb = Daylog.lmThumbHtml(coverUrlOf(m), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             html +=
-                '<div class="trash-row">' +
+                '<div class="trash-row" data-kind="memory" data-id="' + m.id + '">' +
                 thumb +
                 '<div class="lm-row-main">' +
                 '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
@@ -5901,7 +5917,7 @@ function renderTrash(memories, comments, checklists) {
         comments.forEach(c => {
             const onTitle = c.memoryTitle ? ('"' + escapeHtml(c.memoryTitle) + '" 에 남긴 댓글') : '댓글';
             html +=
-                '<div class="trash-row">' +
+                '<div class="trash-row" data-kind="comment" data-id="' + c.id + '">' +
                 '<div class="lm-thumb lm-thumb-empty">' + icon('comment',22,'color:#b08968;') + '</div>' +
                 '<div class="lm-row-main">' +
                 '<div class="lm-row-date">' + onTitle + '</div>' +
@@ -5921,7 +5937,7 @@ function renderTrash(memories, comments, checklists) {
             const meta = (typeof checklistType === 'function') ? checklistType(c.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [c.placeName, c.address].filter(Boolean).join(' ');
             html +=
-                '<div class="trash-row">' +
+                '<div class="trash-row" data-kind="checklist" data-id="' + c.id + '">' +
                 '<div class="lm-thumb lm-thumb-empty">' + meta.emoji + '</div>' +
                 '<div class="lm-row-main">' +
                 '<div class="lm-row-date">' + escapeHtml(meta.label || '체크리스트') + '</div>' +
@@ -7183,3 +7199,674 @@ document.addEventListener('DOMContentLoaded', () => {
     // ESC 로 리스트 모달도 닫기
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeListModal(); closeTrashModal(); } });
 });
+
+// ==========================================================================
+// [B] edit by smsong - #13 체크리스트 달력 / 일정 / 보관함 / 선택 모드
+//
+//  · 체크리스트 탭에 타임라인과 같은 [목록 | 달력] 전환을 붙인다.
+//  · 달력에는 두 종류가 올라간다.
+//      - 일정(schedule)      : /api/schedules        — 무엇을 할지 기록
+//      - 체크리스트(plannedDate): /api/checklists/calendar/{uid} — 갈 예정일
+//    체크리스트는 '보관함 포함' 엔드포인트를 쓴다. 다녀와서 보관된 곳도 달력엔 남아야 하므로.
+//  · 빈 날짜를 누르면 일정 추가 폼, 뭔가 있는 날짜를 누르면 그날의 목록 폼이 뜬다.
+//  · 보관함은 [설정 > 휴지통] 바로 위 버튼으로 연다. 보관함/휴지통 모두 선택 모드로
+//    여러 건을 한 번에 처리할 수 있고, 영구 삭제 시에만 달력 경고를 띄운다.
+//
+//  DOM 은 전부 여기서 주입한다(main.html 무수정). CSS 도 <style id="cw-style"> 로 주입.
+// ==========================================================================
+(function () {
+    'use strict';
+
+    var PERM_WARN = '영구 삭제하면 체크리스트 달력에서도 사라집니다.\n계속하시겠습니까?';
+
+    var _schedules = [];   // 방의 일정
+    var _calCls = [];      // 달력용 체크리스트 (보관함 포함)
+    var _clView = 'list';  // list | calendar
+    var _cy = null, _cm = null;
+    var _loaded = false;
+
+    function api() { return Daylog.api; }
+    function hdr(json) { return Daylog.authHeaders(json); }
+    function esc(s) { return escapeHtml(s == null ? '' : String(s)); }
+    function ymd(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function dkey(v) { return v ? String(v).substring(0, 10) : ''; }
+
+    // ===================== 데이터 =====================
+    function loadCalendarData(force) {
+        if (_loaded && !force) return Promise.resolve();
+        var uid = Daylog.currentUid;
+        if (!uid) return Promise.resolve();
+        return Promise.all([
+            fetch(api() + '/api/schedules/' + encodeURIComponent(uid), { headers: hdr(true) })
+                .then(Daylog.handleResponse).catch(function () { return []; }),
+            fetch(api() + '/api/checklists/calendar/' + encodeURIComponent(uid), { headers: hdr(true) })
+                .then(Daylog.handleResponse).catch(function () { return []; })
+        ]).then(function (r) {
+            _schedules = r[0] || [];
+            _calCls = (r[1] || []).filter(function (c) { return !!c.plannedDate; });
+            _loaded = true;
+        });
+    }
+
+    // 날짜별로 묶기 → { 'YYYY-MM-DD': { s:[일정], c:[체크리스트] } }
+    function groupByDate() {
+        var g = {};
+        function slot(k) { return (g[k] = g[k] || { s: [], c: [] }); }
+        _schedules.forEach(function (x) { var k = dkey(x.scheduleDate); if (k) slot(k).s.push(x); });
+        _calCls.forEach(function (x) { var k = dkey(x.plannedDate); if (k) slot(k).c.push(x); });
+        return g;
+    }
+
+    // ===================== 뷰 전환 =====================
+    function injectHeader() {
+        var sec = document.querySelector('#tab-checklist .timeline-section');
+        var feed = document.getElementById('checklist-feed');
+        if (!sec || !feed || document.getElementById('cl-view-list')) return;
+
+        var title = sec.querySelector('.section-title');
+        var wrap = document.createElement('div');
+        wrap.className = 'tl-view-header cw-head';
+        if (title) wrap.appendChild(title);
+        var tog = document.createElement('div');
+        tog.className = 'tl-view-toggle';
+        tog.innerHTML =
+            '<button type="button" id="cl-view-list" class="tl-view-btn active" title="목록으로 보기" aria-label="목록으로 보기">' +
+            icon('bookmark', 18) + '</button>' +
+            '<button type="button" id="cl-view-cal" class="tl-view-btn" title="달력으로 보기" aria-label="달력으로 보기">' +
+            icon('calendar', 18) + '</button>';
+        wrap.appendChild(tog);
+        sec.insertBefore(wrap, feed);
+
+        var cal = document.createElement('div');
+        cal.id = 'checklist-calendar';
+        cal.className = 'hidden';
+        sec.insertBefore(cal, feed.nextSibling);
+
+        document.getElementById('cl-view-list').addEventListener('click', function () { setView('list'); });
+        document.getElementById('cl-view-cal').addEventListener('click', function () { setView('calendar'); });
+    }
+
+    function setView(v) {
+        _clView = v;
+        var feed = document.getElementById('checklist-feed');
+        var cal = document.getElementById('checklist-calendar');
+        var bl = document.getElementById('cl-view-list'), bc = document.getElementById('cl-view-cal');
+        var isCal = (v === 'calendar');
+        if (feed) feed.classList.toggle('hidden', isCal);
+        if (cal) cal.classList.toggle('hidden', !isCal);
+        if (bl) bl.classList.toggle('active', !isCal);
+        if (bc) bc.classList.toggle('active', isCal);
+        if (isCal) {
+            withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...');
+        } else {
+            requestAnimationFrame(function () { if (Daylog._relayoutFeeds) Daylog._relayoutFeeds(); });
+        }
+    }
+    Daylog._setChecklistView = setView;
+
+    // ===================== 달력 =====================
+    function initMonth() {
+        if (_cy != null) return;
+        var t = new Date();
+        _cy = t.getFullYear(); _cm = t.getMonth();
+    }
+
+    function render() {
+        var cont = document.getElementById('checklist-calendar');
+        if (!cont) return;
+        initMonth();
+        var g = groupByDate();
+        var todayKey = ymd(new Date());
+
+        var chevL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+        var chevR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+        var html = '<div class="cal-head">' +
+            '<button type="button" class="cal-nav" id="cw-prev" aria-label="이전 달">' + chevL + '</button>' +
+            '<div class="cal-month">' + _cy + '년 ' + (_cm + 1) + '월</div>' +
+            '<button type="button" class="cal-nav" id="cw-next" aria-label="다음 달">' + chevR + '</button>' +
+            '</div>';
+        html += '<div class="cw-legend">' +
+            '<span><i class="cw-dot sch"></i>일정</span><span><i class="cw-dot cl"></i>갈 곳</span>' +
+            '<span class="cw-legend-hint">날짜를 누르면 추가·확인</span></div>';
+        html += '<div class="cal-grid cal-dow">' +
+            ['일', '월', '화', '수', '목', '금', '토'].map(function (d, i) {
+                return '<div class="cal-dow-cell' + (i === 0 ? ' sun' : '') + (i === 6 ? ' sat' : '') + '">' + d + '</div>';
+            }).join('') + '</div>';
+
+        var startDow = new Date(_cy, _cm, 1).getDay();
+        var dim = new Date(_cy, _cm + 1, 0).getDate();
+        var cells = '';
+        for (var i = 0; i < startDow; i++) cells += '<div class="cal-cell cw-cell empty"></div>';
+        for (var d = 1; d <= dim; d++) {
+            var key = _cy + '-' + String(_cm + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+            var it = g[key] || { s: [], c: [] };
+            var total = it.s.length + it.c.length;
+            var dow = new Date(_cy, _cm, d).getDay();
+            var cls = 'cal-cell cw-cell' + (total ? ' has' : '') + (dow === 0 ? ' sun' : '') + (dow === 6 ? ' sat' : '') +
+                      (key === todayKey ? ' today' : '');
+            var cell = '<div class="' + cls + '" data-date="' + key + '">';
+            cell += '<span class="cal-day">' + d + '</span>';
+            if (total) {
+                var label = (it.s[0] && it.s[0].title) || (it.c[0] && it.c[0].title) || '';
+                cell += '<span class="cw-label">' + esc(label) + '</span>';
+                cell += '<span class="cw-dots">';
+                if (it.s.length) cell += '<i class="cw-dot sch"></i>';
+                if (it.c.length) cell += '<i class="cw-dot cl"></i>';
+                if (total > 1) cell += '<span class="cw-more">' + total + '</span>';
+                cell += '</span>';
+            }
+            cell += '</div>';
+            cells += cell;
+        }
+        html += '<div class="cal-grid cal-days">' + cells + '</div>';
+        cont.innerHTML = html;
+
+        document.getElementById('cw-prev').addEventListener('click', function () {
+            _cm--; if (_cm < 0) { _cm = 11; _cy--; } render();
+        });
+        document.getElementById('cw-next').addEventListener('click', function () {
+            _cm++; if (_cm > 11) { _cm = 0; _cy++; } render();
+        });
+        cont.querySelectorAll('.cw-cell:not(.empty)').forEach(function (c) {
+            c.addEventListener('click', function () { openDay(c.getAttribute('data-date')); });
+        });
+    }
+    Daylog._renderChecklistCalendar = render;
+
+    // ===================== 그날의 패널 =====================
+    function closeDay() {
+        var e = document.getElementById('cw-day');
+        if (e && e.parentNode) e.parentNode.removeChild(e);
+    }
+
+    function openDay(key) {
+        var g = groupByDate();
+        var it = g[key] || { s: [], c: [] };
+        if (!it.s.length && !it.c.length) { openScheduleForm(key, null); return; }  // 빈 날짜 → 바로 추가
+
+        closeDay();
+        var dt = new Date(key);
+        var head = (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 ' + ['일','월','화','수','목','금','토'][dt.getDay()] + '요일';
+
+        var rows = '';
+        it.s.forEach(function (s) {
+            var time = s.allDay ? '종일' : (s.startTime ? String(s.startTime).substring(0, 5) : '종일');
+            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '" data-type="s" data-id="' + s.id + '">' +
+                '<button type="button" class="cw-check" data-id="' + s.id + '" data-done="' + (s.done ? '1' : '0') + '" aria-label="완료">' +
+                (s.done ? icon('check', 14) : '') + '</button>' +
+                '<div class="cw-row-main"><div class="cw-row-title">' + esc(s.title) + '</div>' +
+                '<div class="cw-row-sub">' + esc(time) + (s.content ? ' · ' + esc(s.content) : '') + '</div></div>' +
+                '<button type="button" class="cw-row-edit" data-id="' + s.id + '" aria-label="수정">' + icon('edit', 15) + '</button>' +
+                '</div>';
+        });
+        it.c.forEach(function (c) {
+            var meta = (typeof checklistType === 'function') ? checklistType(c.type) : { label: '갈 곳', emoji: '' };
+            var badge = c.archived ? '<span class="cw-tag arch">보관됨</span>'
+                      : (c.visited ? '<span class="cw-tag done">다녀옴</span>' : '');
+            rows += '<div class="cw-row cl" data-type="c" data-id="' + c.id + '">' +
+                '<span class="cw-ic">' + (meta.emoji || icon('bookmark', 15)) + '</span>' +
+                '<div class="cw-row-main"><div class="cw-row-title">' + esc(c.title) + badge + '</div>' +
+                '<div class="cw-row-sub">' + esc([c.placeName, c.address].filter(Boolean).join(' ')) + '</div></div>' +
+                icon('search', 15, 'color:var(--gray-400);flex:none;') +
+                '</div>';
+        });
+
+        var ov = document.createElement('div');
+        ov.id = 'cw-day';
+        ov.innerHTML =
+            '<div class="cw-sheet" role="dialog" aria-modal="true">' +
+                '<div class="cw-grip"></div>' +
+                '<div class="cw-sheet-head"><h3>' + esc(head) + '</h3>' +
+                    '<button type="button" class="cw-x" aria-label="닫기">&times;</button></div>' +
+                '<div class="cw-list">' + rows + '</div>' +
+                '<button type="button" class="cw-add" id="cw-add">' + icon('plus', 17) + ' 일정 추가</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) closeDay(); });
+        ov.querySelector('.cw-x').addEventListener('click', closeDay);
+        document.getElementById('cw-add').addEventListener('click', function () { closeDay(); openScheduleForm(key, null); });
+
+        // 일정: 완료 토글 / 수정
+        ov.querySelectorAll('.cw-check').forEach(function (b) {
+            b.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var id = b.getAttribute('data-id'), next = b.getAttribute('data-done') !== '1';
+                withLoading(fetch(api() + '/api/schedules/' + id + '/done?done=' + next, { method: 'PUT', headers: hdr(true) })
+                    .then(Daylog.handleResponse), '저장 중...')
+                    .then(function () { return loadCalendarData(true); })
+                    .then(function () { render(); closeDay(); openDay(key); })
+                    .catch(function () { showToast('변경 실패'); });
+            });
+        });
+        ov.querySelectorAll('.cw-row-edit').forEach(function (b) {
+            b.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var id = b.getAttribute('data-id');
+                var s = _schedules.find(function (x) { return String(x.id) === String(id); });
+                closeDay(); openScheduleForm(key, s);
+            });
+        });
+        // 체크리스트: 상세 열기
+        ov.querySelectorAll('.cw-row.cl').forEach(function (r) {
+            r.addEventListener('click', function () {
+                var id = r.getAttribute('data-id');
+                var c = _calCls.find(function (x) { return String(x.id) === String(id); });
+                closeDay();
+                if (c) openChecklistDetail(c, true); else showToast('원본을 찾을 수 없습니다');
+            });
+        });
+    }
+
+    // ===================== 일정 작성/수정 폼 =====================
+    function closeScheduleForm() {
+        var e = document.getElementById('cw-form');
+        if (e && e.parentNode) e.parentNode.removeChild(e);
+    }
+
+    function openScheduleForm(dateKey, s) {
+        closeScheduleForm();
+        var editing = !!s;
+        var ov = document.createElement('div');
+        ov.id = 'cw-form';
+        ov.innerHTML =
+            '<div class="cw-card" role="dialog" aria-modal="true">' +
+                '<div class="cw-card-head">' +
+                    '<h3>' + (editing ? '일정 수정' : '일정 추가') + '</h3>' +
+                    '<button type="button" class="cw-x" aria-label="닫기">&times;</button>' +
+                '</div>' +
+                '<label class="cw-lb">날짜</label>' +
+                '<input type="date" id="cw-date" class="cw-in" value="' + esc(editing ? dkey(s.scheduleDate) : dateKey) + '">' +
+                '<label class="cw-lb">무엇을 할까요</label>' +
+                '<input type="text" id="cw-title" class="cw-in" maxlength="60" placeholder="예) 전시 보러 가기" value="' + esc(editing ? s.title : '') + '">' +
+                '<label class="cw-lb">메모 <span class="cw-opt">선택</span></label>' +
+                '<textarea id="cw-content" class="cw-in cw-ta" maxlength="500" placeholder="같이 챙길 것, 만날 장소 등">' + esc(editing ? (s.content || '') : '') + '</textarea>' +
+                '<div class="cw-time-row">' +
+                    '<label class="cw-switch"><input type="checkbox" id="cw-allday"' + ((!editing || s.allDay) ? ' checked' : '') + '> 종일</label>' +
+                    '<input type="time" id="cw-time" class="cw-in cw-time"' + ((!editing || s.allDay) ? ' disabled' : '') +
+                    ' value="' + esc(editing && s.startTime ? String(s.startTime).substring(0, 5) : '') + '">' +
+                '</div>' +
+                '<button type="button" class="cw-save" id="cw-save">' + (editing ? '저장하기' : '추가하기') + '</button>' +
+                (editing ? '<button type="button" class="cw-del" id="cw-del">' + icon('trash', 14) + ' 휴지통으로</button>' : '') +
+            '</div>';
+        document.body.appendChild(ov);
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) closeScheduleForm(); });
+        ov.querySelector('.cw-x').addEventListener('click', closeScheduleForm);
+
+        var allday = document.getElementById('cw-allday'), timeEl = document.getElementById('cw-time');
+        allday.addEventListener('change', function () { timeEl.disabled = allday.checked; if (allday.checked) timeEl.value = ''; });
+
+        document.getElementById('cw-save').addEventListener('click', function () {
+            var title = document.getElementById('cw-title').value.trim();
+            var date = document.getElementById('cw-date').value;
+            if (!title) { showToast('무엇을 할지 입력해주십시오'); return; }
+            if (!date) { showToast('날짜를 선택해주십시오'); return; }
+            var body = {
+                title: title,
+                content: document.getElementById('cw-content').value.trim(),
+                scheduleDate: date,
+                allDay: allday.checked,
+                startTime: allday.checked ? null : (timeEl.value ? timeEl.value + ':00' : null),
+                done: editing ? !!s.done : false
+            };
+            var url = editing ? (api() + '/api/schedules/' + s.id)
+                              : (api() + '/api/schedules?uid=' + encodeURIComponent(Daylog.currentUid));
+            withLoading(fetch(url, { method: editing ? 'PUT' : 'POST', headers: hdr(true), body: JSON.stringify(body) })
+                .then(Daylog.handleResponse), '저장 중...')
+                .then(function () { return loadCalendarData(true); })
+                .then(function () {
+                    closeScheduleForm(); render();
+                    showToast(editing ? '일정을 수정했어요' : '일정을 추가했어요');
+                })
+                .catch(function (e) { console.error(e); showToast('저장 실패. 다시 시도해주십시오.'); });
+        });
+
+        var del = document.getElementById('cw-del');
+        if (del) del.addEventListener('click', function () {
+            if (!confirm('이 일정을 휴지통으로 옮기시겠습니까?')) return;
+            withLoading(fetch(api() + '/api/schedules/' + s.id + '/trash', { method: 'PUT', headers: hdr(true) })
+                .then(Daylog.handleResponse), '이동 중...')
+                .then(function () { return loadCalendarData(true); })
+                .then(function () { closeScheduleForm(); render(); showToast('휴지통으로 옮겼어요'); })
+                .catch(function () { showToast('이동 실패'); });
+        });
+    }
+
+    // ===================== 갈 예정일 입력 주입 =====================
+    function injectPlannedInputs() {
+        [['cl-visited-date', 'cl-planned-date'], ['cl-edit-visited-date', 'cl-edit-planned-date']].forEach(function (p) {
+            var anchor = document.getElementById(p[0]);
+            if (!anchor || document.getElementById(p[1])) return;
+            var group = anchor.closest('.form-group') || anchor.parentElement;
+            var wrap = document.createElement('div');
+            wrap.className = 'form-group cw-planned-group';
+            wrap.innerHTML = '<label>갈 예정일 <span class="cw-opt">선택 · 체크리스트 달력에 표시됩니다</span></label>' +
+                             '<input type="date" id="' + p[1] + '">';
+            group.parentNode.insertBefore(wrap, group.nextSibling);
+        });
+    }
+    Daylog._injectPlannedInputs = injectPlannedInputs;
+
+    // ===================== 보관함 =====================
+    function injectArchiveButton() {
+        var trash = document.getElementById('btn-trash');
+        if (!trash || document.getElementById('btn-archive')) return;
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.id = 'btn-archive';
+        b.className = trash.className;   // 휴지통 버튼과 같은 스타일
+        b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true">' +
+            '<rect x="2" y="4" width="20" height="5" rx="1.5"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/>' +
+            '<line x1="10" y1="13" x2="14" y2="13"/></svg> 보관함';
+        trash.parentNode.insertBefore(b, trash);   // 휴지통 바로 위
+        b.addEventListener('click', openArchive);
+    }
+
+    function openArchive() {
+        var uid = Daylog.currentUid;
+        withLoading(fetch(api() + '/api/checklists/archive/' + encodeURIComponent(uid), { headers: hdr(true) })
+            .then(Daylog.handleResponse), '보관함을 불러오는 중...')
+            .then(renderArchive)
+            .catch(function () { showToast('보관함을 불러오지 못했습니다'); });
+    }
+
+    function closeArchive() {
+        var e = document.getElementById('cw-archive');
+        if (e && e.parentNode) e.parentNode.removeChild(e);
+    }
+
+    function renderArchive(items) {
+        closeArchive();
+        items = items || [];
+        var rows = items.map(function (c) {
+            var meta = (typeof checklistType === 'function') ? checklistType(c.type) : { label: '', emoji: '' };
+            var when = c.visitedDate ? String(c.visitedDate).substring(0, 10).replace(/-/g, '.') : '';
+            var cover = coverUrlOf(c);
+            var thumb = cover
+                ? '<img class="cw-th" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover + '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)">'
+                : '<span class="cw-th empty">' + icon('bookmark', 18) + '</span>';
+            return '<div class="cw-arow" data-id="' + c.id + '">' +
+                '<span class="cw-sel" aria-hidden="true"></span>' + thumb +
+                '<div class="cw-row-main"><div class="cw-row-title">' + esc(c.title) + '</div>' +
+                '<div class="cw-row-sub">' + esc(meta.label || '') + (when ? ' · ' + when + ' 다녀옴' : '') + '</div></div>' +
+                '</div>';
+        }).join('');
+
+        var ov = document.createElement('div');
+        ov.id = 'cw-archive';
+        ov.className = 'cw-full';
+        ov.innerHTML =
+            '<div class="cw-full-head">' +
+                '<h3>보관함<span class="cw-cnt">' + items.length + '</span></h3>' +
+                '<div class="cw-head-act">' +
+                    (items.length ? '<button type="button" class="cw-selbtn" id="cw-a-sel">선택</button>' : '') +
+                    '<button type="button" class="cw-x" id="cw-a-close" aria-label="닫기">&times;</button>' +
+                '</div>' +
+            '</div>' +
+            '<p class="cw-note">다녀온 곳이 여기에 담깁니다. 지도·목록에는 안 보이지만 체크리스트 달력에는 남아 있어요.</p>' +
+            '<div class="cw-abody">' + (items.length ? rows :
+                '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>보관된 항목이 없습니다</p></div>') + '</div>' +
+            '<div class="cw-bar" id="cw-a-bar">' +
+                '<button type="button" class="cw-bar-all" id="cw-a-all">전체 선택</button>' +
+                '<span class="cw-bar-cnt" id="cw-a-cnt">0개 선택</span>' +
+                '<button type="button" class="cw-bar-go" id="cw-a-trash">휴지통으로</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        document.getElementById('cw-a-close').addEventListener('click', closeArchive);
+        bindSelect(ov, '.cw-arow', {
+            selBtn: 'cw-a-sel', bar: 'cw-a-bar', all: 'cw-a-all', cnt: 'cw-a-cnt',
+            actions: [{ id: 'cw-a-trash', run: bulkArchiveToTrash }]
+        });
+    }
+
+    function bulkArchiveToTrash(ids, ov) {
+        if (!ids.length) { showToast('선택된 항목이 없습니다'); return; }
+        if (!confirm(ids.length + '개를 휴지통으로 옮기시겠습니까?\n휴지통에서 영구 삭제하면 달력에서도 사라집니다.')) return;
+        withLoading(fetch(api() + '/api/checklists/bulk/trash', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: ids }) })
+            .then(Daylog.handleResponse), '이동 중...')
+            .then(function (r) {
+                showToast((r && r.success ? r.success : ids.length) + '개를 휴지통으로 옮겼어요');
+                _loaded = false;
+                return loadCalendarData(true);
+            })
+            .then(function () { render(); closeArchive(); openArchive(); })
+            .catch(function () { showToast('이동 실패'); });
+    }
+
+    // ===================== 선택 모드 (보관함/휴지통 공용) =====================
+    //  opts = { selBtn, bar, all, cnt, actions:[{id, run(ids, root)}] }
+    function bindSelect(root, rowSel, opts) {
+        var on = false;
+        var selBtn = document.getElementById(opts.selBtn);
+        var bar = document.getElementById(opts.bar);
+        var allBtn = document.getElementById(opts.all);
+        var cntEl = document.getElementById(opts.cnt);
+        if (!bar) return;
+
+        function ids() {
+            return Array.prototype.map.call(root.querySelectorAll(rowSel + '.picked'),
+                function (r) { return Number(r.getAttribute('data-id')); });
+        }
+        function paint() {
+            var n = ids().length;
+            if (cntEl) cntEl.textContent = n + '개 선택';
+            bar.classList.toggle('show', on);
+            root.classList.toggle('selecting', on);
+            if (selBtn) selBtn.textContent = on ? '취소' : '선택';
+        }
+        if (selBtn) selBtn.addEventListener('click', function () {
+            on = !on;
+            if (!on) root.querySelectorAll(rowSel + '.picked').forEach(function (r) { r.classList.remove('picked'); });
+            paint();
+        });
+        if (allBtn) allBtn.addEventListener('click', function () {
+            var rows = root.querySelectorAll(rowSel);
+            var every = ids().length === rows.length && rows.length > 0;
+            rows.forEach(function (r) { r.classList.toggle('picked', !every); });
+            paint();
+        });
+        root.querySelectorAll(rowSel).forEach(function (r) {
+            r.addEventListener('click', function (e) {
+                if (!on) return;
+                e.stopPropagation(); e.preventDefault();
+                r.classList.toggle('picked');
+                paint();
+            }, true);
+        });
+        (opts.actions || []).forEach(function (a) {
+            var b = document.getElementById(a.id);
+            if (b) b.addEventListener('click', function () { a.run(ids(), root); });
+        });
+        paint();
+    }
+    Daylog._bindSelect = bindSelect;
+
+    // ===================== 휴지통 선택 모드 =====================
+    //  renderTrash() 가 다시 그릴 때마다 툴바를 붙인다.
+    function setupTrashSelect() {
+        var body = document.getElementById('trash-modal-body');
+        var modal = document.getElementById('trash-modal');
+        if (!body || !modal || !body.querySelector('.trash-row')) return;
+        if (document.getElementById('cw-t-bar')) return;
+
+        var head = modal.querySelector('.modal-header');
+        if (head && !document.getElementById('cw-t-sel')) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.id = 'cw-t-sel'; b.className = 'cw-selbtn';
+            b.textContent = '선택';
+            head.insertBefore(b, head.querySelector('.close-modal'));
+        }
+        var bar = document.createElement('div');
+        bar.className = 'cw-bar'; bar.id = 'cw-t-bar';
+        bar.innerHTML =
+            '<button type="button" class="cw-bar-all" id="cw-t-all">전체 선택</button>' +
+            '<span class="cw-bar-cnt" id="cw-t-cnt">0개 선택</span>' +
+            '<button type="button" class="cw-bar-go danger" id="cw-t-del">영구 삭제</button>';
+        modal.querySelector('.list-content').appendChild(bar);
+
+        bindSelect(modal, '.trash-row', {
+            selBtn: 'cw-t-sel', bar: 'cw-t-bar', all: 'cw-t-all', cnt: 'cw-t-cnt',
+            actions: [{ id: 'cw-t-del', run: bulkTrashDelete }]
+        });
+    }
+    Daylog._setupTrashSelect = setupTrashSelect;
+
+    function bulkTrashDelete(ids, root) {
+        var rows = Array.prototype.filter.call(root.querySelectorAll('.trash-row.picked'), function () { return true; });
+        if (!rows.length) { showToast('선택된 항목이 없습니다'); return; }
+        if (!confirm(rows.length + '개를 영구 삭제합니다.\n' + PERM_WARN)) return;
+
+        var by = { memory: [], checklist: [], comment: [] };
+        rows.forEach(function (r) {
+            var k = r.getAttribute('data-kind'), id = Number(r.getAttribute('data-id'));
+            if (by[k]) by[k].push(id);
+        });
+        var jobs = [];
+        if (by.memory.length) jobs.push(fetch(api() + '/api/memories/bulk/delete', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: by.memory }) }));
+        if (by.checklist.length) jobs.push(fetch(api() + '/api/checklists/bulk/delete', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: by.checklist }) }));
+        // 댓글은 일괄 API 가 없어 개별 호출
+        by.comment.forEach(function (id) {
+            jobs.push(fetch(api() + '/comment/' + id + '?hard=true', { method: 'DELETE', headers: hdr(true) }));
+        });
+
+        withLoading(Promise.all(jobs), '삭제 중...')
+            .then(function () {
+                showToast(rows.length + '개를 영구 삭제했어요');
+                _loaded = false;
+                if (typeof openTrashModal === 'function') openTrashModal();
+                return loadCalendarData(true).then(render);
+            })
+            .catch(function (e) { console.error(e); showToast('삭제 실패'); });
+    }
+
+    // ===================== CSS =====================
+    function injectCss() {
+        if (document.getElementById('cw-style')) return;
+        var css = [
+            '.cw-head{margin-bottom:12px;}',
+            '.cw-legend{display:flex;align-items:center;gap:14px;margin:0 2px 10px;font-size:0.72rem;color:var(--gray-500);}',
+            '.cw-legend-hint{margin-left:auto;color:var(--gray-400);}',
+            '.cw-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}',
+            '.cw-dot.sch{background:#2e9e5b;}.cw-dot.cl{background:var(--primary);}',
+            '.cw-cell{position:relative;cursor:pointer;}',
+            '.cw-cell.today .cal-day{background:var(--primary);color:#fff;border-radius:50%;}',
+            '.cw-cell .cal-day{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;}',
+            '.cw-label{display:block;margin-top:2px;font-size:0.6rem;line-height:1.2;color:var(--gray-600);' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px;}',
+            '.cw-dots{position:absolute;left:0;right:0;bottom:5px;display:flex;align-items:center;justify-content:center;gap:3px;}',
+            '.cw-more{font-size:0.56rem;font-weight:700;color:var(--gray-400);}',
+            // 그날의 목록 시트
+            '#cw-day{position:fixed;inset:0;z-index:2600;background:rgba(45,38,32,.5);display:flex;align-items:flex-end;}',
+            '#cw-day .cw-sheet{width:100%;max-width:480px;margin:0 auto;background:var(--bg-color);' +
+            'border-radius:24px 24px 0 0;padding:8px 18px calc(env(safe-area-inset-bottom) + 18px);' +
+            'max-height:78dvh;display:flex;flex-direction:column;animation:cwUp .3s cubic-bezier(.2,.8,.3,1);}',
+            '.cw-grip{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:4px auto 10px;}',
+            '.cw-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}',
+            '.cw-sheet-head h3{margin:0;font-family:var(--font-logo),var(--font-main);font-size:1.12rem;font-weight:600;color:var(--gray-800);}',
+            '.cw-x{border:none;background:transparent;font-size:1.5rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:2px 6px;}',
+            '.cw-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}',
+            '.cw-row{display:flex;align-items:center;gap:11px;padding:12px 2px;border-bottom:1px solid var(--gray-100);cursor:pointer;}',
+            '.cw-row.done .cw-row-title{text-decoration:line-through;color:var(--gray-400);}',
+            '.cw-row-main{flex:1;min-width:0;}',
+            '.cw-row-title{font-size:0.92rem;font-weight:600;color:var(--gray-800);display:flex;align-items:center;gap:6px;}',
+            '.cw-row-sub{font-size:0.76rem;color:var(--gray-400);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.cw-check{width:22px;height:22px;flex:none;border:2px solid var(--gray-200);border-radius:7px;background:transparent;' +
+            'display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;padding:0;}',
+            '.cw-row.done .cw-check{background:#2e9e5b;border-color:#2e9e5b;}',
+            '.cw-row-edit{border:none;background:transparent;color:var(--gray-400);cursor:pointer;padding:4px;flex:none;}',
+            '.cw-ic{flex:none;display:inline-flex;}',
+            '.cw-tag{font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;}',
+            '.cw-tag.arch{background:var(--gray-100);color:var(--gray-500);}',
+            '.cw-tag.done{background:#e3f1e8;color:#2e6e56;}',
+            '.cw-add{margin-top:12px;width:100%;border:1px dashed var(--primary-light);border-radius:14px;padding:13px;' +
+            'background:transparent;color:var(--primary-dark);font-family:inherit;font-size:0.92rem;font-weight:600;cursor:pointer;' +
+            'display:flex;align-items:center;justify-content:center;gap:6px;}',
+            '.cw-add:active{background:var(--gray-100);}',
+            // 일정 작성 카드
+            '#cw-form{position:fixed;inset:0;z-index:2700;background:rgba(45,38,32,.52);display:flex;align-items:center;justify-content:center;padding:22px;}',
+            '#cw-form .cw-card{width:100%;max-width:360px;max-height:88dvh;overflow-y:auto;background:var(--white);' +
+            'border-radius:22px;padding:20px;animation:cwPop .3s cubic-bezier(.2,.8,.3,1);}',
+            '.cw-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}',
+            '.cw-card-head h3{margin:0;font-size:1.06rem;font-weight:700;color:var(--gray-800);}',
+            '.cw-lb{display:block;margin:12px 0 6px;font-size:0.78rem;font-weight:600;color:var(--gray-500);}',
+            '.cw-opt{font-weight:400;color:var(--gray-400);}',
+            '.cw-in{width:100%;box-sizing:border-box;border:1px solid var(--gray-200);border-radius:12px;padding:12px;' +
+            'font-family:inherit;font-size:0.92rem;color:var(--gray-800);background:var(--white);}',
+            '.cw-in:focus{outline:none;border-color:var(--primary);}',
+            '.cw-ta{min-height:74px;resize:vertical;}',
+            '.cw-time-row{display:flex;align-items:center;gap:12px;margin-top:14px;}',
+            '.cw-switch{display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
+            '.cw-switch input{width:17px;height:17px;accent-color:var(--primary);}',
+            '.cw-time{flex:1;}',
+            '.cw-save{margin-top:18px;width:100%;border:none;border-radius:14px;padding:14px;background:var(--primary);' +
+            'color:#fff;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;}',
+            '.cw-save:active{transform:scale(.99);}',
+            '.cw-del{margin-top:9px;width:100%;border:none;border-radius:12px;padding:11px;background:transparent;' +
+            'color:#b5462f;font-family:inherit;font-size:0.86rem;font-weight:600;cursor:pointer;' +
+            'display:flex;align-items:center;justify-content:center;gap:5px;}',
+            // 보관함 (풀스크린)
+            '.cw-full{position:fixed;inset:0;z-index:2500;background:var(--bg-color);display:flex;flex-direction:column;' +
+            'padding:max(14px,calc(env(safe-area-inset-top) + 10px)) 18px 0;animation:cwFade .2s ease;}',
+            '.cw-full-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}',
+            '.cw-full-head h3{margin:0;font-family:var(--font-logo),var(--font-main);font-size:1.28rem;font-weight:600;' +
+            'color:var(--gray-800);display:flex;align-items:center;gap:9px;}',
+            '.cw-cnt{font-family:var(--font-main);font-size:0.72rem;font-weight:600;color:var(--primary-dark);' +
+            'background:var(--primary-light);border-radius:999px;padding:2px 9px;}',
+            '.cw-head-act{display:flex;align-items:center;gap:6px;}',
+            '.cw-selbtn{border:1px solid var(--gray-200);background:transparent;border-radius:10px;padding:6px 12px;' +
+            'font-family:inherit;font-size:0.8rem;font-weight:600;color:var(--gray-600);cursor:pointer;}',
+            '.cw-note{margin:0 0 12px;font-size:0.76rem;line-height:1.5;color:var(--gray-400);}',
+            '.cw-abody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:90px;}',
+            '.cw-arow{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--gray-100);cursor:pointer;}',
+            '.cw-th{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none;background:var(--gray-100);}',
+            '.cw-th.empty{display:flex;align-items:center;justify-content:center;color:var(--primary);}',
+            // 선택 모드
+            '.cw-sel{width:20px;height:20px;border-radius:50%;border:2px solid var(--gray-200);flex:none;display:none;}',
+            '.selecting .cw-sel{display:block;}',
+            '.selecting .cw-arow.picked .cw-sel,.selecting .trash-row.picked .cw-sel{background:var(--primary);border-color:var(--primary);}',
+            '.selecting .cw-arow.picked,.selecting .trash-row.picked{background:var(--primary-light);border-radius:12px;}',
+            '.selecting .trash-row{cursor:pointer;}',
+            '.selecting .trash-actions{opacity:.35;pointer-events:none;}',
+            '.selecting .trash-row::before{content:"";width:20px;height:20px;border-radius:50%;border:2px solid var(--gray-200);' +
+            'flex:none;align-self:center;margin-right:10px;}',
+            '.selecting .trash-row.picked::before{background:var(--primary);border-color:var(--primary);}',
+            '.cw-bar{position:fixed;left:0;right:0;bottom:0;z-index:2650;display:none;align-items:center;gap:10px;' +
+            'padding:12px 18px calc(env(safe-area-inset-bottom) + 12px);background:var(--white);' +
+            'box-shadow:0 -6px 22px rgba(139,115,85,.14);}',
+            '.cw-bar.show{display:flex;}',
+            '.cw-bar-all{border:1px solid var(--gray-200);background:transparent;border-radius:10px;padding:9px 12px;' +
+            'font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
+            '.cw-bar-cnt{flex:1;font-size:0.82rem;color:var(--gray-500);}',
+            '.cw-bar-go{border:none;border-radius:11px;padding:11px 16px;background:var(--primary);color:#fff;' +
+            'font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap;}',
+            '.cw-bar-go.danger{background:#b5462f;}',
+            '@keyframes cwUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}',
+            '@keyframes cwPop{from{transform:translateY(14px) scale(.96);opacity:0}to{transform:none;opacity:1}}',
+            '@keyframes cwFade{from{opacity:0}to{opacity:1}}'
+        ].join('');
+        var st = document.createElement('style');
+        st.id = 'cw-style';
+        st.textContent = css;
+        (document.head || document.documentElement).appendChild(st);
+    }
+
+    // ===================== 시작 =====================
+    function boot() {
+        injectCss();
+        injectHeader();
+        injectPlannedInputs();
+        injectArchiveButton();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+
+    Daylog._reloadCalendar = function () { return loadCalendarData(true).then(render); };
+    Daylog._calendarView = function () { return _clView; };
+})();
+// [E] edit by smsong
