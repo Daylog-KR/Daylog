@@ -496,9 +496,9 @@ window.addEventListener('pageshow', function () {
         '.lm-tile-art{position:relative;display:flex;align-items:center;justify-content:center;' +
         'aspect-ratio:1/1;width:100%;border-radius:15px;overflow:hidden;background:var(--gray-100);}',
         '.lm-tile-art.empty{background:var(--primary-light);color:var(--primary-dark);}',
-        '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;' +
-        'transition:opacity .25s ease;}',
-        '.lm-tile-img.is-loaded{opacity:1;}',
+        // [B][E] edit by smsong - #19 기본 opacity:1 (onload 미발화 시 빈 칸 방지)
+        '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
+        '.lm-tile-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
         '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
         'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
         'background:rgba(36,31,27,.56);color:#fdfbf7;}',
@@ -1723,7 +1723,63 @@ Daylog._thumbFallback = function (img) {
     } catch (e) {}
     img.onerror = null;                   // 원본까지 실패 → 중단(더 이상 재시도 안 함)
     img.classList.add('is-loaded');       // fade 클래스 보장(투명 잔상 방지)
+    // [B] edit by smsong - #19 썸네일·원본이 모두 실패한 경우 표시.
+    //  '로드는 된 것 같은데 빈칸'과 '파일이 실제로 없음'을 화면에서 구분할 수 있게 한다.
+    try {
+        img.setAttribute('data-failed', '1');
+        var tile = img.closest && img.closest('.tg-tile, .lm-tile-art, .tl-thumb, .cl-thumb, .lm-thumb');
+        if (tile) tile.setAttribute('data-failed', '1');
+    } catch (e) {}
+    // [E] edit by smsong
 };
+
+// [B] edit by smsong - #19 썸네일 표시 안전망
+//
+//  증상: 이미지가 받아졌는데도 타일이 빈 채로 남는다.
+//  원인: 페이드인을 onload 에만 의존하면, 브라우저 캐시에 이미 있는 이미지는
+//        load 이벤트가 안 불리는 경우가 있어 opacity 가 0 에 멈춘다.
+//        (가상 스크롤은 같은 <img> 를 계속 새로 만들었다 지우므로 캐시 히트가 잦아 더 잘 드러난다)
+//
+//  1차 방어는 CSS — 기본 opacity 를 1 로 두어 '안 보이는 상태' 자체를 없앴다.
+//  아래는 2차 방어로, 이미 완료된 이미지에 is-loaded 를 채워 넣고
+//  onload 핸들러가 없는 <img> 에는 리스너를 걸어 둔다.
+Daylog._fixThumbs = function (root) {
+    var scope = root || document;
+    var list;
+    try { list = scope.querySelectorAll('img[data-full]:not(.is-loaded)'); } catch (e) { return; }
+    for (var i = 0; i < list.length; i++) {
+        var im = list[i];
+        if (im.complete && im.naturalWidth > 0) { im.classList.add('is-loaded'); continue; }
+        if (im.__dlBound) continue;
+        im.__dlBound = true;
+        im.addEventListener('load', function () { this.classList.add('is-loaded'); }, { once: true });
+        im.addEventListener('error', function () {
+            try { Daylog._thumbFallback(this); } catch (e) {}
+        });
+    }
+};
+
+// DOM 이 바뀔 때마다(가상 스크롤 창 교체, 목록 렌더, 마커 렌더 …) 디바운스로 한 번씩 훑는다.
+(function watchThumbs() {
+    if (!window.MutationObserver) return;
+    var timer = null;
+    function kick() {
+        clearTimeout(timer);
+        timer = setTimeout(function () { Daylog._fixThumbs(); }, 120);
+    }
+    function start() {
+        try {
+            new MutationObserver(kick).observe(document.body, { childList: true, subtree: true });
+        } catch (e) {}
+        kick();
+        // 첫 진입 직후 몇 초간은 조금 더 자주 (이미지가 몰려 들어오는 구간)
+        var n = 0;
+        var iv = setInterval(function () { Daylog._fixThumbs(); if (++n > 6) clearInterval(iv); }, 700);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+})();
+// [E] edit by smsong
 // [B] edit by smsong - 목록(내 목록/댓글 목록 등) lm-thumb 도 동일하게 <img> + 서버 썸네일 + lazy/async.
 Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
     if (mediaURL) {
@@ -3365,7 +3421,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 },
                 renderRow: function (row) { return _clCardEl(row.item); },
-                onWindow: function () { applyCommentBadges('checklist'); },
+                onWindow: function () {
+                    applyCommentBadges('checklist');
+                    if (Daylog._fixThumbs) Daylog._fixThumbs();   // [B][E] #19 썸네일 안전망
+                },
                 onData: function () { fetchCommentCounts('checklist'); }
             });
             Daylog._clPager = _clPager; // 콘솔 디버그용
@@ -3727,7 +3786,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     row.items.forEach(function (m) { line.appendChild(_tlGridTile(m)); });
                     for (var k = row.items.length; k < 3; k++) line.appendChild(document.createElement('span'));
                     return line;
-                }
+                },
+                onWindow: function () { if (Daylog._fixThumbs) Daylog._fixThumbs(); }   // [B][E] #19
             });
             Daylog._tlGridPager = _tlGridPager;
         }
@@ -4170,7 +4230,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderRow: function (row) {
                     return (row.type === 'head') ? _tlDateHeadEl(row.date) : _tlCardEl(row.item);
                 },
-                onWindow: function () { applyCommentBadges('memory'); }, // 새로 그려진 카드에 배지 재적용
+                onWindow: function () {
+                    applyCommentBadges('memory');
+                    if (Daylog._fixThumbs) Daylog._fixThumbs();   // [B][E] #19 썸네일 안전망
+                },
                 onData: function () { fetchCommentCounts('memory'); }    // 목록이 바뀐 경우에만 1회 조회
             });
             Daylog._tlPager = _tlPager; // 콘솔 디버그용
@@ -6338,7 +6401,8 @@ function _lmEnsurePager() {
             row.items.forEach(function (it) { line.appendChild(_lmTileEl(it, _lmMode)); });
             if (row.items.length === 1) line.appendChild(document.createElement('span')); // 빈 칸 채움
             return line;
-        }
+        },
+        onWindow: function () { if (Daylog._fixThumbs) Daylog._fixThumbs(); }   // [B][E] #19
     });
     return _lmPager;
 }
@@ -8073,8 +8137,13 @@ document.addEventListener('DOMContentLoaded', () => {
             '.tg-tile{position:relative;aspect-ratio:3/4;width:100%;padding:0;border:none;overflow:hidden;' +
             'background:var(--gray-100);cursor:pointer;display:block;}',
             '.tg-tile:active{opacity:.82;}',
-            '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .25s ease;}',
-            '.tg-img.is-loaded{opacity:1;}',
+            // [B] edit by smsong - #19 기본 opacity:1.
+            //  onload 가 안 불려도(캐시된 이미지 등) 절대 안 보이는 일이 없게 한다.
+            //  페이드는 '로드된 순간'에만 애니메이션으로 얹는다 — main.css 의 .tl-thumb 과 같은 전략.
+            '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
+            '.tg-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
+            '.tg-img[data-failed="1"]{opacity:0;}',
+            '.tg-tile[data-failed="1"]::after{content:"";position:absolute;inset:0;background:var(--gray-100);}',
             '.tg-multi{position:absolute;top:6px;right:6px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
             'display:inline-flex;pointer-events:none;}',
             '.tg-tile.notext{background:var(--primary-light);display:flex;flex-direction:column;' +
