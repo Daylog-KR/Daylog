@@ -3693,7 +3693,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const clModal = document.getElementById('checklist-modal');
     if (clModal) clModal.addEventListener('click', (e) => { if (e.target.id === 'checklist-modal') closeChecklistModal(); });
     const clDetail = document.getElementById('checklist-detail-modal');
-    if (clDetail) clDetail.addEventListener('click', (e) => { if (e.target.id === 'checklist-detail-modal') closeChecklistDetail(); });
+    // [B][E] edit by smsong - 수정 모드면 상세 보기로만 되돌린다
+    if (clDetail) clDetail.addEventListener('click', (e) => { if (e.target.id === 'checklist-detail-modal') dismissChecklistDetail(); });
 
     // ---- 타임라인 검색/필터 (장소 라디오 + 날짜) ----
     // 현재 추억들의 placeName 값으로 장소 콤보박스 옵션 구성
@@ -4975,10 +4976,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.id === 'memory-modal') closeMemoryModal();
     });
     document.getElementById('detail-modal').addEventListener('click', (e) => {
-        if (e.target.id === 'detail-modal') closeDetailModal();
+        // [B][E] edit by smsong - 수정 모드면 상세 보기로만 되돌린다
+        if (e.target.id === 'detail-modal') dismissDetailModal();
     });
+    // [B][E] edit by smsong - ESC 는 겹친 레이어 중 '가장 위 하나'만 닫는다
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { closeLightbox(); closeEditPage(); closeMemoryModal(); closeDetailModal(); closeChecklistModal(); closeChecklistDetail(); }
+        if (e.key === 'Escape') dismissTopLayer();
     });
 
     // ===== 이미지 라이트박스 (확대 + 드래그) =====
@@ -5502,6 +5505,63 @@ function closeChecklistDetail() {
     _getChecklistSheet().close();  // [smsong] 정리는 onClosed 콜백에서
 }
 
+// [B] edit by smsong - 겹쳐 뜬 폼/모달은 '가장 위 하나'만 닫는다.
+//  이전에는 ESC 한 번, X 한 번에 아래 화면까지 통째로 사라져서 수정 폼을 닫으면
+//  보고 있던 상세까지 없어졌다. 이제는 항상 '직전 화면'으로 되돌아간다.
+//
+//  · dismissChecklistDetail / dismissDetailModal
+//      상세 시트가 '수정 모드'면 시트를 닫지 않고 상세 보기로만 되돌린다.
+//      (실제로 시트를 닫아야 하는 저장·휴지통 등의 내부 로직은 기존 close* 를 그대로 쓴다)
+//  · dismissTopLayer
+//      ESC 처럼 대상이 정해지지 않은 닫기 요청을, 위에서부터 한 겹만 처리한다.
+function dismissChecklistDetail() {
+    const editForm = document.getElementById('cl-edit-form');
+    if (editForm && !editForm.classList.contains('hidden')) { exitChecklistEdit(); return; }
+    closeChecklistDetail();
+}
+
+function dismissDetailModal() {
+    const editForm = document.getElementById('detail-edit-form');
+    if (editForm && !editForm.classList.contains('hidden')) { exitDetailEdit(); return; }
+    closeDetailModal();
+}
+
+function dismissTopLayer() {
+    // 위 → 아래 순서. 한 겹만 처리하고 즉시 끝낸다.
+    const lb = document.getElementById('lightbox');
+    if (lb && !lb.classList.contains('hidden')) { closeLightbox(); return; }
+
+    const ep = document.getElementById('edit-page');
+    if (ep && ep.classList.contains('open')) { ep.classList.remove('open'); return; }
+
+    // 달력 모듈(일정 폼 → 년월 선택 → 일정 상세 → 보관함)은 모듈 내부에서 순서대로 처리
+    if (typeof Daylog._dismissCalendarLayer === 'function' && Daylog._dismissCalendarLayer()) return;
+
+    const clModal = document.getElementById('checklist-modal');
+    if (clModal && !clModal.classList.contains('hidden')) { closeChecklistModal(); return; }
+
+    const memModal = document.getElementById('memory-modal');
+    if (memModal && !memModal.classList.contains('hidden')) { closeMemoryModal(); return; }
+
+    const clDetail = document.getElementById('checklist-detail-modal');
+    if (clDetail && !clDetail.classList.contains('hidden')) { dismissChecklistDetail(); return; }
+
+    const memDetail = document.getElementById('detail-modal');
+    if (memDetail && !memDetail.classList.contains('hidden')) { dismissDetailModal(); return; }
+
+    const trashModal = document.getElementById('trash-modal');
+    if (trashModal && !trashModal.classList.contains('hidden')) { closeTrashModal(); return; }
+
+    const listModal = document.getElementById('list-modal');
+    if (listModal && !listModal.classList.contains('hidden')) { closeListModal(); return; }
+}
+
+// main.html 의 인라인 onclick 에서 쓰도록 전역 노출
+window.dismissChecklistDetail = dismissChecklistDetail;
+window.dismissDetailModal = dismissDetailModal;
+window.dismissTopLayer = dismissTopLayer;
+// [E] edit by smsong
+
 let _detailMemory = null;
 // [B] edit by smsong - 추억/가볼곳 '수정' 중 새로 고른 위치(없으면 원본 유지). 저장 함수(최상위)와 위치선택(클로저)이 공유하므로 최상위에 선언
 let _editLocPicked = null; // { lat, lng, placeName, address } | null
@@ -5580,6 +5640,17 @@ function createDetailSheet(modalId, onClosed) {
     }
     function close() { snap('closed', true); }
 
+    // [B] edit by smsong - 수정 폼이 열려 있는데 아래로 끌어 닫으려 하면,
+    //  시트를 통째로 닫지 말고 '상세 보기'로만 되돌린다 (폼 위의 폼 → 직전 화면).
+    function pendingEditExit() {
+        const cl = content.querySelector('#cl-edit-form');
+        if (cl && !cl.classList.contains('hidden')) return exitChecklistEdit;
+        const mem = content.querySelector('#detail-edit-form');
+        if (mem && !mem.classList.contains('hidden')) return exitDetailEdit;
+        return null;
+    }
+    // [E] edit by smsong
+
     function down(e) {
         dragging = true;
         startY = lastY = (e.touches ? e.touches[0].clientY : e.clientY);
@@ -5610,6 +5681,11 @@ function createDetailSheet(modalId, onClosed) {
         } else {                 // 천천히 놓으면 가장 가까운 스냅 (2/3 지점 제거)
             const cand = ['full', 'one', 'closed'];
             target = cand.reduce((a, b) => Math.abs(m[b] - pos) < Math.abs(m[a] - pos) ? b : a, cand[0]);
+        }
+        // [B][E] edit by smsong - 수정 중이면 닫지 않고 상세 보기로 복귀
+        if (target === 'closed') {
+            const back = pendingEditExit();
+            if (back) { back(); snap('full', true); return; }
         }
         snap(target, true);
     }
@@ -7467,8 +7543,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const trashClose = document.getElementById('trash-modal-close');
     if (trashClose) trashClose.addEventListener('click', closeTrashModal);
 
-    // ESC 로 리스트 모달도 닫기
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeListModal(); closeTrashModal(); } });
+    // [B][E] edit by smsong - ESC 핸들러는 dismissTopLayer 로 일원화 (여기서 별도로 닫지 않는다)
 });
 
 // ==========================================================================
@@ -7900,7 +7975,7 @@ document.addEventListener('DOMContentLoaded', () => {
             who = (u.nickname && String(u.nickname).trim()) ? u.nickname
                 : (typeof normalizeDisplayName === 'function' ? normalizeDisplayName(u.name) : (u.name || ''));
         }
-        var photo = (u && u.profileURL) ? u.profileURL : DEFAULT_AVATAR;
+        var photo = (u && u.profileURL) ? Daylog.bustImg(u.profileURL) : DEFAULT_AVATAR;
 
         // 권한 — 추억/가볼곳과 동일한 판정을 그대로 쓴다
         var canEdit = (typeof canManageObject === 'function') ? canManageObject(s) : true;
@@ -7918,6 +7993,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         '<button type="button" class="cw-dt-btn" id="cw-dt-close" aria-label="닫기">&times;</button>' +
                     '</div>' +
                 '</div>' +
+                // [B] edit by smsong - 등록자(프로필+이름)를 날짜 위로. 누가 올린 일정인지 먼저 보이게.
+                '<div class="cw-dt-who">' +
+                    '<span class="cw-dt-avatar" style="background-image:url(\'' + photo + '\')"></span>' +
+                    '<span class="cw-dt-who-name">' + esc(who || '작성자') + '</span>' +
+                '</div>' +
+                // [E] edit by smsong
                 '<div class="cw-dt-when">' + esc(when) + '<span class="cw-dt-sep">·</span>' + esc(time) + '</div>' +
                 '<h3 class="cw-dt-title">' + esc(s.title) + '</h3>' +
                 // [B] edit by smsong - #27-fix 예약된 알림 '조회 전용'.
@@ -7931,10 +8012,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 '</div>' +
                 // [E] edit by smsong
                 (s.content ? '<div class="cw-dt-body">' + esc(s.content).replace(/\n/g, '<br>') + '</div>' : '') +
-                '<div class="cw-dt-who">' +
-                    '<span class="cw-dt-avatar" style="background-image:url(\'' + photo + '\')"></span>' +
-                    esc(who || '작성자') +
-                '</div>' +
             '</div>';
         document.body.appendChild(ov);
 
@@ -7943,8 +8020,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         var eb = document.getElementById('cw-dt-edit');
         if (eb) eb.addEventListener('click', function () {
-            closeScheduleDetail();
-            openScheduleForm(dateKey || dkey(s.scheduleDate), s);
+            // [B][E] edit by smsong - 상세를 닫지 않고 그 위에 수정 폼을 띄운다.
+            //  폼만 닫으면 상세로 되돌아오고, 저장하면 갱신된 값으로 상세를 다시 그린다.
+            openScheduleForm(dateKey || dkey(s.scheduleDate), s, true);
         });
 
         var tb = document.getElementById('cw-dt-trash');
@@ -7964,7 +8042,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e && e.parentNode) e.parentNode.removeChild(e);
     }
 
-    function openScheduleForm(dateKey, s) {
+    // [B] edit by smsong - fromDetail: 일정 상세 위에 겹쳐 띄운 경우.
+    //  · 폼만 닫으면(× / 배경 클릭) 아래 상세가 그대로 남는다.
+    //  · 저장하면 갱신된 값으로 상세를 다시 그려 준다.
+    //  · 휴지통으로 보내면 대상 자체가 사라지므로 상세도 같이 닫는다.
+    function openScheduleForm(dateKey, s, fromDetail) {
         closeScheduleForm();
         var editing = !!s;
         var ov = document.createElement('div');
@@ -8030,6 +8112,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(function () { return loadCalendarData(true); })
                 .then(function () {
                     closeScheduleForm(); render();
+                    // [B][E] edit by smsong - 상세에서 들어왔으면 갱신된 값으로 상세를 다시 띄운다
+                    if (fromDetail && editing) {
+                        var fresh = _schedules.find(function (x) { return String(x.id) === String(s.id); });
+                        if (fresh) openScheduleDetail(fresh, dkey(fresh.scheduleDate));
+                        else closeScheduleDetail();
+                    }
                     showToast(editing ? '일정을 수정했어요' : '일정을 추가했어요');
                 })
                 .catch(function (e) { console.error(e); showToast('저장 실패. 다시 시도해주십시오.'); });
@@ -8041,7 +8129,11 @@ document.addEventListener('DOMContentLoaded', () => {
             withLoading(fetch(api() + '/api/schedules/' + s.id + '/trash', { method: 'PUT', headers: hdr(true) })
                 .then(Daylog.handleResponse), '이동 중...')
                 .then(function () { return loadCalendarData(true); })
-                .then(function () { closeScheduleForm(); render(); showToast('휴지통으로 옮겼어요'); })
+                .then(function () {
+                    // [B][E] edit by smsong - 대상이 사라졌으므로 폼과 상세를 함께 닫는다
+                    closeScheduleForm(); closeScheduleDetail(); render();
+                    showToast('휴지통으로 옮겼어요');
+                })
                 .catch(function () { showToast('이동 실패'); });
         });
     }
@@ -8365,10 +8457,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // [E] edit by smsong
             '.cw-dt-body{margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-100);' +
             'font-size:0.9rem;line-height:1.75;color:var(--gray-600);white-space:pre-line;word-break:break-word;}',
-            '.cw-dt-who{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:13px;' +
-            'border-top:1px solid var(--gray-100);font-size:0.8rem;color:var(--gray-500);}',
-            '.cw-dt-avatar{width:24px;height:24px;border-radius:50%;background-size:cover;' +
-            'background-position:center;flex:none;}',
+            // [B] edit by smsong - 작성자를 카드 상단(날짜 위)에 배치 → 구분선/여백 방향 반전
+            '.cw-dt-who{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding-bottom:11px;' +
+            'border-bottom:1px solid var(--gray-100);font-size:0.82rem;color:var(--gray-600);}',
+            '.cw-dt-who-name{font-weight:600;color:var(--gray-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.cw-dt-avatar{width:30px;height:30px;border-radius:50%;background-size:cover;' +
+            'background-position:center;background-color:var(--gray-100);flex:none;}',
+            // [E] edit by smsong
             '.cw-ic{flex:none;display:inline-flex;}',
             '.cw-tag{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:999px;flex:none;}',
             '.cw-tag.sch{background:#e3f1e8;color:#2e6e56;}',
@@ -8397,7 +8492,9 @@ document.addEventListener('DOMContentLoaded', () => {
             '.tg-title{font-size:0.7rem;font-weight:600;line-height:1.35;text-align:center;' +
             'overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}',
             // 일정 작성 카드
-            '#cw-form{position:fixed;inset:0;z-index:2700;background:rgba(45,38,32,.52);display:flex;align-items:center;justify-content:center;padding:22px;}',
+            // [B][E] edit by smsong - 상세(#cw-detail:2720) 위에 겹쳐 뜨도록 z-index 를 올린다.
+            //  폼을 닫으면 아래 상세가 그대로 남아 '이전 화면'으로 돌아간다.
+            '#cw-form{position:fixed;inset:0;z-index:2780;background:rgba(45,38,32,.52);display:flex;align-items:center;justify-content:center;padding:22px;}',
             '#cw-form .cw-card{width:100%;max-width:360px;max-height:88dvh;overflow-y:auto;background:var(--white);' +
             'border-radius:22px;padding:20px;animation:cwPop .3s cubic-bezier(.2,.8,.3,1);}',
             '.cw-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}',
@@ -8555,6 +8652,19 @@ document.addEventListener('DOMContentLoaded', () => {
         render();
         openScheduleDetail(sc, key);
         return true;
+    };
+    // [E] edit by smsong
+
+    // [B] edit by smsong - 겹쳐 뜬 레이어를 '가장 위 하나'만 닫는다.
+    //  ESC / 뒤로가기 성격의 공용 핸들러(dismissTopLayer)가 호출한다.
+    //  닫을 게 있었으면 true, 없으면 false 를 돌려준다.
+    Daylog._dismissCalendarLayer = function () {
+        if (document.getElementById('cw-form')) { closeScheduleForm(); return true; }
+        var mp = document.getElementById('cw-mp');
+        if (mp) { if (mp.parentNode) mp.parentNode.removeChild(mp); return true; }
+        if (document.getElementById('cw-detail')) { closeScheduleDetail(); return true; }
+        if (document.getElementById('cw-archive')) { closeArchive(); return true; }
+        return false;
     };
     // [E] edit by smsong
 
