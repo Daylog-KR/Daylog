@@ -89,7 +89,9 @@ window.addEventListener('pageshow', function () {
     var DEF = {
         pageSize: 5,      // 한 번에 더 노출할 '항목' 수
         windowRows: 10,   // DOM 에 동시에 유지할 최소 '행' 수 (화면이 더 길면 필요한 만큼만 늘어남)
-        buffer: 200,      // 화면 위/아래 여유 px (스크롤 시 빈 칸이 보이지 않게)
+        buffer: 900,      // [B][E] edit by smsong - #33 화면 위/아래 여유 px.
+                          //  200px(=행 1.7개)면 사진이 화면에 들어오는 순간에야 로드가 시작돼
+                          //  회색 칸이 보였다 채워지는 '깜빡임'이 났다. 미리 마운트해 디코드를 끝낸다.
         estimate: 116,    // 아직 한 번도 그려보지 않은 행의 높이 추정치(px)
         loadDelay: 280,   // 로딩 폼이 최소한 이만큼은 보이도록 (깜빡임 방지)
         nearBottom: 240,  // 바닥에서 이만큼 남으면 다음 페이지 요청
@@ -196,7 +198,25 @@ window.addEventListener('pageshow', function () {
 
         function buildRows() {
             rows = o.rowsOf(items.slice(0, loaded)) || [];
+            prefetchRows();     // [B][E] edit by smsong - #33
         }
+
+        // [B] edit by smsong - #33 노출된 항목의 썸네일을 미리 받아 둔다.
+        //  가상 스크롤은 화면에 들어올 때 <img> 를 붙이는데, 그때 처음 네트워크를 타면
+        //  회색 칸 → 사진으로 튄다. 미리 캐시에 올려두면 붙는 즉시 그려진다.
+        //  (노출된 항목 수만큼만 — 5 → 10 → 15 … 이므로 부담이 없다)
+        var prefetched = {};
+        function prefetchRows() {
+            if (!o.prefetchOf) return;
+            for (var i = 0; i < rows.length; i++) {
+                var u;
+                try { u = o.prefetchOf(rows[i]); } catch (e) { u = null; }
+                if (!u || prefetched[u]) continue;
+                prefetched[u] = 1;
+                try { var im = new Image(); im.decoding = 'async'; im.src = u; } catch (e) {}
+            }
+        }
+        // [E] edit by smsong
 
         // 렌더된 행들의 실제 높이를 측정해 heights 에 반영.
         // offsetTop 차이로 재므로 margin(및 margin collapsing)이 자연스럽게 포함된다.
@@ -359,8 +379,16 @@ window.addEventListener('pageshow', function () {
             /** 전체 목록 교체. 내용이 같으면 지금까지 펼친 페이지/스크롤을 유지한다. */
             setItems: function (list) {
                 var arr = list || [];
+                // [B] edit by smsong - #33 목록 동일 여부에 '내용'까지 포함한다.
+                //  예전엔 id 나열만 비교해서, 같은 목록을 다시 받으면 same=true 인데도
+                //  아래에서 DOM 을 통째로 다시 만들었다(= 깜빡임). 반대로 id 는 같고 내용만 바뀐
+                //  경우를 못 잡는 문제도 있었다. updatedAt/정렬키까지 넣어 둘 다 해결한다.
                 var newSig = o.sigOf ? o.sigOf(arr)
-                                     : arr.map(function (x) { return x && x.id; }).join(',');
+                                     : arr.map(function (x) {
+                                           if (!x) return '';
+                                           return x.id + '@' + (x.updatedAt || x.createdAt || '') +
+                                                  '#' + (x.sortOrder == null ? '' : x.sortOrder);
+                                       }).join(',');
                 var same = (newSig === sig && feedEl.contains(rowsEl));
                 sig = newSig;
                 items = arr;
@@ -371,19 +399,18 @@ window.addEventListener('pageshow', function () {
                     feedEl.innerHTML = o.emptyHtml || '';
                     return;
                 }
-                // [B] edit by smsong - #33 데이터가 새로 들어왔으면 재사용 캐시를 버린다.
-                //  (id 목록이 같아도 제목·썸네일 등 내용이 바뀌었을 수 있으므로 이때는 다시 그린다.
-                //   깜빡임의 원인이던 '스크롤 중 재생성'은 아래 layout 경로에서 계속 재사용된다)
-                dropMounted();
-                // [E] edit by smsong
+                // [B] edit by smsong - #33 내용이 실제로 바뀐 경우에만 재사용 캐시를 버린다.
+                //  같은 목록을 다시 받은 것뿐이면 DOM 을 그대로 두어 이미지가 다시 그려지지 않게 한다.
                 if (same) {
                     loaded = Math.min(Math.max(loaded, o.pageSize), items.length);
                 } else {
+                    dropMounted();
                     loaded = Math.min(o.pageSize, items.length);
                     winStart = winEnd = -1;
                     mount();
                     if (o.onData) { try { o.onData(items); } catch (err) { console.warn('[Daylog] onData:', err); } }
                 }
+                // [E] edit by smsong
                 buildRows();
                 layout(true);
             },
@@ -545,7 +572,6 @@ window.addEventListener('pageshow', function () {
         '.lm-tile-art.empty{background:var(--primary-light);color:var(--primary-dark);}',
         // [B][E] edit by smsong - #19 기본 opacity:1 (onload 미발화 시 빈 칸 방지)
         '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
-        '.lm-tile-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
         '.lm-tile-img.no-fade{animation:none!important;}',   // [B][E] edit by smsong - #33 재등장 시 페이드 없음
         '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
         'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
@@ -899,6 +925,12 @@ const Daylog = {
 // 하단 네비/헤더와 통일된 부드러운 라인 스타일.
 // ==========================================
 const ICON_PATHS = {
+    // [B] edit by smsong - #34 순서 조정 (목록 + 위/아래 화살표) / 드래그 핸들
+    reorder:  '<path d="M9 6h12"/><path d="M9 12h12"/><path d="M9 18h12"/><path d="M3 8.5L5 6l2 2.5"/><path d="M3 15.5L5 18l2-2.5"/>',
+    grip:     '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
+    chevronUp:   '<polyline points="6 15 12 9 18 15"/>',
+    chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+    // [E] edit by smsong
     search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
     pin:      '<path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     camera:   '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
@@ -1745,7 +1777,7 @@ function thumbHtml(mediaURL, cls) {
     if (mediaURL) {
         const thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
+            '" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
@@ -1852,7 +1884,7 @@ Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
     if (mediaURL) {
         var thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
+            '" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
 };
@@ -1951,7 +1983,34 @@ function splitKoreanAddress(full) {
     };
 }
 
-function sortByDateDesc(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }
+// [B] edit by smsong - #34 추억 정렬 기준을 한 곳에서 관리한다.
+//  우선순위: ① 날짜 내림차순 → ② 같은 날짜 안에서는 사용자가 지정한 순서(sortOrder) → ③ 미지정이면 최신순
+//  추억이 나오는 모든 화면(타임라인 리스트/그리드, 지도 순회, 목록 모달, 멤버별 목록)이
+//  이 비교자 하나를 쓰므로, 여기만 바꾸면 지정한 순서가 전 화면에 그대로 적용된다.
+//  · 서버가 내려주는 memory.sortOrder 를 기본으로 쓰고,
+//  · 방금 조정해서 아직 서버에 반영되기 전이면 로컬 오버라이드(_orderMap)를 우선한다.
+//  · 체크리스트도 같은 비교자를 쓰는데, sortOrder 가 없으므로 기존과 동일하게 날짜순으로 동작한다.
+var MEMORY_ORDER_KEY = 'daylog_memory_order';
+Daylog._orderMap = (function () {
+    try { return JSON.parse(localStorage.getItem(MEMORY_ORDER_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+function memOrderOf(m) {
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    var local = Daylog._orderMap[String(m.id)];
+    if (local != null && local !== '') return Number(local);
+    if (m.sortOrder != null) return Number(m.sortOrder);
+    return Number.MAX_SAFE_INTEGER;   // 미지정 → 아래 최신순 규칙으로
+}
+function dayKeyOf(x) { return String((x && x.createdAt) || '').substring(0, 10); }
+function sortByDateDesc(a, b) {
+    var da = dayKeyOf(a), db = dayKeyOf(b);
+    if (da !== db) return da < db ? 1 : -1;            // 날짜 내림차순
+    var oa = memOrderOf(a), ob = memOrderOf(b);
+    if (oa !== ob) return oa - ob;                     // 같은 날: 지정 순서 오름차순
+    return new Date(b.createdAt) - new Date(a.createdAt);
+}
+// [E] edit by smsong
 
 // ==========================================
 // 2. 메인 앱 로직
@@ -3511,6 +3570,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 },
                 renderRow: function (row) { return _clCardEl(row.item); },
+                // [B][E] edit by smsong - #33 썸네일 선행 로드
+                prefetchOf: function (row) {
+                    return (row.item && coverUrlOf(row.item)) ? Daylog.thumbUrlOf(coverUrlOf(row.item)) : null;
+                },
                 onWindow: function () {
                     applyCommentBadges('checklist');
                     if (Daylog._fixThumbs) Daylog._fixThumbs();   // [B][E] #19 썸네일 안전망
@@ -3833,7 +3896,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cover) {
             t.innerHTML =
                 '<img class="tg-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
-                '" loading="lazy" decoding="async" alt=""' +
+                '" decoding="async" alt=""' +
                 ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">' +
                 (many ? '<span class="tg-multi" aria-label="사진 여러 장">' +
                     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -4025,7 +4088,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (items.length) {
                 var cover = coverUrlOf(items[0]);
                 var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
-                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" decoding="async" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
                 else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
                 if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
             }
@@ -4261,7 +4324,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const head = document.createElement('div');
         head.className = 'tl-date-head';
         head.innerHTML = '<span class="tl-date-dot"></span>' +
-            '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
+            '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>' +
+            // [B] edit by smsong - #34 이 날짜의 추억 순서 조정 (아이콘만)
+            '<button type="button" class="tl-date-sort" title="이 날짜 추억 순서 조정" aria-label="이 날짜 추억 순서 조정">' +
+                icon('reorder', 16) + '</button>';
+        // [B] edit by smsong - #34 클릭 → 그 날짜의 추억만 모아 순서 조정 시트
+        const sortBtn = head.querySelector('.tl-date-sort');
+        if (sortBtn) sortBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const items = [...memoryList]
+                .filter(function (m) { return ((m.createdAt || '').substring(0, 10) || '날짜미상') === dateKey; })
+                .sort(sortByDateDesc);
+            Daylog.openMemoryOrder(dateKey, items, function () {
+                // 저장된 순서를 즉시 반영 — 타임라인/그리드/지도/목록 모두 sortByDateDesc 를 쓴다
+                renderTimeline([...memoryList].sort(sortByDateDesc));
+                try { refreshMapMarkers(); } catch (err) {}
+            });
+        });
+        // [E] edit by smsong
         return head;
     }
 
@@ -4331,6 +4411,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 renderRow: function (row) {
                     return (row.type === 'head') ? _tlDateHeadEl(row.date) : _tlCardEl(row.item);
+                },
+                // [B][E] edit by smsong - #33 썸네일 선행 로드
+                prefetchOf: function (row) {
+                    return (row.item && coverUrlOf(row.item)) ? Daylog.thumbUrlOf(coverUrlOf(row.item)) : null;
                 },
                 onWindow: function () {
                     applyCommentBadges('memory');
@@ -6631,7 +6715,7 @@ function _lmTileEl(item, kind) {
     if (cover) {
         // 타임라인/가볼곳 카드와 동일한 방식: 소형 썸네일 + lazy + onerror 원본 폴백
         art = '<img class="lm-tile-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
-              '" loading="lazy" decoding="async" alt=""' +
+              '" decoding="async" alt=""' +
               ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
     } else {
         art = '<span class="lm-tile-ic">' + icon(kind === 'checklist' ? 'bookmark' : 'book', 26) + '</span>';
@@ -8380,7 +8464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var when = c.visitedDate ? String(c.visitedDate).substring(0, 10).replace(/-/g, '.') : '';
             var cover = coverUrlOf(c);
             var thumb = cover
-                ? '<img class="cw-th" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover + '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)">'
+                ? '<img class="cw-th" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover + '" decoding="async" alt="" onerror="Daylog._thumbFallback(this)">'
                 : '<span class="cw-th empty">' + icon('bookmark', 18) + '</span>';
             return '<div class="cw-arow" data-id="' + c.id + '">' +
                 '<span class="cw-sel" aria-hidden="true"></span>' + thumb +
@@ -8855,5 +8939,249 @@ document.addEventListener('DOMContentLoaded', () => {
 
     Daylog._reloadCalendar = function () { return withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...'); };
     Daylog._calendarView = function () { return _clView; };
+})();
+// [E] edit by smsong
+
+// ==========================================================================
+// [B] edit by smsong - #34 추억 순서 조정
+//
+//  타임라인 '리스트로 보기'의 각 날짜 줄 맨 오른쪽 [순서] 버튼 → 그 날짜의 추억만 모아
+//  드래그(또는 ↑/↓)로 순서를 바꾸고 저장한다.
+//  저장한 순서는 sortByDateDesc 를 통해 추억이 나오는 모든 화면에 그대로 적용된다.
+//
+//  저장 경로
+//   1) 서버: PUT /api/memories/order   body: { items:[{id, sortOrder}, ...] }
+//   2) 로컬: localStorage(daylog_memory_order) — 서버 저장이 실패해도 화면 순서는 유지된다.
+//      (서버 엔드포인트가 아직 없으면 로컬만으로도 동작한다)
+// ==========================================================================
+(function () {
+    'use strict';
+
+    function injectStyle() {
+        if (document.getElementById('mo-style')) return;
+        var css =
+            '#mo-overlay{position:fixed;inset:0;z-index:2800;background:rgba(45,38,32,.52);' +
+                'display:flex;align-items:flex-end;justify-content:center;animation:moFade .18s ease;}' +
+            '@media (min-width:600px){#mo-overlay{align-items:center;}}' +
+            '#mo-card{width:100%;max-width:520px;max-height:86dvh;display:flex;flex-direction:column;' +
+                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
+                'animation:moUp .26s cubic-bezier(.2,.8,.3,1);}' +
+            '@media (min-width:600px){#mo-card{border-radius:22px;}}' +
+            '.mo-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
+                'border-bottom:1px solid var(--gray-100,#f1ece4);}' +
+            '.mo-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#3a3128);}' +
+            '.mo-head .mo-date{font-size:0.8rem;color:var(--gray-500,#9a8f82);font-weight:600;}' +
+            '.mo-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
+                'color:var(--gray-400,#a99e90);cursor:pointer;padding:0 4px;}' +
+            '.mo-hint{padding:10px 18px 0;font-size:0.78rem;color:var(--gray-500,#9a8f82);line-height:1.5;}' +
+            '#mo-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 14px 6px;' +
+                'list-style:none;margin:0;}' +
+            '.mo-row{display:flex;align-items:center;gap:11px;padding:9px 10px;margin-bottom:8px;' +
+                'background:var(--white,#fff);border:1px solid var(--gray-200,#e8e0d6);border-radius:14px;' +
+                'touch-action:none;user-select:none;-webkit-user-select:none;}' +
+            '.mo-row.dragging{opacity:.9;border-color:var(--primary,#b08968);' +
+                'box-shadow:0 10px 24px rgba(0,0,0,.16);transform:scale(1.01);}' +
+            '.mo-no{flex:none;width:20px;text-align:center;font-size:0.76rem;font-weight:800;' +
+                'color:var(--primary-dark,#7f5539);}' +
+            '.mo-thumb{flex:none;width:44px;height:44px;border-radius:10px;overflow:hidden;' +
+                'background:var(--gray-100,#f1ece4);position:relative;}' +
+            '.mo-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
+            '.mo-body{flex:1;min-width:0;}' +
+            '.mo-title{font-size:0.9rem;font-weight:700;color:var(--gray-800,#3a3128);' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.mo-sub{font-size:0.76rem;color:var(--gray-500,#9a8f82);margin-top:2px;' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.mo-moves{display:flex;flex-direction:column;gap:2px;flex:none;}' +
+            '.mo-mv{border:none;background:transparent;color:var(--gray-400,#a99e90);cursor:pointer;' +
+                'padding:1px 4px;line-height:1;}' +
+            '.mo-mv:disabled{opacity:.28;cursor:default;}' +
+            '.mo-grip{flex:none;color:var(--gray-400,#a99e90);cursor:grab;padding:6px 2px;touch-action:none;}' +
+            '.mo-grip:active{cursor:grabbing;}' +
+            '.mo-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
+                'border-top:1px solid var(--gray-100,#f1ece4);}' +
+            '.mo-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
+                'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
+            '.mo-btn.ghost{background:var(--gray-100,#f1ece4);color:var(--gray-600,#6f645a);}' +
+            '.mo-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
+            '.mo-btn:disabled{opacity:.6;cursor:default;}' +
+            '@keyframes moFade{from{opacity:0}to{opacity:1}}' +
+            '@keyframes moUp{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}';
+        var st = document.createElement('style');
+        st.id = 'mo-style';
+        st.textContent = css;
+        document.head.appendChild(st);
+    }
+
+    function esc(s) {
+        return (s == null ? '' : String(s))
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function close() {
+        var ov = document.getElementById('mo-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+
+    function renumber(listEl) {
+        var kids = listEl.children;
+        for (var i = 0; i < kids.length; i++) {
+            var no = kids[i].querySelector('.mo-no');
+            if (no) no.textContent = String(i + 1);
+            var up = kids[i].querySelector('.mo-up');
+            var dn = kids[i].querySelector('.mo-down');
+            if (up) up.disabled = (i === 0);
+            if (dn) dn.disabled = (i === kids.length - 1);
+        }
+    }
+
+    // 드래그 정렬 (포인터 이벤트 — 마우스/터치 공용)
+    function bindDrag(listEl) {
+        var dragEl = null;
+
+        function onMove(e) {
+            if (!dragEl) return;
+            if (e.cancelable) e.preventDefault();
+            var kids = Array.prototype.slice.call(listEl.children);
+            var di = kids.indexOf(dragEl);
+            var y = e.clientY;
+            for (var i = 0; i < kids.length; i++) {
+                if (i === di) continue;
+                var box = kids[i].getBoundingClientRect();
+                var mid = box.top + box.height / 2;
+                if (i < di && y < mid) { listEl.insertBefore(dragEl, kids[i]); renumber(listEl); return; }
+                if (i > di && y > mid) { listEl.insertBefore(dragEl, kids[i].nextSibling); renumber(listEl); return; }
+            }
+        }
+        function onUp() {
+            if (dragEl) dragEl.classList.remove('dragging');
+            dragEl = null;
+            document.removeEventListener('pointermove', onMove);
+        }
+
+        listEl.addEventListener('pointerdown', function (e) {
+            var grip = e.target.closest ? e.target.closest('.mo-grip') : null;
+            if (!grip) return;
+            var row = grip.closest('.mo-row');
+            if (!row) return;
+            if (e.cancelable) e.preventDefault();
+            dragEl = row;
+            row.classList.add('dragging');
+            document.addEventListener('pointermove', onMove, { passive: false });
+            document.addEventListener('pointerup', onUp, { once: true });
+            document.addEventListener('pointercancel', onUp, { once: true });
+        });
+    }
+
+    // 저장: 로컬 즉시 반영 + 서버 시도
+    function persist(ids) {
+        var payload = ids.map(function (id, i) { return { id: id, sortOrder: i }; });
+        payload.forEach(function (p) { Daylog._orderMap[String(p.id)] = p.sortOrder; });
+        try { localStorage.setItem('daylog_memory_order', JSON.stringify(Daylog._orderMap)); } catch (e) {}
+
+        if (!(Daylog && Daylog.api)) return Promise.resolve(false);
+        return fetch(Daylog.api + '/api/memories/order', {
+            method: 'PUT',
+            headers: Daylog.authHeaders(true),
+            body: JSON.stringify({ items: payload })
+        }).then(function (r) { return !!(r && r.ok); })
+          .catch(function () { return false; });
+    }
+
+    /**
+     * 순서 조정 시트 열기
+     * @param {string} dateKey  'YYYY-MM-DD'
+     * @param {Array}  items    그 날짜의 추억 배열(현재 화면 순서대로)
+     * @param {Function} onSaved 저장 후 콜백(목록 다시 그리기)
+     */
+    Daylog.openMemoryOrder = function (dateKey, items, onSaved) {
+        if (!items || items.length < 2) {
+            if (typeof showToast === 'function') showToast('이 날짜에는 조정할 추억이 2개 이상 필요해요');
+            return;
+        }
+        injectStyle();
+        close();
+
+        var rowsHtml = items.map(function (m, i) {
+            var cover = (typeof coverUrlOf === 'function') ? coverUrlOf(m) : (m.mediaURL || '');
+            var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
+            var sub = [m.placeName, m.address].filter(Boolean).join(' ');
+            return '<li class="mo-row" data-id="' + esc(m.id) + '">' +
+                '<span class="mo-no">' + (i + 1) + '</span>' +
+                '<div class="mo-thumb">' + (thumb
+                    ? '<img src="' + esc(thumb) + '" data-full="' + esc(cover) + '" alt="" decoding="async" ' +
+                      'onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">'
+                    : '') + '</div>' +
+                '<div class="mo-body">' +
+                    '<div class="mo-title">' + esc(m.title || '(제목 없음)') + '</div>' +
+                    (sub ? '<div class="mo-sub">' + esc(sub) + '</div>' : '') +
+                '</div>' +
+                '<div class="mo-moves">' +
+                    '<button type="button" class="mo-mv mo-up" aria-label="위로">' + icon('chevronUp', 15) + '</button>' +
+                    '<button type="button" class="mo-mv mo-down" aria-label="아래로">' + icon('chevronDown', 15) + '</button>' +
+                '</div>' +
+                '<span class="mo-grip" aria-hidden="true">' + icon('grip', 18) + '</span>' +
+            '</li>';
+        }).join('');
+
+        var ov = document.createElement('div');
+        ov.id = 'mo-overlay';
+        ov.innerHTML =
+            '<div id="mo-card" role="dialog" aria-modal="true" aria-label="추억 순서 조정">' +
+                '<div class="mo-head">' +
+                    icon('reorder', 18) +
+                    '<h3>순서 조정</h3>' +
+                    '<span class="mo-date">' + esc(String(dateKey).replace(/-/g, '.')) + '</span>' +
+                    '<button type="button" class="mo-x" aria-label="닫기">&times;</button>' +
+                '</div>' +
+                '<p class="mo-hint">손잡이를 끌거나 ↑ ↓ 버튼으로 순서를 바꾸세요. ' +
+                    '저장하면 이 순서가 지도·목록 등 추억이 보이는 모든 화면에 적용됩니다.</p>' +
+                '<ul id="mo-list">' + rowsHtml + '</ul>' +
+                '<div class="mo-foot">' +
+                    '<button type="button" class="mo-btn ghost" id="mo-cancel">취소</button>' +
+                    '<button type="button" class="mo-btn primary" id="mo-save">저장</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        var listEl = document.getElementById('mo-list');
+        renumber(listEl);
+        bindDrag(listEl);
+
+        // ↑ / ↓ 버튼
+        listEl.addEventListener('click', function (e) {
+            var btn = e.target.closest ? e.target.closest('.mo-mv') : null;
+            if (!btn) return;
+            var row = btn.closest('.mo-row');
+            if (!row) return;
+            if (btn.classList.contains('mo-up')) {
+                var prev = row.previousElementSibling;
+                if (prev) listEl.insertBefore(row, prev);
+            } else {
+                var next = row.nextElementSibling;
+                if (next) listEl.insertBefore(next, row);
+            }
+            renumber(listEl);
+        });
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        ov.querySelector('.mo-x').addEventListener('click', close);
+        document.getElementById('mo-cancel').addEventListener('click', close);
+
+        document.getElementById('mo-save').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = '저장 중…';
+            var ids = Array.prototype.map.call(listEl.children, function (li) {
+                return li.getAttribute('data-id');
+            });
+            persist(ids).then(function (serverOk) {
+                close();
+                if (typeof showToast === 'function') {
+                    showToast(serverOk ? '순서를 저장했어요' : '순서를 이 기기에 저장했어요 (서버 반영 실패)');
+                }
+                if (typeof onSaved === 'function') onSaved();
+            });
+        });
+    };
 })();
 // [E] edit by smsong
