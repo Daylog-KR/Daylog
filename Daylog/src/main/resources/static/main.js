@@ -3878,6 +3878,16 @@ document.addEventListener('DOMContentLoaded', () => {
         cont.innerHTML = html;
         _applyCalColor(); // [B] edit by smsong - 저장된 추억 날짜 색상 적용
 
+        // [B][E] edit by smsong - #16 타임라인 달력도 "년월" 클릭으로 이동
+        var _tmv = cont.querySelector('.cal-month');
+        if (_tmv && Daylog._openMonthPicker) {
+            _tmv.classList.add('cal-month-pick');
+            _tmv.addEventListener('click', function () {
+                Daylog._openMonthPicker(_calYear, _calMonth, function (y2, m2) {
+                    _calYear = y2; _calMonth = m2; renderCalendar();
+                });
+            });
+        }
         var prev = document.getElementById('cal-prev');
         var next = document.getElementById('cal-next');
         if (prev) prev.addEventListener('click', function () { _calMonth--; if (_calMonth < 0) { _calMonth = 11; _calYear--; } renderCalendar(); });
@@ -7507,6 +7517,14 @@ document.addEventListener('DOMContentLoaded', () => {
         html += '<div id="cw-daypanel" class="cw-daypanel"></div>';
         cont.innerHTML = html;
 
+        // [B][E] edit by smsong - #16 "2026년 8월" 클릭 → 년월 선택
+        var _mv = cont.querySelector('.cal-month');
+        if (_mv) {
+            _mv.classList.add('cal-month-pick');
+            _mv.addEventListener('click', function () {
+                openMonthPicker(_cy, _cm, function (y2, m2) { _cy = y2; _cm = m2; render(); });
+            });
+        }
         document.getElementById('cw-prev').addEventListener('click', function () {
             _cm--; if (_cm < 0) { _cm = 11; _cy--; } render();
         });
@@ -7527,6 +7545,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     Daylog._renderChecklistCalendar = render;
 
+    // ===================== 년·월 선택기 =====================
+    //  달력 헤더의 "2026년 8월" 을 누르면 뜬다. 체크리스트 달력과 타임라인 달력이 함께 쓴다.
+    function openMonthPicker(y, m, onPick) {
+        var old = document.getElementById('cw-mp');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+
+        var cy = y, now = new Date();
+        var ov = document.createElement('div');
+        ov.id = 'cw-mp';
+        function paint() {
+            var months = '';
+            for (var i = 0; i < 12; i++) {
+                var on = (cy === y && i === m);
+                var isNow = (cy === now.getFullYear() && i === now.getMonth());
+                months += '<button type="button" class="cw-mp-m' + (on ? ' on' : '') + (isNow ? ' now' : '') +
+                          '" data-m="' + i + '">' + (i + 1) + '월</button>';
+            }
+            ov.innerHTML =
+                '<div class="cw-mp-card" role="dialog" aria-modal="true" aria-label="년월 선택">' +
+                    '<div class="cw-mp-y">' +
+                        '<button type="button" class="cw-mp-nav" data-d="-1" aria-label="이전 해">‹</button>' +
+                        '<span class="cw-mp-yv">' + cy + '년</span>' +
+                        '<button type="button" class="cw-mp-nav" data-d="1" aria-label="다음 해">›</button>' +
+                    '</div>' +
+                    '<div class="cw-mp-grid">' + months + '</div>' +
+                    '<button type="button" class="cw-mp-today" id="cw-mp-today">오늘로</button>' +
+                '</div>';
+            ov.querySelectorAll('.cw-mp-nav').forEach(function (b) {
+                b.addEventListener('click', function () { cy += Number(b.getAttribute('data-d')); paint(); });
+            });
+            ov.querySelectorAll('.cw-mp-m').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    close(); onPick(cy, Number(b.getAttribute('data-m')));
+                });
+            });
+            document.getElementById('cw-mp-today').addEventListener('click', function () {
+                close(); onPick(now.getFullYear(), now.getMonth());
+            });
+        }
+        function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+        document.body.appendChild(ov);
+        paint();
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    }
+    Daylog._openMonthPicker = openMonthPicker;
+
     // ===================== 그날의 목록 (달력 아래 인라인 패널) =====================
     //  시트로 덮지 않고 달력 밑 여백에 그대로 펼친다. 날짜를 누를 때마다 이 영역만 다시 그린다.
     function renderDay(key) {
@@ -7541,22 +7605,25 @@ document.addEventListener('DOMContentLoaded', () => {
         var dow = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
         var total = it.s.length + it.c.length;
 
+        // [B] edit by smsong - #16 추가 버튼을 날짜 오른쪽에 작게 가로 배치
         var addBtns =
             '<div class="cw-addrow">' +
-                '<button type="button" class="cw-addbtn" id="cw-add-s">' + icon('calendar', 15) + ' 일정 추가</button>' +
-                '<button type="button" class="cw-addbtn" id="cw-add-c">' + icon('bookmark', 15) + ' 체크리스트 추가</button>' +
+                '<button type="button" class="cw-addbtn" id="cw-add-s">' + icon('plus', 12) + ' 일정</button>' +
+                '<button type="button" class="cw-addbtn" id="cw-add-c">' + icon('plus', 12) + ' 체크리스트</button>' +
             '</div>';
 
         var html =
             '<div class="cw-dp-head">' +
                 '<div class="cw-dp-date">' + esc(full) + ' <span class="cw-dp-dow">' + dow + '</span></div>' +
                 (total ? '<span class="cw-dp-cnt">' + total + '</span>' : '') +
+                addBtns +
             '</div>';
+        // [E] edit by smsong
 
         if (!total) {
             html += '<div class="cw-dp-empty">' +
                 '<span class="cw-dp-ic">' + icon('calendar', 30) + '</span>' +
-                '<p>' + esc(full) + '에<br>등록된 일정과 체크리스트가 없어요</p></div>' + addBtns;
+                '<p>등록된 일정과 체크리스트가 없어요</p></div>';
             box.innerHTML = html;
             bindAdd(key);
             return;
@@ -7585,7 +7652,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '</div>';
         });
 
-        box.innerHTML = html + '<div class="cw-dp-list">' + rows + '</div>' + addBtns;
+        box.innerHTML = html + '<div class="cw-dp-list">' + rows + '</div>';
 
         // 일정 완료 토글
         box.querySelectorAll('.cw-check').forEach(function (b) {
@@ -7940,8 +8007,9 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-more{font-size:0.56rem;font-weight:700;color:var(--gray-400);}',
             // 달력 아래 인라인 패널
             '.cw-daypanel{margin-top:16px;padding-top:14px;border-top:1px solid var(--gray-200);}',
-            '.cw-dp-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;}',
-            '.cw-dp-date{font-family:var(--font-logo),var(--font-main);font-size:1.02rem;font-weight:600;color:var(--gray-800);}',
+            '.cw-dp-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}',
+            '.cw-dp-date{font-family:var(--font-logo),var(--font-main);font-size:1.02rem;font-weight:600;' +
+            'color:var(--gray-800);white-space:nowrap;}',
             '.cw-dp-dow{font-family:var(--font-main);font-size:0.78rem;font-weight:600;color:var(--gray-400);}',
             '.cw-dp-cnt{font-size:0.7rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);' +
             'border-radius:999px;padding:2px 8px;}',
@@ -7949,11 +8017,34 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-dp-ic{display:inline-flex;color:var(--primary-light);margin-bottom:8px;}',
             '.cw-dp-empty p{margin:0;font-size:0.86rem;line-height:1.6;}',
             '.cw-dp-list{margin-bottom:4px;}',
-            '.cw-addrow{display:flex;gap:9px;margin-top:12px;}',
-            '.cw-addbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;' +
-            'border:1px dashed var(--primary-light);border-radius:13px;padding:12px 8px;background:transparent;' +
-            'color:var(--primary-dark);font-family:inherit;font-size:0.84rem;font-weight:600;cursor:pointer;white-space:nowrap;}',
-            '.cw-addbtn:active{background:var(--gray-100);}',
+            // #16 날짜 오른쪽에 붙는 작은 추가 버튼
+            '.cw-addrow{display:flex;gap:6px;margin-left:auto;flex:none;}',
+            '.cw-addbtn{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;' +
+            'border:1px solid var(--primary-light);border-radius:999px;padding:6px 10px;background:transparent;' +
+            'color:var(--primary-dark);font-family:inherit;font-size:0.72rem;font-weight:600;cursor:pointer;line-height:1;}',
+            '.cw-addbtn:active{background:var(--primary-light);}',
+            // #16 년월 선택기
+            '.cal-month-pick{cursor:pointer;position:relative;padding-right:14px;}',
+            '.cal-month-pick::after{content:"";position:absolute;right:0;top:50%;width:6px;height:6px;' +
+            'margin-top:-4px;border-right:2px solid var(--gray-400);border-bottom:2px solid var(--gray-400);' +
+            'transform:rotate(45deg);}',
+            '#cw-mp{position:fixed;inset:0;z-index:2750;background:rgba(45,38,32,.52);' +
+            'display:flex;align-items:center;justify-content:center;padding:24px;animation:cwFade .18s ease;}',
+            '#cw-mp .cw-mp-card{width:100%;max-width:320px;background:var(--white);border-radius:22px;padding:18px;' +
+            'animation:cwPop .28s cubic-bezier(.2,.8,.3,1);}',
+            '.cw-mp-y{display:flex;align-items:center;justify-content:center;gap:18px;margin-bottom:14px;}',
+            '.cw-mp-yv{font-family:var(--font-logo),var(--font-main);font-size:1.18rem;font-weight:600;color:var(--gray-800);min-width:74px;text-align:center;}',
+            '.cw-mp-nav{border:none;background:transparent;font-size:1.5rem;line-height:1;color:var(--gray-500);' +
+            'cursor:pointer;padding:2px 10px;border-radius:8px;}',
+            '.cw-mp-nav:active{background:var(--gray-100);}',
+            '.cw-mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}',
+            '.cw-mp-m{border:1px solid transparent;background:var(--gray-100);border-radius:12px;padding:11px 0;' +
+            'font-family:inherit;font-size:0.86rem;font-weight:600;color:var(--gray-600);cursor:pointer;}',
+            '.cw-mp-m.now{border-color:var(--primary-light);}',
+            '.cw-mp-m.on{background:var(--primary);color:#fff;}',
+            '.cw-mp-today{margin-top:14px;width:100%;border:none;border-radius:12px;padding:11px;' +
+            'background:transparent;color:var(--gray-500);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;}',
+            '.cw-mp-today:active{background:var(--gray-100);}',
             '.cw-row{display:flex;align-items:center;gap:11px;padding:12px 2px;border-bottom:1px solid var(--gray-100);}',
             '.cw-row.cl{cursor:pointer;}',
             '.cw-row.done .cw-row-title{text-decoration:line-through;color:var(--gray-400);}',
