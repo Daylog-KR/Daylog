@@ -479,7 +479,34 @@ window.addEventListener('pageshow', function () {
         '.dtl-author{display:flex;align-items:center;gap:8px;margin:0 0 17px;}',
         '.dtl-text{font-size:0.94rem;line-height:1.82;color:var(--gray-600);}',
         '.dtl-text p{margin:0;white-space:pre-line;}',
-        '.dtl-comments{margin-top:24px;padding-top:19px;border-top:1px solid var(--gray-200);}'
+        '.dtl-comments{margin-top:24px;padding-top:19px;border-top:1px solid var(--gray-200);}',
+
+        // ================= [B] edit by smsong - #9 목록 모달: 2열 사진 그리드 =================
+        '.lm-grid-mode .list-modal-body{padding:12px 14px calc(env(safe-area-inset-bottom) + 28px);}',
+        '.lm-grid-mode .modal-header h3{font-family:var(--font-logo),var(--font-main);font-size:1.3rem;' +
+        'font-weight:600;display:flex;align-items:center;gap:9px;}',
+        '.lm-count{font-family:var(--font-main);font-size:0.74rem;font-weight:600;color:var(--primary-dark);' +
+        'background:var(--primary-light);border-radius:999px;padding:2px 9px;line-height:1.6;}',
+        '.lm-grid{display:block;}',
+        '.lm-grid-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}',
+        '.lm-tile{display:flex;flex-direction:column;gap:7px;padding:0;border:none;background:none;' +
+        'text-align:left;cursor:pointer;font-family:inherit;min-width:0;}',
+        '.lm-tile:active{transform:scale(.975);}',
+        '.lm-tile{transition:transform .14s var(--ease-soft);}',
+        '.lm-tile-art{position:relative;display:flex;align-items:center;justify-content:center;' +
+        'aspect-ratio:1/1;width:100%;border-radius:15px;overflow:hidden;background:var(--gray-100);}',
+        '.lm-tile-art.empty{background:var(--primary-light);color:var(--primary-dark);}',
+        '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;' +
+        'transition:opacity .25s ease;}',
+        '.lm-tile-img.is-loaded{opacity:1;}',
+        '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
+        'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
+        'background:rgba(36,31,27,.56);color:#fdfbf7;}',
+        '.lm-tile-chip.done{background:rgba(46,110,86,.82);}',
+        '.lm-tile-title{font-size:0.86rem;font-weight:600;color:var(--gray-800);line-height:1.35;' +
+        'overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}',
+        '.lm-tile-meta{font-size:0.72rem;color:var(--gray-400);line-height:1.3;' +
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
     ].join('');
 
     var st = document.createElement('style');
@@ -682,6 +709,23 @@ const ME_ALIAS = ['송성민', 's s'];             // (표시용) '송성민'으
 
 // [smsong] 방(공유 공간) 컨텍스트 헬퍼
 function getRoomId() { return localStorage.getItem('selectedRoomId') || ''; }
+// [B] edit by smsong - #10 마지막으로 들어간 방을 기록해 둔다 (rooms.html 자동 입장용).
+//  · 푸시 알림 딥링크(main.html?room=..)로 바로 들어온 경우도 여기서 잡힌다.
+//  · 로그아웃하면 rooms.js 의 AUTH_KEYS 정리에서 이 키도 함께 지워진다
+//    → 재로그인 시에는 자동 입장하지 않고 방 목록이 뜬다.
+(function rememberLastRoom() {
+    try {
+        var id = localStorage.getItem('selectedRoomId');
+        if (!id) return;
+        localStorage.setItem('daylog_last_room', JSON.stringify({
+            id: id,
+            name: localStorage.getItem('selectedRoomName') || '',
+            type: localStorage.getItem('selectedRoomType') || '',
+            ownerUid: localStorage.getItem('selectedRoomOwnerUid') || ''
+        }));
+    } catch (e) {}
+})();
+// [E] edit by smsong
 // [B] edit by smsong - #2 방 타입은 서버에서 받은 roomInfo.type(권위) 우선, 없으면 localStorage.
 //  (알림 딥링크로 진입 시 localStorage 가 비어/오래돼 COUPLE 로 오판하던 버그 해결)
 function getRoomType() {
@@ -6015,83 +6059,170 @@ function openCommentedListModal(title, entries) {
     modal.classList.remove('hidden');
 }
 
-function openMemoryListModal(title, items) {
+// [B] edit by smsong - #9 목록 모달(우리의 추억 / ~의 추억 / ~의 체크리스트) 개편
+//
+//  바뀐 점
+//   1) 썸네일 왼쪽 + 텍스트 오른쪽의 줄 목록 → 2열 사진 그리드. 사진이 주인공이 된다.
+//   2) 타임라인/가볼곳과 같은 방식으로 이미지 표시 (서버 소형 썸네일 + lazy + 실패 시 원본 폴백).
+//   3) 최초 5개 → 아래로 스크롤하면 로딩 폼과 함께 5개씩. DOM 에는 보이는 만큼만 유지(가상 스크롤).
+//   4) 목록을 닫으면 페이지를 초기화해, 다시 열 때 항상 최신 5개부터 시작한다.
+//
+//  추억/가볼곳 두 목록이 같은 #list-modal-body 를 쓰므로 페이저는 하나만 만들고
+//  _lmMode 로 렌더러를 갈아끼운다. (스크롤 리스너가 중복 등록되지 않는다)
+var _lmMode = 'memory';
+var _lmPager = null;
+var _lmGrid = null;
+
+function _lmEnsureGrid() {
+    if (!_lmGrid) {
+        _lmGrid = document.createElement('div');
+        _lmGrid.className = 'lm-grid';
+    }
+    return _lmGrid;
+}
+
+// 타일 1개 — 사진 + 제목 + 메타
+function _lmTileEl(item, kind) {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'lm-tile';
+
+    const cover = coverUrlOf(item);
+    let art;
+    if (cover) {
+        // 타임라인/가볼곳 카드와 동일한 방식: 소형 썸네일 + lazy + onerror 원본 폴백
+        art = '<img class="lm-tile-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
+              '" loading="lazy" decoding="async" alt=""' +
+              ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+    } else {
+        art = '<span class="lm-tile-ic">' + icon(kind === 'checklist' ? 'bookmark' : 'book', 26) + '</span>';
+    }
+
+    let chip = '', meta = '';
+    if (kind === 'checklist') {
+        const m = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '', label: '가볼곳', color: '#b08968' };
+        chip = '<span class="lm-tile-chip' + (item.visited ? ' done' : '') + '">' +
+               (item.visited ? icon('check', 11) + ' 다녀옴' : '예정') + '</span>';
+        meta = escapeHtml([m.label, item.placeName || item.address || ''].filter(Boolean).join(' · '));
+    } else {
+        meta = escapeHtml(item.createdAt ? String(item.createdAt).substring(0, 10).replace(/-/g, '.') : '');
+    }
+
+    tile.innerHTML =
+        '<span class="lm-tile-art' + (cover ? '' : ' empty') + '">' + art + chip + '</span>' +
+        '<span class="lm-tile-title">' + escapeHtml(item.title || '') + '</span>' +
+        '<span class="lm-tile-meta">' + meta + '</span>';
+
+    tile.addEventListener('click', function () {
+        // 목록은 그대로 두고 상세를 그 위로 (over-modal)
+        if (kind === 'checklist') openChecklistDetail(item, true);
+        else openDetailModal(item, true);
+    });
+    return tile;
+}
+
+function _lmEnsurePager() {
+    if (_lmPager) return _lmPager;
+    const body = document.getElementById('list-modal-body');
+    if (!body || !window.DaylogFeed) return null;
+    _lmPager = window.DaylogFeed.create({
+        feedEl: _lmEnsureGrid(),
+        scrollEl: body,
+        pageSize: 5,      // 5개씩
+        windowRows: 6,    // 한 줄에 2개 → 6줄이면 화면을 충분히 덮는다
+        estimate: 196,    // 타일 1줄 추정 높이(px)
+        emptyHtml: '',    // 비어 있을 때는 각 open 함수가 직접 채운다
+        // 2개씩 묶어 한 줄로
+        rowsOf: function (list) {
+            var rows = [];
+            for (var i = 0; i < list.length; i += 2) {
+                var a = list[i], b = list[i + 1];
+                rows.push({ key: 'g:' + (a && a.id) + '-' + (b ? b.id : ''), items: b ? [a, b] : [a] });
+            }
+            return rows;
+        },
+        renderRow: function (row) {
+            var line = document.createElement('div');
+            line.className = 'lm-grid-row';
+            row.items.forEach(function (it) { line.appendChild(_lmTileEl(it, _lmMode)); });
+            if (row.items.length === 1) line.appendChild(document.createElement('span')); // 빈 칸 채움
+            return line;
+        }
+    });
+    return _lmPager;
+}
+
+// 목록 모달 공통 열기 — 제목/개수 세팅 후 페이저에 넘긴다
+function _lmOpen(title, items, kind, emptyHtml) {
     const modal = document.getElementById('list-modal');
     const titleEl = document.getElementById('list-modal-title');
     const body = document.getElementById('list-modal-body');
     if (!modal || !body) return;
+
+    _lmMode = kind;
     modal.classList.remove('dday-mode');
-    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
-    titleEl.textContent = title;
+    modal.classList.add('list-fullscreen');
+    modal.classList.add('lm-grid-mode');
+    titleEl.innerHTML = escapeHtml(title) +
+        ((items && items.length) ? '<span class="lm-count">' + items.length + '</span>' : '');
+
     body.innerHTML = '';
+    body.scrollTop = 0;
 
     if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book',40,'color:#b08968;') + '</span><p>표시할 추억이 없습니다</p></div>';
-    } else {
-        items.forEach(memory => {
-            const dateStr = memory.createdAt ? memory.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = Daylog.lmThumbHtml(coverUrlOf(memory), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
-            const row = document.createElement('div');
-            row.className = 'lm-row';
-            row.innerHTML =
-                thumb +
-                '<div class="lm-row-main">' +
-                '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' +
-                '<div class="lm-row-title">' + escapeHtml(memory.title || '') + '</div>' +
-                '<div class="lm-row-text">' + escapeHtml(memory.content || '') + '</div>' +
-                '</div>';
-            row.addEventListener('click', () => openDetailModal(memory, true)); // [smsong] 목록 유지 + 상세를 그 위로
-            body.appendChild(row);
-        });
+        modal.classList.remove('lm-grid-mode');
+        body.innerHTML = emptyHtml;
+        modal.classList.remove('hidden');
+        return;
     }
-    if (body) body.scrollTop = 0;
-    modal.classList.remove('hidden');
+
+    body.appendChild(_lmEnsureGrid());
+    modal.classList.remove('hidden');   // 먼저 보이게 해야 높이를 잴 수 있다
+
+    const pager = _lmEnsurePager();
+    if (pager) {
+        pager.reset();                  // 항상 최신 5개부터
+        pager.setItems(items);
+    } else {
+        // DaylogFeed 가 없을 때 폴백 — 전부 그린다
+        const g = _lmEnsureGrid();
+        g.innerHTML = '';
+        for (var i = 0; i < items.length; i += 2) {
+            var line = document.createElement('div');
+            line.className = 'lm-grid-row';
+            line.appendChild(_lmTileEl(items[i], kind));
+            if (items[i + 1]) line.appendChild(_lmTileEl(items[i + 1], kind));
+            g.appendChild(line);
+        }
+    }
+}
+
+function openMemoryListModal(title, items) {
+    _lmOpen(title, items, 'memory',
+        '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>표시할 추억이 없습니다</p></div>');
+}
+
+// 유저별 체크리스트 목록 모달 (추억 목록과 동일한 그리드, 클릭 시 가볼곳 상세)
+function openChecklistListModal(title, items) {
+    Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
+    _lmOpen(title, items, 'checklist',
+        '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>표시할 가볼곳이 없습니다</p></div>');
 }
 
 function closeListModal() {
     const modal = document.getElementById('list-modal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('dday-mode'); modal.classList.remove('list-fullscreen'); }
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('dday-mode');
+        modal.classList.remove('list-fullscreen');
+        modal.classList.remove('lm-grid-mode');
+    }
+    // 목록을 벗어나면 펼쳐 둔 페이지를 초기화 → 다시 열면 최신 5개부터
+    try { if (_lmPager) _lmPager.reset(); } catch (e) {}
     Daylog._openListKind = null;
 }
+// [E] edit by smsong
 
-// 유저별 체크리스트 목록 모달 (추억 목록과 동일한 UI, 클릭 시 가볼곳 상세)
-function openChecklistListModal(title, items) {
-    const modal = document.getElementById('list-modal');
-    const titleEl = document.getElementById('list-modal-title');
-    const body = document.getElementById('list-modal-body');
-    if (!modal || !body) return;
-    modal.classList.remove('dday-mode');
-    modal.classList.add('list-fullscreen'); // [smsong] 풀스크린 스타일
-    Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
-    titleEl.textContent = title;
-    body.innerHTML = '';
-
-    if (!items || !items.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>표시할 가볼곳이 없습니다</p></div>';
-    } else {
-        items.forEach(item => {
-            const meta = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: icon('bookmark',15), label: '' };
-            const loc = [item.placeName, item.address].filter(Boolean).join(' ');
-            const thumb = Daylog.lmThumbHtml(coverUrlOf(item), meta.emoji); // [smsong] lazy 썸네일
-            const badge = item.visited
-                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴</span>'
-                : '<span class="cl-todo-badge">가볼 예정</span>';
-            const row = document.createElement('div');
-            row.className = 'lm-row';
-            row.innerHTML =
-                thumb +
-                '<div class="lm-row-main">' +
-                '<div class="lm-row-date">' + escapeHtml(meta.label || '가볼곳') + ' · ' + badge + '</div>' +
-                '<div class="lm-row-title">' + escapeHtml(item.title || '') + '</div>' +
-                '<div class="lm-row-text">' + escapeHtml(loc || (item.content || '')) + '</div>' +
-                '</div>';
-            row.addEventListener('click', () => openChecklistDetail(item, true)); // [smsong] 목록 유지 + 상세를 그 위로
-            body.appendChild(row);
-        });
-    }
-    if (body) body.scrollTop = 0;
-    modal.classList.remove('hidden');
-}
 
 function showDDayInfo() {
     const modal = document.getElementById('list-modal');

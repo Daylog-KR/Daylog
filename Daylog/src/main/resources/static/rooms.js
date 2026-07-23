@@ -9,7 +9,75 @@ const API_BASE = (CFG && CFG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
 // 로그인 관련 로컬스토리지 키 (일괄 정리용)
-const AUTH_KEYS = ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid'];
+const AUTH_KEYS = ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid',
+    'daylog_last_room']; // [B] edit by smsong - #10 로그아웃하면 마지막 방 기록도 함께 지운다(재로그인 시 방 목록으로) [E]
+
+// ==========================================================================
+// [B] edit by smsong - #10 마지막 방 자동 입장
+//
+//  · 로그인이 유지된 채로 앱을 다시 열면 마지막에 들어갔던 방(main.html)으로 바로 이동한다.
+//  · 로그아웃 → 재로그인이면 AUTH_KEYS 정리에서 daylog_last_room 이 지워져 있으므로
+//    기록이 없어 자동 이동하지 않고 이 방 목록 화면이 그대로 뜬다.
+//  · 자동 이동은 '앱을 새로 연 세션당 1회'만 한다(sessionStorage).
+//    → main.html 에서 로고를 눌러 방 목록으로 돌아왔을 때 다시 튕겨 나가는 것을 막는다.
+//
+//  ┌──────────────────────────────────────────────────────────────────────┐
+//  │ ★ 켜기 / 끄기                                                        │
+//  │                                                                      │
+//  │  [방법 1] 아래 상수를 바꾼다 (배포 필요)                              │
+//  │      const AUTO_ENTER_LAST_ROOM = true;   // false → 항상 방 목록      │
+//  │                                                                      │
+//  │  [방법 2] 배포 없이 기기에서 즉시 (브라우저 콘솔 / 설정 메뉴에서 호출) │
+//  │      localStorage.setItem('daylog_auto_enter_room', '0');  // 끄기     │
+//  │      localStorage.setItem('daylog_auto_enter_room', '1');  // 켜기     │
+//  │      localStorage.removeItem('daylog_auto_enter_room');    // 기본값   │
+//  │    방법 2 가 방법 1 보다 우선한다.                                    │
+//  └──────────────────────────────────────────────────────────────────────┘
+// ==========================================================================
+const AUTO_ENTER_LAST_ROOM = true;                 // ★ 기본값
+const AUTO_ENTER_KEY = 'daylog_auto_enter_room';   // '1' / '0' 로 기본값을 덮어씀
+const LAST_ROOM_KEY  = 'daylog_last_room';
+const AUTO_DONE_KEY  = 'daylog_auto_room_done';    // sessionStorage — 세션당 1회
+
+function autoEnterEnabled() {
+    try {
+        const v = localStorage.getItem(AUTO_ENTER_KEY);
+        if (v === '0') return false;
+        if (v === '1') return true;
+    } catch (e) {}
+    return AUTO_ENTER_LAST_ROOM;
+}
+
+// 마지막 방으로 이동했으면 true (이동 중이므로 방 목록을 그리지 않는다)
+function tryAutoEnterLastRoom() {
+    if (!autoEnterEnabled()) return false;
+
+    let ss = null;
+    try { ss = window.sessionStorage; } catch (e) {}
+    // 이 세션에서 이미 자동 입장했다면 = 사용자가 스스로 방 목록으로 돌아온 것 → 다시 보내지 않는다
+    try { if (ss && ss.getItem(AUTO_DONE_KEY)) return false; } catch (e) {}
+    try { if (ss) ss.setItem(AUTO_DONE_KEY, '1'); } catch (e) {}
+
+    let raw = null;
+    try { raw = localStorage.getItem(LAST_ROOM_KEY); } catch (e) {}
+    if (!raw) return false;   // 로그아웃 후 재로그인 → 기록이 없으므로 여기서 멈춘다
+
+    let r = null;
+    try { r = JSON.parse(raw); } catch (e) {}
+    if (!r || !r.id) return false;
+
+    try {
+        localStorage.setItem('selectedRoomId', String(r.id));
+        localStorage.setItem('selectedRoomName', r.name || '');
+        localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
+        localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
+    } catch (e) { return false; }
+
+    try { showLoading('이동하는 중...'); } catch (e) {}
+    location.replace('main.html');   // replace → 뒤로가기로 이 화면에 되돌아와 다시 튕기지 않게
+    return true;
+}
+// [E] edit by smsong
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
@@ -615,6 +683,13 @@ function enterRoom(r) {
     localStorage.setItem('selectedRoomName', r.name || '');
     localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
     localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
+    // [B] edit by smsong - #10 다음 실행 때 이 방으로 바로 들어가도록 기록
+    try {
+        localStorage.setItem(LAST_ROOM_KEY, JSON.stringify({
+            id: r.id, name: r.name || '', type: r.type || 'COUPLE', ownerUid: r.ownerUid || ''
+        }));
+    } catch (e) {}
+    // [E] edit by smsong
     showLoading('이동하는 중...'); // main 과 동일한 로딩 폼
     // 오버레이가 먼저 그려지도록 아주 짧게 지연 후 이동
     setTimeout(() => { location.href = 'main.html'; }, 60);
@@ -1197,4 +1272,6 @@ if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'E
 
 // ===== 시작 =====
 // 유효한 세션일 때만 로드. (이미 gotoLoginCleared() 로 이동 중이면 실행 안 함)
-if (validSession) { loadRooms(); loadMe(); }
+// [B] edit by smsong - #10 로그인이 유지된 상태면 마지막 방으로 바로 이동, 아니면 방 목록을 그린다
+if (validSession && !tryAutoEnterLastRoom()) { loadRooms(); loadMe(); }
+// [E] edit by smsong
