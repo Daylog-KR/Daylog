@@ -391,28 +391,19 @@ window.addEventListener('pageshow', function () {
     function s(sel, body) { return g([sel], body); }
 
     var css = [
-        // ================= 겹침 순서 =================
-        //  상단바 .navbar 는 z:100, 상세 시트는 z:90 이라 시트 위쪽 60px 이 상단바 뒤에 깔린다.
-        //  → 닫기/수정/휴지통 칩이 통째로 가려지고 사진 윗부분도 잘려 보였다.
-        //  몰입형 조회일 때만 시트를 상단바 위로 올리고(110), 하단 네비는 계속 시트 위에 보이도록 120 으로 올린다.
-        //  (다른 모달들은 z:2000 이라 하단 네비 120 은 영향 없음. 목록 위에 띄우는 .over-modal(2100) 은 제외.)
-        '.bottom-nav{z-index:120;}',
-        '.modal.detail-sheet:not(.over-modal):has(#detail-view:not(.hidden) .dtl),' +
-        '.modal.detail-sheet:not(.over-modal):has(#cl-detail-view:not(.hidden) .dtl){z-index:110;}',
-
         // ================= 시트 껍데기: 화면 꽉 채우기 =================
         s('', '{height:100dvh;max-height:100dvh;min-height:100dvh;border-radius:0;box-shadow:none;background:var(--bg-color);}'),
         s(' .sheet-body', '{padding:0;}'),
 
-        // 드래그 핸들 — 좌우 칩 사이 가운데. 세 요소가 한 줄로 정렬된다(⌄ ···· ⋯)
-        s(' .sheet-handle', '{position:absolute;top:calc(env(safe-area-inset-top) + 29px);left:0;right:0;z-index:6;padding:0;}'),
+        // 드래그 핸들 — 사진 위 반투명 알약 (안내 문구는 몰입형에서 제거)
+        s(' .sheet-handle', '{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:0;right:0;z-index:6;padding:6px 0;}'),
         s(' .sheet-handle::before', '{width:38px;height:4px;background:rgba(253,251,247,.62);}'),
         s(' .sheet-handle::after', '{content:none;}'),
 
         // 헤더 — 사진 위에 뜨는 원형 칩. row-reverse 라 닫기가 왼쪽, 수정/휴지통이 오른쪽.
         s(' .detail-modal-header',
           '{position:absolute;top:0;left:0;right:0;z-index:7;margin:0;border:none;background:none;' +
-          'padding:calc(env(safe-area-inset-top) + 14px) 14px 0;' +
+          'padding:calc(env(safe-area-inset-top) + 24px) 14px 0;' +
           'display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;}'),
         s(' .detail-modal-header .detail-header-actions', '{gap:9px;}'),
         g([' .detail-modal-header .close-modal',
@@ -427,23 +418,18 @@ window.addEventListener('pageshow', function () {
           '{background:rgba(36,31,27,.64);color:#fdfbf7;}'),
 
         // ================= 무대(사진) =================
-        //  · padding-top = 헤더(닫기/수정/휴지통)가 앉는 밴드. 사진이 헤더에 가리지 않게 그만큼 내린다.
-        //  · height 는 Daylog._fitDetailStage() 가 '밴드 + 원본비율 높이 + 겹침' 으로 인라인 지정한다.
-        //    아래 값은 이미지 로드 전 잠깐 쓰이는 기본값(레이아웃 점프 방지용).
-        s(' .dtl-stage', '{box-sizing:border-box;padding-top:calc(env(safe-area-inset-top) + 58px);' +
-                         'height:56dvh;min-height:0;background:#241f1b;}'),
-        s(' .dtl-stage.empty', '{height:calc(env(safe-area-inset-top) + 58px + 12dvh);min-height:0;background:var(--primary);}'),
+        s(' .dtl-stage', '{height:46dvh;min-height:46dvh;background:#241f1b;}'),
+        s(' .dtl-stage.empty', '{height:23dvh;min-height:23dvh;background:var(--primary);}'),
         s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
-        // contain — 계산이 1~2px 어긋나도 사진이 잘리지 않고 여백으로 처리된다
-        s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:contain;}'),
+        s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:cover;}'),
         s(' .dtl-stage .detail-carousel', '{height:100%;margin:0;}'),
         // _fitCarousel 이 인라인 height 를 넣으므로 !important 로 덮는다
         s(' .dtl-stage .carousel-track', '{height:100%!important;}'),
-        s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:contain;}'),
+        s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:cover;}'),
         g([' .dtl-stage .carousel-count', ' .dtl-stage .carousel-arrow'], '{display:none;}'),
-        // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에). 종이 겹침(26px) 위로 올려 둔다.
+        // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에)
         s(' .dtl-stage .carousel-dots',
-          '{position:absolute;left:16px;right:16px;bottom:38px;top:auto;transform:none;' +
+          '{position:absolute;left:16px;right:16px;bottom:40px;top:auto;transform:none;' +
           'display:flex;gap:5px;margin:0;padding:0;z-index:3;}'),
         s(' .dtl-stage .carousel-dot',
           '{flex:1 1 auto;width:auto;height:3px;border-radius:2px;margin:0;box-shadow:none;' +
@@ -452,10 +438,8 @@ window.addEventListener('pageshow', function () {
 
         // ================= 내용 (:has() 없어도 적용되도록 스코프 밖) =================
         '.dtl{display:block;}',
-        // sticky — 종이가 올라오는 동안 사진은 제자리에 머문다 (화면보다 긴 사진은 JS 가 relative 로 되돌림)
-        '.dtl-stage{position:sticky;top:0;z-index:0;overflow:hidden;display:flex;align-items:stretch;justify-content:center;}',
-        '.dtl-stage > .detail-carousel,.dtl-stage > .detail-image-wrap{flex:1 1 auto;width:100%;min-width:0;}',
-        '.dtl-stage.empty{align-items:center;}',
+        // sticky — 종이가 올라오는 동안 사진은 제자리에 머문다
+        '.dtl-stage{position:sticky;top:0;z-index:0;overflow:hidden;display:flex;align-items:center;justify-content:center;}',
         '.dtl-stage.empty .dtl-stage-ic{color:rgba(253,251,247,.55);}',
         '.dtl-page{position:relative;z-index:1;margin-top:-26px;background:var(--bg-color);' +
         'border-radius:26px 26px 0 0;min-height:58dvh;' +
@@ -4956,7 +4940,6 @@ function openChecklistDetail(item, overModal) {
     }
 
     bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
-    Daylog._fitDetailStage(document.getElementById('cl-detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
     const av = document.getElementById('cl-author-avatar');
     if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
     const locEl = document.getElementById('cl-detail-loc');
@@ -5391,7 +5374,6 @@ function openDetailModal(memory, overModal) {
 
     // 이미지 캐러셀 바인딩 (좌우 스와이프 + 탭 확대)
     bindCarousel(document.getElementById('detail-view'), _memUrls);
-    Daylog._fitDetailStage(document.getElementById('detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
 
     // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
     const da = document.getElementById('detail-author-avatar');
@@ -6561,61 +6543,6 @@ function carouselHtml(urls) {
         '<div class="carousel-dots">' + dots + '</div>' +
         '</div>';
 }
-
-// [B] edit by smsong - #7 사진 무대 높이를 '원본 비율 그대로' 맞춘다 (잘림 없음).
-//
-//  · 무대 높이 = 헤더 밴드(padding-top) + 폭×원본비율 + 종이 겹침(26px)
-//    → 사진이 위(헤더)로도, 아래(종이)로도 가려지지 않고 전체가 보인다.
-//  · 상·하한 클램프 없음. 세로로 아주 긴 사진이면 무대도 그만큼 길어진다.
-//  · 사진이 화면보다 길면 sticky 를 끈다.
-//    (sticky 인 채로 화면보다 길면 위쪽에 붙박여 아랫부분을 영영 볼 수 없게 된다)
-//  · object-fit 은 CSS 에서 contain — 계산이 1~2px 어긋나도 잘리지 않고 여백으로 처리된다.
-(function () {
-    'use strict';
-
-    var OVERLAP = 26;   // .dtl-page 의 margin-top 과 같은 값 (종이가 사진을 덮지 않도록 보정)
-
-    function vh() { return window.innerHeight || document.documentElement.clientHeight || 700; }
-
-    function sizeStage(stage, ratio) {
-        var w = stage.clientWidth || stage.offsetWidth;   // 좌우 패딩이 없으므로 그대로 콘텐츠 폭
-        if (!w || !ratio) return;
-        // 헤더(닫기·수정·휴지통)가 앉는 상단 밴드. CSS 의 env(safe-area-inset-top) 계산값을 그대로 읽는다.
-        var pad = parseFloat(window.getComputedStyle(stage).paddingTop) || 0;
-        var natural = w * ratio;
-        // box-sizing:border-box 라 height 에 padding 이 포함된다 → 콘텐츠 높이는 정확히 natural
-        stage.style.height = Math.round(pad + natural + OVERLAP) + 'px';
-        stage.style.minHeight = '0px';
-        // 화면보다 긴 사진은 sticky 를 풀어 아래까지 스크롤로 볼 수 있게 한다
-        stage.style.position = (pad + natural) > (vh() * 0.94) ? 'relative' : 'sticky';
-    }
-
-    Daylog._fitDetailStage = function (root) {
-        if (!root) return;
-        var stage = root.querySelector('.dtl-stage');
-        if (!stage || stage.classList.contains('empty')) return;
-        var img = stage.querySelector('img');
-        if (!img) return;
-
-        function apply() {
-            if (!img.naturalWidth || !img.naturalHeight) return;
-            var ratio = img.naturalHeight / img.naturalWidth;
-            stage.setAttribute('data-ratio', ratio);
-            sizeStage(stage, ratio);
-        }
-        if (img.complete && img.naturalWidth) apply();
-        else img.addEventListener('load', apply, { once: true });
-    };
-
-    // 화면 회전/리사이즈 시 다시 계산 (리스너는 1개만)
-    window.addEventListener('resize', function () {
-        var list = document.querySelectorAll('.dtl-stage[data-ratio]');
-        for (var i = 0; i < list.length; i++) {
-            sizeStage(list[i], parseFloat(list[i].getAttribute('data-ratio')));
-        }
-    });
-})();
-// [E] edit by smsong
 
 // 첫 이미지 비율로 트랙 높이 설정 → 레이아웃 시프트(깜빡임) 방지 (REMS fitGalleryHeight 방식)
 Daylog._fitCarousel = function (cid, img) {
