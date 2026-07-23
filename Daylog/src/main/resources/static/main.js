@@ -169,6 +169,7 @@ window.addEventListener('pageshow', function () {
 
         function mount() {
             feedEl.innerHTML = '';
+            dropMounted();      // [B][E] edit by smsong - #33 DOM 을 비웠으니 재사용 캐시도 함께 비운다
             feedEl.appendChild(spTop);
             feedEl.appendChild(rowsEl);
             feedEl.appendChild(spBot);
@@ -226,6 +227,55 @@ window.addEventListener('pageshow', function () {
             spBot.style.height = Math.max(0, pre[rows.length] - pre[e]) + 'px';
         }
 
+        // ---- [B] edit by smsong - #33 키 기반 DOM 재사용(리사이클) ----
+        //  예전에는 창이 한 칸만 움직여도 rowsEl.innerHTML='' 로 전부 지우고 다시 만들었다.
+        //  → 그대로 남아 있어야 할 행의 <img> 까지 매번 새 엘리먼트가 되어
+        //     브라우저가 다시 디코드/페인트하면서 한 프레임 비는 '깜빡임'이 생겼다.
+        //  이제는 창에 계속 남는 행은 같은 엘리먼트를 그대로 쓰고,
+        //  새로 들어온 행만 만들고 나간 행만 지운다. (이미지는 재디코드되지 않는다)
+        var mounted = {};   // key → 현재 rowsEl 안에 있는 엘리먼트
+
+        function dropMounted() {
+            mounted = {};
+        }
+
+        function renderWindow(s, e) {
+            var need = {}, order = [], made = [];
+            var j, key, el;
+
+            for (j = s; j < e; j++) {
+                key = rows[j].key;
+                need[key] = 1;
+                el = mounted[key];
+                if (!el || el.parentNode !== rowsEl) {
+                    el = o.renderRow(rows[j]);
+                    if (!el) continue;
+                    el.setAttribute('data-vf-key', key);
+                    mounted[key] = el;
+                    made.push(el);          // 새로 만든 행만 onWindow 대상
+                }
+                order.push(el);
+            }
+
+            // 창 밖으로 나간 행만 제거
+            for (key in mounted) {
+                if (need[key]) continue;
+                el = mounted[key];
+                if (el && el.parentNode === rowsEl) rowsEl.removeChild(el);
+                delete mounted[key];
+            }
+
+            // 순서 맞추기 — 이미 제자리인 행은 DOM 을 건드리지 않는다
+            var cur = rowsEl.firstChild;
+            for (j = 0; j < order.length; j++) {
+                el = order[j];
+                if (cur === el) { cur = el.nextSibling; continue; }
+                rowsEl.insertBefore(el, cur);
+            }
+            return made;
+        }
+        // [E] edit by smsong
+
         // ---- 창(window) 계산 + 그리기 ----
         function layout(force) {
             if (!items.length || !visible()) return;
@@ -246,17 +296,8 @@ window.addEventListener('pageshow', function () {
                 var beforeTop = pre[s];
                 winStart = s; winEnd = e;
 
-                var frag = document.createDocumentFragment();
-                var made = [];
-                for (var j = s; j < e; j++) {
-                    var el = o.renderRow(rows[j]);
-                    if (!el) continue;
-                    el.setAttribute('data-vf-key', rows[j].key);
-                    frag.appendChild(el);
-                    made.push(el);
-                }
-                rowsEl.innerHTML = '';
-                rowsEl.appendChild(frag);
+                // [B][E] edit by smsong - #33 전체 재생성 → 키 기반 재사용
+                var made = renderWindow(s, e);
                 setSpacers(pre, s, e);
 
                 if (measure()) {
@@ -326,9 +367,15 @@ window.addEventListener('pageshow', function () {
 
                 if (!items.length) {
                     rows = []; loaded = 0; winStart = winEnd = -1;
+                    dropMounted();      // [B][E] edit by smsong - #33
                     feedEl.innerHTML = o.emptyHtml || '';
                     return;
                 }
+                // [B] edit by smsong - #33 데이터가 새로 들어왔으면 재사용 캐시를 버린다.
+                //  (id 목록이 같아도 제목·썸네일 등 내용이 바뀌었을 수 있으므로 이때는 다시 그린다.
+                //   깜빡임의 원인이던 '스크롤 중 재생성'은 아래 layout 경로에서 계속 재사용된다)
+                dropMounted();
+                // [E] edit by smsong
                 if (same) {
                     loaded = Math.min(Math.max(loaded, o.pageSize), items.length);
                 } else {
@@ -499,6 +546,7 @@ window.addEventListener('pageshow', function () {
         // [B][E] edit by smsong - #19 기본 opacity:1 (onload 미발화 시 빈 칸 방지)
         '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
         '.lm-tile-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
+        '.lm-tile-img.no-fade{animation:none!important;}',   // [B][E] edit by smsong - #33 재등장 시 페이드 없음
         '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
         'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
         'background:rgba(36,31,27,.56);color:#fdfbf7;}',
@@ -1697,7 +1745,7 @@ function thumbHtml(mediaURL, cls) {
     if (mediaURL) {
         const thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+            '" loading="lazy" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
@@ -1733,6 +1781,24 @@ Daylog._thumbFallback = function (img) {
     try { img.setAttribute('data-failed', '1'); } catch (e) {}
 };
 
+// [B] edit by smsong - #33 썸네일 로드 처리.
+//  기존에는 onload 마다 무조건 is-loaded 를 붙였고, CSS 가 여기에 imgFadeIn(0.25s, opacity 0→1)
+//  애니메이션을 걸어 뒀다. 목록을 다시 그릴 때마다 '이미 캐시에 있는' 이미지까지 페이드를 재생해서
+//  스크롤할 때 사진이 계속 깜빡이는 것처럼 보였다.
+//  → URL 단위로 '한 번이라도 화면에 그려진 적 있는지'를 기억해, 두 번째부터는 페이드 없이 바로 보여준다.
+Daylog._imgSeen = (typeof Set === 'function') ? new Set() : null;
+Daylog._thumbLoaded = function (img) {
+    if (!img) return;
+    var u = '';
+    try { u = img.currentSrc || img.src || ''; } catch (e) {}
+    if (Daylog._imgSeen && u) {
+        if (Daylog._imgSeen.has(u)) img.classList.add('no-fade');   // 재등장 → 애니메이션 없이
+        else Daylog._imgSeen.add(u);                                // 최초 1회만 부드럽게
+    }
+    img.classList.add('is-loaded');
+};
+// [E] edit by smsong
+
 // [B] edit by smsong - #19 썸네일 표시 안전망
 //
 //  증상: 이미지가 받아졌는데도 타일이 빈 채로 남는다.
@@ -1749,13 +1815,14 @@ Daylog._fixThumbs = function (root) {
     try { list = scope.querySelectorAll('img[data-full]:not(.is-loaded)'); } catch (e) { return; }
     for (var i = 0; i < list.length; i++) {
         var im = list[i];
-        if (im.complete && im.naturalWidth > 0) { im.classList.add('is-loaded'); continue; }
+        // [B][E] edit by smsong - #33 캐시로 이미 완료된 이미지는 페이드 없이 즉시 표시
+        if (im.complete && im.naturalWidth > 0) { Daylog._thumbLoaded(im); continue; }
         if (im.__dlBound) continue;
         im.__dlBound = true;
         // load 만 건다. error 는 인라인 onerror="Daylog._thumbFallback(this)" 가 이미 처리한다.
         //  여기서 error 를 또 걸면 썸네일 404 한 번에 폴백이 '두 번' 호출되어,
         //  원본으로 막 교체한 직후인데도 '원본까지 실패'로 오판한다.
-        im.addEventListener('load', function () { this.classList.add('is-loaded'); }, { once: true });
+        im.addEventListener('load', function () { Daylog._thumbLoaded(this); }, { once: true });
     }
 };
 
@@ -1785,7 +1852,7 @@ Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
     if (mediaURL) {
         var thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+            '" loading="lazy" decoding="async" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
 };
@@ -3767,7 +3834,7 @@ document.addEventListener('DOMContentLoaded', () => {
             t.innerHTML =
                 '<img class="tg-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
                 '" loading="lazy" decoding="async" alt=""' +
-                ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">' +
+                ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">' +
                 (many ? '<span class="tg-multi" aria-label="사진 여러 장">' +
                     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
                     'stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="13" height="13" rx="2"/>' +
@@ -3958,7 +4025,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (items.length) {
                 var cover = coverUrlOf(items[0]);
                 var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
-                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
                 else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
                 if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
             }
@@ -4148,7 +4215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (_cover) {
                 // 지도 마커는 소형 썸네일(<img>)로 그림. 썸네일이 없으면(구버전/HEIC) onerror 로 원본 폴백.
                 const _thumb = Daylog.thumbUrlOf(_cover);
-                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
                 // [E] edit by smsong
             } else {
                 markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
@@ -6565,7 +6632,7 @@ function _lmTileEl(item, kind) {
         // 타임라인/가볼곳 카드와 동일한 방식: 소형 썸네일 + lazy + onerror 원본 폴백
         art = '<img class="lm-tile-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
               '" loading="lazy" decoding="async" alt=""' +
-              ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+              ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
     } else {
         art = '<span class="lm-tile-ic">' + icon(kind === 'checklist' ? 'bookmark' : 'book', 26) + '</span>';
     }
