@@ -1972,6 +1972,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (type === 'checklist') {
             const c = checklistList.find(x => String(x.id) === String(id));
             if (c) { openChecklistDetail(c); return true; }
+        } else if (type === 'schedule') {
+            // [B][E] edit by smsong - #28 일정 알림 클릭 → 그 일정 상세로
+            //  달력 데이터는 지연 로딩이라, 아직 없으면 로드만 걸고 false 를 돌려
+            //  handleDeepLink 의 재시도(최대 10초)에서 열리게 한다.
+            if (Daylog._openScheduleById) return Daylog._openScheduleById(id);
         }
         return false;
     };
@@ -8490,6 +8495,28 @@ document.addEventListener('DOMContentLoaded', () => {
         _cy = t.getFullYear(); _cm = t.getMonth(); _sel = ymd(t);
         if (_clView === 'calendar' && document.getElementById('checklist-calendar')) render();
     };
+
+    // [B] edit by smsong - #28 알림(딥링크)으로 일정 열기
+    //  체크리스트 탭 + 달력 보기로 전환하고, 그 날짜를 선택한 뒤 상세를 띄운다.
+    Daylog._openScheduleById = function (id) {
+        var sc = _schedules.find(function (x) { return String(x.id) === String(id); });
+        if (!sc) {
+            if (!_loaded) loadCalendarData(true).then(function () { render(); });  // 로드 후 재시도에서 열림
+            return false;
+        }
+        var key = dkey(sc.scheduleDate);
+        try {
+            var nav = document.querySelector('.nav-item[data-tab="tab-checklist"]');
+            if (nav && document.body.getAttribute('data-active-tab') !== 'tab-checklist') nav.click();
+        } catch (e) {}
+        setView('calendar');
+        var d = new Date(key);
+        _cy = d.getFullYear(); _cm = d.getMonth(); _sel = key;
+        render();
+        openScheduleDetail(sc, key);
+        return true;
+    };
+    // [E] edit by smsong
 
     Daylog._reloadCalendar = function () { return withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...'); };
     Daylog._calendarView = function () { return _clView; };

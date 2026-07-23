@@ -85,6 +85,22 @@ public class EventReminderScheduler {
         OFFSET.put("W1", 7);
     }
 
+    /**
+     * [B] edit by smsong - #28 조사 '이 / 가' 선택.
+     *  제목 마지막 글자에 받침이 있으면 '이', 없으면 '가'.
+     *  (「전시 보러 가기」'가', 「롯데월드」'가', 「한강공원」'이')
+     *  한글이 아니면(영문·숫자·기호) '이'로 둔다.
+     */
+    static String subjectJosa(String word) {
+        if (word == null || word.isBlank()) return "이";
+        char c = word.trim().charAt(word.trim().length() - 1);
+        if (c >= 0xAC00 && c <= 0xD7A3) {
+            return ((c - 0xAC00) % 28 == 0) ? "가" : "이";
+        }
+        return "이";
+    }
+    // [E] edit by smsong
+
     /** 며칠 전인지 → 문구 */
     private static String whenText(int offset) {
         switch (offset) {
@@ -168,7 +184,7 @@ public class EventReminderScheduler {
 
         String roomName = roomNameCache.computeIfAbsent(roomId, this::roomNameOf);
         String name = (title == null || title.isBlank()) ? "일정" : title.trim();
-        String body = whenText(offset) + " 「" + name + "」이 예정되어 있어요 ✨";
+        String body = whenText(offset) + " 「" + name + "」" + subjectJosa(name) + " 예정되어 있어요 ✨";
         String url = linkPath + "?room=" + roomId + linkSuffix;
 
         try {
