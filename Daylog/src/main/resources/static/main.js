@@ -3710,7 +3710,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollEl: scrollEl,
                 pageSize: 9,      // 3열 × 3줄
                 windowRows: 8,
-                estimate: 124,
+                estimate: 176,    // 3:4 타일 한 줄 높이 추정 (폭 390 기준 ≈ 174)
                 emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('image', 40) + '</span>' +
                            '<p>기록이 존재하지 않음</p></div>',
                 rowsOf: function (list) {
@@ -8065,7 +8065,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // ===== #15 타임라인 사진 그리드 (인스타그램식) =====
             '#timeline-grid{margin:0 -20px;}',   // 콘텐츠 여백을 무시하고 화면 끝까지
             '.tg-row{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-bottom:2px;}',
-            '.tg-tile{position:relative;aspect-ratio:1/1;width:100%;padding:0;border:none;overflow:hidden;' +
+            // 인스타그램 새 프로필 피드와 동일한 3:4 세로 비율 (폭보다 높이가 큼)
+            '.tg-tile{position:relative;aspect-ratio:3/4;width:100%;padding:0;border:none;overflow:hidden;' +
             'background:var(--gray-100);cursor:pointer;display:block;}',
             '.tg-tile:active{opacity:.82;}',
             '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .25s ease;}',
