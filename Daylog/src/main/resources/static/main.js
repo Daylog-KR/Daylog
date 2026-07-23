@@ -418,20 +418,23 @@ window.addEventListener('pageshow', function () {
           '{background:rgba(36,31,27,.64);color:#fdfbf7;}'),
 
         // ================= 무대(사진) =================
-        //  height 는 첫 장의 비율에 맞춰 Daylog._fitDetailStage() 가 인라인으로 덮어쓴다.
-        //  아래 값은 이미지 로드 전 잠깐 쓰이는 기본값 (레이아웃 점프 방지용).
-        s(' .dtl-stage', '{height:52dvh;min-height:0;background:#241f1b;}'),
-        s(' .dtl-stage.empty', '{height:23dvh;min-height:23dvh;background:var(--primary);}'),
+        //  · padding-top = 헤더(닫기/수정/휴지통)가 앉는 밴드. 사진이 헤더에 가리지 않게 그만큼 내린다.
+        //  · height 는 Daylog._fitDetailStage() 가 '밴드 + 원본비율 높이 + 겹침' 으로 인라인 지정한다.
+        //    아래 값은 이미지 로드 전 잠깐 쓰이는 기본값(레이아웃 점프 방지용).
+        s(' .dtl-stage', '{box-sizing:border-box;padding-top:calc(env(safe-area-inset-top) + 66px);' +
+                         'height:56dvh;min-height:0;background:#241f1b;}'),
+        s(' .dtl-stage.empty', '{height:calc(env(safe-area-inset-top) + 66px + 12dvh);min-height:0;background:var(--primary);}'),
         s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
-        s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:cover;}'),
+        // contain — 계산이 1~2px 어긋나도 사진이 잘리지 않고 여백으로 처리된다
+        s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:contain;}'),
         s(' .dtl-stage .detail-carousel', '{height:100%;margin:0;}'),
         // _fitCarousel 이 인라인 height 를 넣으므로 !important 로 덮는다
         s(' .dtl-stage .carousel-track', '{height:100%!important;}'),
-        s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:cover;}'),
+        s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:contain;}'),
         g([' .dtl-stage .carousel-count', ' .dtl-stage .carousel-arrow'], '{display:none;}'),
-        // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에)
+        // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에). 종이 겹침(26px) 위로 올려 둔다.
         s(' .dtl-stage .carousel-dots',
-          '{position:absolute;left:16px;right:16px;bottom:40px;top:auto;transform:none;' +
+          '{position:absolute;left:16px;right:16px;bottom:38px;top:auto;transform:none;' +
           'display:flex;gap:5px;margin:0;padding:0;z-index:3;}'),
         s(' .dtl-stage .carousel-dot',
           '{flex:1 1 auto;width:auto;height:3px;border-radius:2px;margin:0;box-shadow:none;' +
@@ -440,8 +443,10 @@ window.addEventListener('pageshow', function () {
 
         // ================= 내용 (:has() 없어도 적용되도록 스코프 밖) =================
         '.dtl{display:block;}',
-        // sticky — 종이가 올라오는 동안 사진은 제자리에 머문다
-        '.dtl-stage{position:sticky;top:0;z-index:0;overflow:hidden;display:flex;align-items:center;justify-content:center;}',
+        // sticky — 종이가 올라오는 동안 사진은 제자리에 머문다 (화면보다 긴 사진은 JS 가 relative 로 되돌림)
+        '.dtl-stage{position:sticky;top:0;z-index:0;overflow:hidden;display:flex;align-items:stretch;justify-content:center;}',
+        '.dtl-stage > .detail-carousel,.dtl-stage > .detail-image-wrap{flex:1 1 auto;width:100%;min-width:0;}',
+        '.dtl-stage.empty{align-items:center;}',
         '.dtl-stage.empty .dtl-stage-ic{color:rgba(253,251,247,.55);}',
         '.dtl-page{position:relative;z-index:1;margin-top:-26px;background:var(--bg-color);' +
         'border-radius:26px 26px 0 0;min-height:58dvh;' +
@@ -6548,30 +6553,32 @@ function carouselHtml(urls) {
         '</div>';
 }
 
-// [B] edit by smsong - #7 사진 무대 높이를 '첫 장의 실제 비율'에 맞춘다.
+// [B] edit by smsong - #7 사진 무대 높이를 '원본 비율 그대로' 맞춘다 (잘림 없음).
 //
-//  고정 높이(46dvh)로 두면 세로 사진이 위아래로 잘려 답답했다.
-//  이제 첫 사진의 naturalWidth/Height 로 필요한 높이를 계산해 인라인으로 넣는다.
-//   · 하한 MIN_VH — 파노라마처럼 납작한 사진도 이보다 얇아지지 않게(제목만 덩그러니 뜨는 것 방지)
-//   · 상한 MAX_VH — 세로 사진 상한. 그 아래 제목/본문 첫 줄이 최소한 보이도록 남겨 둔다.
-//  비율이 이 범위 안이면 object-fit:cover 여도 잘리는 부분이 전혀 없다.
-//  범위를 벗어나는 극단적인 사진만 가운데 기준으로 잘리고, 탭하면 라이트박스에서 원본 전체를 본다.
-//
-//  ★ 답답하면 MAX_VH 만 올리십시오 (0.82 ≈ 화면의 82%).
+//  · 무대 높이 = 헤더 밴드(padding-top) + 폭×원본비율 + 종이 겹침(26px)
+//    → 사진이 위(헤더)로도, 아래(종이)로도 가려지지 않고 전체가 보인다.
+//  · 상·하한 클램프 없음. 세로로 아주 긴 사진이면 무대도 그만큼 길어진다.
+//  · 사진이 화면보다 길면 sticky 를 끈다.
+//    (sticky 인 채로 화면보다 길면 위쪽에 붙박여 아랫부분을 영영 볼 수 없게 된다)
+//  · object-fit 은 CSS 에서 contain — 계산이 1~2px 어긋나도 잘리지 않고 여백으로 처리된다.
 (function () {
     'use strict';
-    var MIN_VH = 0.38;
-    var MAX_VH = 0.78;
+
+    var OVERLAP = 26;   // .dtl-page 의 margin-top 과 같은 값 (종이가 사진을 덮지 않도록 보정)
 
     function vh() { return window.innerHeight || document.documentElement.clientHeight || 700; }
 
     function sizeStage(stage, ratio) {
-        var w = stage.clientWidth || stage.offsetWidth;
+        var w = stage.clientWidth || stage.offsetWidth;   // 좌우 패딩이 없으므로 그대로 콘텐츠 폭
         if (!w || !ratio) return;
-        var v = vh();
-        var h = Math.round(Math.max(v * MIN_VH, Math.min(v * MAX_VH, w * ratio)));
-        stage.style.height = h + 'px';
-        stage.style.minHeight = h + 'px';
+        // 헤더(닫기·수정·휴지통)가 앉는 상단 밴드. CSS 의 env(safe-area-inset-top) 계산값을 그대로 읽는다.
+        var pad = parseFloat(window.getComputedStyle(stage).paddingTop) || 0;
+        var natural = w * ratio;
+        // box-sizing:border-box 라 height 에 padding 이 포함된다 → 콘텐츠 높이는 정확히 natural
+        stage.style.height = Math.round(pad + natural + OVERLAP) + 'px';
+        stage.style.minHeight = '0px';
+        // 화면보다 긴 사진은 sticky 를 풀어 아래까지 스크롤로 볼 수 있게 한다
+        stage.style.position = (pad + natural) > (vh() * 0.94) ? 'relative' : 'sticky';
     }
 
     Daylog._fitDetailStage = function (root) {
