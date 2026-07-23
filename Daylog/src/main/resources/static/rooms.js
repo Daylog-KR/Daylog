@@ -50,13 +50,15 @@ function autoEnterEnabled() {
 
 // 마지막 방으로 이동했으면 true (이동 중이므로 방 목록을 그리지 않는다)
 function tryAutoEnterLastRoom() {
-    if (!autoEnterEnabled()) return false;
-
     let ss = null;
     try { ss = window.sessionStorage; } catch (e) {}
-    // 이 세션에서 이미 자동 입장했다면 = 사용자가 스스로 방 목록으로 돌아온 것 → 다시 보내지 않는다
-    try { if (ss && ss.getItem(AUTO_DONE_KEY)) return false; } catch (e) {}
+    let already = false;
+    try { already = !!(ss && ss.getItem(AUTO_DONE_KEY)); } catch (e) {}
+    // 켜짐/꺼짐과 무관하게 이 세션의 '자동 입장 1회'를 여기서 소진한다.
+    //  → 설정을 중간에 켜도 지금 보고 있는 방 목록에서 갑자기 튕겨 나가지 않는다.
     try { if (ss) ss.setItem(AUTO_DONE_KEY, '1'); } catch (e) {}
+    if (already) return false;      // 사용자가 스스로 방 목록으로 돌아온 것 → 다시 보내지 않는다
+    if (!autoEnterEnabled()) return false;
 
     let raw = null;
     try { raw = localStorage.getItem(LAST_ROOM_KEY); } catch (e) {}
@@ -1268,6 +1270,51 @@ const _nickOk = document.getElementById('nickname-ok');
 if (_nickOk) _nickOk.addEventListener('click', submitNicknameFirst);
 const _nickInput = document.getElementById('nickname-input');
 if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitNicknameFirst(); });
+// [E] edit by smsong
+
+// [B] edit by smsong - #10 프로필 패널에 '마지막 방 자동 입장' 토글 스위치를 넣는다.
+//  · rooms.html 을 수정하지 않도록 알림 버튼(#btn-enable-push) 바로 아래에 JS 로 끼워 넣는다.
+//  · 마크업/클래스는 기존 알림 토글과 동일 → rooms.css 의 .setting-toggle 스타일을 그대로 쓴다.
+(function autoRoomToggle() {
+    function build() {
+        const push = document.getElementById('btn-enable-push');
+        if (!push || document.getElementById('btn-auto-room')) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'btn-auto-room';
+        btn.type = 'button';
+        btn.className = 'rm-btn setting-toggle';
+        btn.setAttribute('aria-pressed', 'false');
+        btn.innerHTML =
+            '<span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+            ' stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/>' +
+            '<line x1="15" y1="12" x2="3" y2="12"/></svg></span>' +
+            '<span class="st-label">마지막 방 자동 입장</span>' +
+            '<span class="ui-switch" aria-hidden="true"><span class="sw-knob">' +
+            '<span class="sw-on">ON</span><span class="sw-off">OFF</span></span></span>';
+
+        push.insertAdjacentElement('afterend', btn);   // 알림 버튼 바로 아래
+
+        const paint = () => {
+            const on = autoEnterEnabled();
+            btn.classList.toggle('on', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        btn.addEventListener('click', () => {
+            const next = !autoEnterEnabled();
+            try { localStorage.setItem(AUTO_ENTER_KEY, next ? '1' : '0'); } catch (e) {}
+            paint();
+            try {
+                showToast(next ? '다음 실행부터 마지막 방으로 바로 들어갑니다'
+                               : '항상 방 목록을 먼저 보여줍니다');
+            } catch (e) {}
+        });
+        paint();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+    else build();
+})();
 // [E] edit by smsong
 
 // ===== 시작 =====
