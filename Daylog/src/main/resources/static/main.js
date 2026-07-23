@@ -548,8 +548,6 @@ window.addEventListener('pageshow', function () {
         s(' .dtl-stage .detail-carousel', '{height:100%;margin:0;}'),
         // _fitCarousel 이 인라인 height 를 넣으므로 !important 로 덮는다
         s(' .dtl-stage .carousel-track', '{height:100%!important;}'),
-        // [B][E] edit by smsong - #37 상세 시트 캐러셀도 한 번에 한 장만 (안드로이드 관성 과다 방지)
-        s(' .dtl-stage .carousel-slide', '{scroll-snap-stop:always;}'),
         s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:cover;}'),
         g([' .dtl-stage .carousel-count', ' .dtl-stage .carousel-arrow'], '{display:none;}'),
         // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에)
@@ -5200,15 +5198,63 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape') dismissTopLayer();
     });
 
-    // [B] edit by smsong - #37 라이트박스 제스처는 아래 LB 모듈이 전담한다.
-    //  (기존의 '탭하면 확대 + 한 장씩 페이드 전환' 코드는 제거 — 핀치 줌 + 슬라이드 전환으로 대체)
-    var _lbCloseBtn = document.getElementById('lightbox-close');
-    if (_lbCloseBtn) _lbCloseBtn.addEventListener('click', closeLightbox);
-    var _lbPrev = document.getElementById('lightbox-prev');
-    var _lbNext = document.getElementById('lightbox-next');
-    if (_lbPrev) _lbPrev.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx - 1); });
-    if (_lbNext) _lbNext.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx + 1); });
-    // [E] edit by smsong
+    // ===== 이미지 라이트박스 (확대 + 드래그) =====
+    const lbStage = document.getElementById('lightbox-stage');
+    const lbImg = document.getElementById('lightbox-img');
+    const lbHint = document.getElementById('lightbox-hint');
+
+    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+    const lbPrev = document.getElementById('lightbox-prev');
+    const lbNext = document.getElementById('lightbox-next');
+    if (lbPrev) lbPrev.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx - 1); });
+    if (lbNext) lbNext.addEventListener('click', (e) => { e.stopPropagation(); _lbShow(_lb.idx + 1); });
+
+    // 이미지 탭 → 확대/축소 토글
+    lbImg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_lb.moved) { _lb.moved = false; return; }
+        if (_lb.scale === 1) { _lb.scale = 2.4; }
+        else { _lb.scale = 1; _lb.x = 0; _lb.y = 0; }
+        _lbApply();
+        if (lbHint) lbHint.style.opacity = (_lb.scale === 1) ? '1' : '0';
+    });
+
+    // 확대 상태에서 드래그하여 이동 / 기본 상태에서 좌우 스와이프로 이미지 전환
+    lbStage.addEventListener('pointerdown', (e) => {
+        _lb.swStartX = e.clientX; _lb.swStartY = e.clientY; _lb.swiping = (_lb.scale === 1);
+        if (_lb.scale === 1) return;
+        _lb.dragging = true; _lb.moved = false;
+        _lb.sx = e.clientX; _lb.sy = e.clientY; _lb.bx = _lb.x; _lb.by = _lb.y;
+        lbImg.classList.add('dragging');
+        try { lbStage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    lbStage.addEventListener('pointermove', (e) => {
+        if (!_lb.dragging) return;
+        const dx = e.clientX - _lb.sx, dy = e.clientY - _lb.sy;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _lb.moved = true;
+        _lb.x = _lb.bx + dx; _lb.y = _lb.by + dy; _lbApply();
+    });
+    function _lbEndDrag(e) {
+        _lb.dragging = false; lbImg.classList.remove('dragging');
+        // 기본 상태 좌우 스와이프 → 이전/다음 이미지
+        if (_lb.swiping && _lb.list && _lb.list.length > 1) {
+            const dx = e.clientX - _lb.swStartX, dy = e.clientY - _lb.swStartY;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+                _lb.moved = true; // 스와이프를 탭으로 오인하지 않도록
+                if (dx < 0) _lbShow(_lb.idx + 1); else _lbShow(_lb.idx - 1);
+            }
+        }
+        _lb.swiping = false;
+    }
+    lbStage.addEventListener('pointerup', _lbEndDrag);
+    lbStage.addEventListener('pointercancel', _lbEndDrag);
+
+    // 이미지 밖(배경) 탭 → 닫기
+    lbStage.addEventListener('click', (e) => {
+        if (e.target === lbImg) return;
+        if (_lb.moved) { _lb.moved = false; return; }
+        closeLightbox();
+    });
 
     // 미리보기(작성 폼) 클릭 → 자르기/회전 편집기 / 상세 이미지 클릭 → 라이트박스
     const previewImg = document.getElementById('image-preview');
@@ -7650,343 +7696,132 @@ function bindCarousel(rootEl, urls) {
     update();
 }
 
-// ==========================================================================
-// [B] edit by smsong - #37 라이트박스 (인스타그램식)
-//
-//  바뀐 점
-//   1) 좌우 전환이 '페이드 아웃 → 교체 → 페이드 인'(툭 끊김)에서
-//      트랙을 실제로 밀어 주는 슬라이드로 바뀌었다. 손가락을 따라 다음 사진이 함께 따라온다.
-//   2) 확대는 '탭'이 아니라 '두 손가락 핀치'로 한다. 손가락을 떼면 원래 크기로 되돌아간다.
-//   3) 한 번의 스와이프로 한 장만 넘어간다. 끝에서는 고무줄처럼 저항이 걸린다.
-//
-//  DOM 은 #lightbox-stage 안에 트랙(.lb-track) + 슬라이드(.lb-slide)를 그때그때 만든다.
-//  (main.html 의 #lightbox-img 는 더 이상 쓰지 않지만, 남아 있어도 무해하도록 숨긴다)
-// ==========================================================================
-var _lb = { list: [], idx: 0, originRect: null, targetRect: null };
-
+// ===== 라이트박스 상태 & 제어 =====
+const _lb = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, moved: false, originRect: null, targetRect: null, animating: false, list: [], idx: 0, swiping: false, swStartX: 0, swStartY: 0 };
+function _lbApply() {
+    const img = document.getElementById('lightbox-img');
+    if (img) img.style.transform = 'translate(' + _lb.x + 'px, ' + _lb.y + 'px) scale(' + _lb.scale + ')';
+}
+// 라이트박스 좌우 이동 UI 갱신
+function _lbUpdateNav() {
+    const prev = document.getElementById('lightbox-prev');
+    const next = document.getElementById('lightbox-next');
+    const counter = document.getElementById('lightbox-counter');
+    const many = _lb.list && _lb.list.length > 1;
+    if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
+    if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
+    if (counter) {
+        counter.classList.toggle('hidden', !many);
+        if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
+    }
+}
+// 라이트박스에서 다른 이미지로 전환 (확대 상태 초기화)
+function _lbShow(idx) {
+    if (!_lb.list || !_lb.list.length) return;
+    _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, idx));
+    const img = document.getElementById('lightbox-img');
+    if (!img) return;
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+    _lb.originRect = null; // 전환 후에는 제자리 축소 애니메이션 생략
+    img.style.transition = 'opacity 0.15s ease';
+    img.style.opacity = '0';
+    setTimeout(() => {
+        img.src = _lb.list[_lb.idx];
+        img.style.transform = 'none';
+        img.style.borderRadius = '0';
+        img.onload = () => { img.onload = null; img.style.opacity = '1'; };
+        if (img.complete && img.naturalWidth) img.style.opacity = '1';
+    }, 150);
+    _lbUpdateNav();
+}
 function _rectOf(el) {
     const r = el.getBoundingClientRect();
     return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
 }
+// 메타(스레드/인스타)식: 원본 위치에서 확대되어 나타나고, 닫을 때 제자리로 축소
+function openLightbox(srcOrList, originEl, index) {
+    const list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
+    if (!list.length) return;
+    _lb.list = list;
+    _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
+    const src = list[_lb.idx];
+    const lb = document.getElementById('lightbox');
+    const img = document.getElementById('lightbox-img');
+    const hint = document.getElementById('lightbox-hint');
+    if (!lb || !img) return;
 
-(function () {
-    'use strict';
+    _lbUpdateNav();
 
-    var MAX_SCALE = 4;
-    var SWIPE_RATIO = 0.22;   // 화면 폭의 이만큼 끌면 다음 장으로
-    var SWIPE_VELOCITY = 0.45; // px/ms — 짧고 빠르게 튕겨도 넘어가게
+    if (img) img.style.opacity = '1';
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
+    _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+    if (hint) hint.style.opacity = '1';
 
-    function injectStyle() {
-        if (document.getElementById('lb-style')) return;
-        var css =
-            '#lightbox-img{display:none!important;}' +
-            '.lightbox-stage{width:100%;height:100%;overflow:hidden;display:block;' +
-                'touch-action:none;cursor:default;}' +
-            '.lb-track{display:flex;height:100%;will-change:transform;}' +
-            '.lb-slide{flex:0 0 100%;height:100%;display:flex;align-items:center;justify-content:center;' +
-                'overflow:hidden;}' +
-            '.lb-slide img{max-width:100%;max-height:100%;object-fit:contain;display:block;' +
-                'user-select:none;-webkit-user-drag:none;transform-origin:center center;' +
-                'image-orientation:from-image;will-change:transform;}';
-        var st = document.createElement('style');
-        st.id = 'lb-style';
-        st.textContent = css;
-        document.head.appendChild(st);
-    }
-
-    var stage = null, track = null;
-    var W = 0;                 // 슬라이드 한 장 폭
-    var dragX = 0;             // 페이징 드래그 offset
-    var paging = false, axisLocked = false, horizontal = false;
-    var startX = 0, startY = 0, startT = 0;
-    var pointers = {};         // pointerId → {x, y}
-    var pinch = null;          // { startDist, startScale, img }
-    var zoom = { s: 1, x: 0, y: 0, img: null };
-
-    function slides() { return track ? track.children : []; }
-    function activeImg() {
-        var el = track && track.children[_lb.idx];
-        return el ? el.querySelector('img') : null;
-    }
-
-    function layout(animate) {
-        if (!track) return;
-        W = stage ? stage.clientWidth : 0;
-        track.style.transition = animate ? 'transform 0.32s cubic-bezier(.22,.61,.36,1)' : 'none';
-        track.style.transform = 'translate3d(' + (-_lb.idx * W + dragX) + 'px,0,0)';
-    }
-
-    function applyZoom(animate) {
-        var img = zoom.img;
-        if (!img) return;
-        img.style.transition = animate ? 'transform 0.28s cubic-bezier(.22,.61,.36,1)' : 'none';
-        img.style.transform = 'translate3d(' + zoom.x + 'px,' + zoom.y + 'px,0) scale(' + zoom.s + ')';
-    }
-
-    function resetZoom(animate) {
-        if (!zoom.img) return;
-        zoom.s = 1; zoom.x = 0; zoom.y = 0;
-        applyZoom(animate !== false);
-        var hint = document.getElementById('lightbox-hint');
-        if (hint) hint.style.opacity = '1';
-    }
-
-    function build(list) {
-        injectStyle();
-        stage = document.getElementById('lightbox-stage');
-        if (!stage) return false;
-        stage.innerHTML = '';
-        track = document.createElement('div');
-        track.className = 'lb-track';
-        for (var i = 0; i < list.length; i++) {
-            var sl = document.createElement('div');
-            sl.className = 'lb-slide';
-            var im = document.createElement('img');
-            im.alt = '확대 이미지';
-            im.draggable = false;
-            im.decoding = 'async';
-            im.src = list[i];
-            sl.appendChild(im);
-            track.appendChild(sl);
-        }
-        stage.appendChild(track);
-        bind();
-        return true;
-    }
-
-    // ---- 제스처 ----
-    var bound = false;
-    function bind() {
-        if (bound) return;
-        bound = true;
-
-        stage.addEventListener('pointerdown', function (e) {
-            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-            var ids = Object.keys(pointers);
-
-            if (ids.length === 2) {
-                // 두 손가락 → 핀치 시작
-                paging = false;
-                var a = pointers[ids[0]], b = pointers[ids[1]];
-                zoom.img = activeImg();
-                pinch = {
-                    startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
-                    startScale: zoom.s,
-                    cx: (a.x + b.x) / 2,
-                    cy: (a.y + b.y) / 2,
-                    baseX: zoom.x, baseY: zoom.y
-                };
-                var hint = document.getElementById('lightbox-hint');
-                if (hint) hint.style.opacity = '0';
-                return;
-            }
-            if (ids.length > 2) return;
-
-            // 한 손가락 → 페이징 준비 (확대 중이면 이동)
-            paging = true; axisLocked = false; horizontal = false;
-            startX = e.clientX; startY = e.clientY; startT = Date.now();
-            pointers._lastX = e.clientX; pointers._lastY = e.clientY;   // 확대 상태 이동 기준
-            if (!zoom.img) zoom.img = activeImg();
-            dragX = 0;
-            try { stage.setPointerCapture(e.pointerId); } catch (err) {}
-        });
-
-        stage.addEventListener('pointermove', function (e) {
-            if (!pointers[e.pointerId]) return;
-            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-            var ids = Object.keys(pointers);
-
-            if (pinch && ids.length >= 2) {
-                var a = pointers[ids[0]], b = pointers[ids[1]];
-                var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-                zoom.s = Math.max(1, Math.min(MAX_SCALE, pinch.startScale * (d / pinch.startDist)));
-                // 두 손가락 중심이 움직인 만큼 같이 이동 (확대한 지점을 붙잡고 보는 느낌)
-                var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-                zoom.x = pinch.baseX + (mx - pinch.cx);
-                zoom.y = pinch.baseY + (my - pinch.cy);
-                applyZoom(false);
-                if (e.cancelable) e.preventDefault();
-                return;
-            }
-
-            if (!paging) return;
-            var dx = e.clientX - startX, dy = e.clientY - startY;
-
-            if (zoom.s > 1) {   // 확대 중 → 사진 이동
-                zoom.x += (e.clientX - (pointers._lastX || e.clientX));
-                zoom.y += (e.clientY - (pointers._lastY || e.clientY));
-                pointers._lastX = e.clientX; pointers._lastY = e.clientY;
-                applyZoom(false);
-                if (e.cancelable) e.preventDefault();
-                return;
-            }
-
-            if (!axisLocked) {
-                if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-                    axisLocked = true;
-                    horizontal = Math.abs(dx) > Math.abs(dy);
-                } else return;
-            }
-            if (!horizontal) return;
-
-            // 끝에서는 고무줄 저항
-            var atEdge = (_lb.idx === 0 && dx > 0) || (_lb.idx === _lb.list.length - 1 && dx < 0);
-            dragX = atEdge ? dx * 0.32 : dx;
-            layout(false);
-            if (e.cancelable) e.preventDefault();
-        }, { passive: false });
-
-        function end(e) {
-            delete pointers[e.pointerId];
-            delete pointers._lastX; delete pointers._lastY;
-            var ids = Object.keys(pointers).filter(function (k) { return k !== '_lastX' && k !== '_lastY'; });
-
-            if (pinch) {
-                if (ids.length < 2) {
-                    pinch = null;
-                    resetZoom(true);   // 손가락을 떼면 원래 크기로
-                }
-                return;
-            }
-            if (!paging) return;
-            paging = false;
-
-            var dt = Math.max(1, Date.now() - startT);
-            var v = dragX / dt;
-            var moved = Math.abs(dragX);
-
-            if (horizontal && (moved > W * SWIPE_RATIO || Math.abs(v) > SWIPE_VELOCITY)) {
-                // 한 번에 한 장만
-                _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, _lb.idx + (dragX < 0 ? 1 : -1)));
-            } else if (!axisLocked && moved < 6) {
-                // 움직임 없는 탭 → 닫기
-                dragX = 0; layout(true);
-                closeLightbox();
-                return;
-            }
-            dragX = 0;
-            layout(true);
-            zoom = { s: 1, x: 0, y: 0, img: activeImg() };   // 넘어간 사진을 확대 대상으로
-            _lbUpdateNav();
-        }
-        stage.addEventListener('pointerup', end);
-        stage.addEventListener('pointercancel', end);
-        stage.addEventListener('dblclick', function (e) { e.preventDefault(); });
-        window.addEventListener('resize', function () { if (track) layout(false); });
-    }
-
-    // 외부에서 쓰는 API
-    window._lbUpdateNav = function () {
-        var prev = document.getElementById('lightbox-prev');
-        var next = document.getElementById('lightbox-next');
-        var counter = document.getElementById('lightbox-counter');
-        var many = _lb.list && _lb.list.length > 1;
-        if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
-        if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
-        if (counter) {
-            counter.classList.toggle('hidden', !many);
-            if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
+    const runAnim = () => {
+        // 확대된 최종(target) 위치 측정
+        img.style.transition = 'none';
+        img.style.transform = 'none';
+        img.style.borderRadius = '0';
+        const target = _rectOf(img);
+        _lb.targetRect = target;
+        const o = _lb.originRect;
+        if (o && target.w && target.h) {
+            const scale = Math.max(o.w / target.w, o.h / target.h);
+            const tx = o.cx - target.cx, ty = o.cy - target.cy;
+            img.style.transformOrigin = 'center center';
+            img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+            img.style.borderRadius = '50%';
+            void img.offsetWidth; // reflow
+            img.style.transition = 'transform 0.34s cubic-bezier(.22,.61,.36,1), border-radius 0.34s ease';
+            requestAnimationFrame(() => {
+                img.style.transform = 'translate(0px,0px) scale(1)';
+                img.style.borderRadius = '0';
+            });
+        } else {
+            img.style.transition = 'transform 0.2s var(--ease-soft)';
         }
     };
 
-    window._lbShow = function (idx) {
-        if (!_lb.list || !_lb.list.length) return;
-        resetZoom(false);                       // 이전 사진의 확대 상태 정리
-        _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, idx));
-        zoom = { s: 1, x: 0, y: 0, img: activeImg() };   // 새 사진을 확대 대상으로
-        dragX = 0;
-        layout(true);
-        _lbUpdateNav();
-    };
+    lb.classList.remove('hidden');
+    lb.style.opacity = '';
+    if (img.src !== src) {
+        img.onload = () => { img.onload = null; runAnim(); };
+        img.src = src;
+        if (img.complete && img.naturalWidth) { img.onload = null; runAnim(); }
+    } else {
+        runAnim();
+    }
+}
+function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    if (!lb || lb.classList.contains('hidden')) return;
+    const img = document.getElementById('lightbox-img');
 
-    // 원본 썸네일 자리에서 확대되어 나타나고, 닫을 때 제자리로 축소 (기존 연출 유지)
-    window.openLightbox = function (srcOrList, originEl, index) {
-        var list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
-        if (!list.length) return;
-        var lb = document.getElementById('lightbox');
-        if (!lb) return;
+    // 확대(줌) 상태였다면 먼저 원위치
+    _lb.scale = 1; _lb.x = 0; _lb.y = 0;
 
-        _lb.list = list;
-        _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
-        _lb.openedIdx = _lb.idx;   // 닫을 때 '연 사진과 같은지' 판정용
-        _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
-
-        if (!build(list)) return;
-        lb.classList.remove('hidden');
-        lb.style.opacity = '';
-
-        var hint = document.getElementById('lightbox-hint');
-        if (hint) { hint.textContent = '두 손가락으로 확대 · 좌우로 넘기기'; hint.style.opacity = '1'; }
-
-        zoom = { s: 1, x: 0, y: 0, img: null };
-        dragX = 0;
-        layout(false);
-        _lbUpdateNav();
-
-        var img = activeImg();
-        zoom.img = img;
-        if (!img) return;
-
-        var run = function () {
-            var target = _rectOf(img);
-            _lb.targetRect = target;
-            var o = _lb.originRect;
-            if (o && target.w && target.h) {
-                var sc = Math.max(o.w / target.w, o.h / target.h);
-                var tx = o.cx - target.cx, ty = o.cy - target.cy;
-                img.style.transition = 'none';
-                img.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + sc + ')';
-                img.style.borderRadius = '14px';
-                void img.offsetWidth;
-                img.style.transition = 'transform 0.32s cubic-bezier(.22,.61,.36,1), border-radius 0.32s ease';
-                requestAnimationFrame(function () {
-                    img.style.transform = 'translate3d(0,0,0) scale(1)';
-                    img.style.borderRadius = '0';
-                });
-            }
-        };
-        if (img.complete && img.naturalWidth) run();
-        else img.addEventListener('load', run, { once: true });
-    };
-
-    window.closeLightbox = function () {
-        var lb = document.getElementById('lightbox');
-        if (!lb || lb.classList.contains('hidden')) return;
-        var img = activeImg();
-        var o = _lb.originRect, target = _lb.targetRect;
-
-        // 열 때와 다른 사진을 보고 있으면 제자리 축소가 어색하므로 그냥 페이드로 닫는다
-        var sameAsOpened = !!(o && target && img && _lb.idx === (_lb.openedIdx == null ? _lb.idx : _lb.openedIdx));
-
-        var finish = function () {
+    const o = _lb.originRect, target = _lb.targetRect;
+    if (img && o && target && target.w && target.h) {
+        const scale = Math.max(o.w / target.w, o.h / target.h);
+        const tx = o.cx - target.cx, ty = o.cy - target.cy;
+        img.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1), border-radius 0.3s ease';
+        img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+        img.style.borderRadius = '50%';
+        lb.style.transition = 'opacity 0.3s ease';
+        lb.style.opacity = '0';
+        setTimeout(() => {
             lb.classList.add('hidden');
             lb.style.opacity = '';
             lb.style.transition = '';
-            if (stage) stage.innerHTML = '';
-            track = null;
+            if (img) { img.src = ''; img.style.transition = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
             _lb.originRect = null; _lb.targetRect = null;
-            zoom = { s: 1, x: 0, y: 0, img: null };
-        };
-
-        if (img && sameAsOpened && target.w && target.h) {
-            var sc = Math.max(o.w / target.w, o.h / target.h);
-            var tx = o.cx - target.cx, ty = o.cy - target.cy;
-            img.style.transition = 'transform 0.28s cubic-bezier(.4,0,.2,1), border-radius 0.28s ease';
-            img.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + sc + ')';
-            img.style.borderRadius = '14px';
-            lb.style.transition = 'opacity 0.28s ease';
-            lb.style.opacity = '0';
-            setTimeout(finish, 280);
-        } else {
-            lb.style.transition = 'opacity 0.2s ease';
-            lb.style.opacity = '0';
-            setTimeout(finish, 200);
-        }
-    };
-})();
-// [E] edit by smsong
-
-
+        }, 300);
+    } else {
+        lb.classList.add('hidden');
+        if (img) { img.src = ''; img.style.transform = ''; img.style.borderRadius = ''; img.style.opacity = ''; }
+        _lb.originRect = null; _lb.targetRect = null;
+    }
+}
 
 let _toastTimer = null;
 function showToast(msg) {

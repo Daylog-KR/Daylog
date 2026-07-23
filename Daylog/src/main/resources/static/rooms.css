@@ -196,12 +196,10 @@ html, body {
 }
 
 /* 하단 액션 (화면 하단 고정 — 목록 스크롤/드래그해도 항상 보임) */
-/* [B] edit by smsong - #37 안드로이드 PWA 는 viewport-fit=cover 로 시스템 바 아래까지 그려진다.
-   env(safe-area-inset-bottom) 만큼 반드시 더 띄워야 '방 만들기 / 코드로 입장'이 가려지지 않는다. */
 .rooms-actions {
     flex: 0 0 auto;
     display: flex; gap: 10px;
-    padding: 12px 18px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding: 12px 18px calc(env(safe-area-inset-bottom) + 16px);
     background: var(--bg-color);
     border-top: 1px solid var(--gray-200);
 }
@@ -552,7 +550,7 @@ html, body {
 .room-pending-hint { font-size: 0.78rem; color: var(--gray-500); font-weight: 600; }
 
 #toast {
-    position: fixed; bottom: calc(40px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%) translateY(20px);
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
     background: var(--gray-800); color: var(--white); padding: 12px 24px; border-radius: 8px;
     font-size: 13px; opacity: 0; transition: opacity 0.3s, transform 0.3s; z-index: 9999;
     max-width: calc(100% - 48px); text-align: center; box-shadow: var(--shadow-md);

@@ -4,7 +4,7 @@
     <!-- [B] edit by smsong - #6 다크모드: 렌더 전에 테마 적용(깜빡임 방지) -->
     <script>(function(){try{var t=localStorage.getItem("daylog_theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
     <link rel="icon" type="image/svg+xml" href="icon-master.svg">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -726,7 +726,7 @@
     <div class="lightbox-stage" id="lightbox-stage">
         <img id="lightbox-img" src="" alt="확대 이미지" draggable="false">
     </div>
-    <div class="lightbox-hint" id="lightbox-hint">두 손가락으로 확대 · 좌우로 넘기기</div>
+    <div class="lightbox-hint" id="lightbox-hint">탭하면 확대 · 좌우로 넘기기</div>
 </div>
 
 <!-- [B] edit by smsong - #4 축포 레이어 (body 레벨, 모달과 독립 → 폼 닫아도 다 떨어질 때까지 유지) -->
@@ -736,7 +736,7 @@
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
 <!-- [B][E] edit by smsong - #36 안드로이드 뒤로가기 (main.js 보다 먼저 로드) -->
 <script src="nav.js?v=1.0.0"></script>
-<script src="main.js?v=1.0.29"></script>
+<script src="main.js?v=1.0.28"></script>
 <script src="push.js?v=1.0.24"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>
