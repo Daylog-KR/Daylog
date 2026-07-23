@@ -21,6 +21,13 @@ public interface ChecklistRepository extends JpaRepository<ChecklistEntity, Long
     // [smsong] 방 스코프: 해당 방의 정상 가볼곳만
     List<ChecklistEntity> findByRoomIdAndDeletedFalse(Long roomId);
 
+    // [B] edit by smsong - #12 일반 화면(지도/목록/달력)에 노출할 목록 — 보관함 제외
+    List<ChecklistEntity> findByRoomIdAndDeletedFalseAndArchivedFalse(Long roomId);
+
+    // [B] edit by smsong - #12 보관함 목록 — 방 전체 공유(작성자 제한 없음)
+    List<ChecklistEntity> findByRoomIdAndArchivedTrueAndDeletedFalseOrderByVisitedDateDesc(Long roomId);
+    // [E] edit by smsong
+
     // [smsong] 방 스코프 휴지통
     List<ChecklistEntity> findByOwnerUidAndRoomIdAndDeletedTrue(String uid, Long roomId);
 

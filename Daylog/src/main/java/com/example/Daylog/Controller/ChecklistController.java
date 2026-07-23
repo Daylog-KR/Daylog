@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map; // [B][E] edit by smsong - #12
 
 @RestController
 @RequestMapping("/api/checklists")
@@ -81,6 +82,51 @@ public class ChecklistController {
         checklistService.permanentDelete(id, userDetails);
         return ResponseEntity.ok().build();
     }
+
+    // ===== [B] edit by smsong - #12 보관함 =====
+
+    /** 보관함으로 이동 ('다녀왔습니다' → 추억 생성 후 원본을 여기로) */
+    @PutMapping("/{id}/archive")
+    public ResponseEntity<ChecklistDTO> archive(@PathVariable("id") Long id,
+                                                @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.archive(id, userDetails));
+    }
+
+    /** 보관 해제 — 다시 일반 목록으로 */
+    @PutMapping("/{id}/unarchive")
+    public ResponseEntity<ChecklistDTO> unarchive(@PathVariable("id") Long id,
+                                                  @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.unarchive(id, userDetails));
+    }
+
+    /** 보관함 목록 (방 전체 공유) */
+    @GetMapping("/archive/{uid}")
+    public ResponseEntity<List<ChecklistDTO>> getArchived(@PathVariable("uid") String uid,
+                                                          @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                          @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.getArchived(uid, roomId, userDetails));
+    }
+
+    // ===== 일괄 처리 (보관함/휴지통 선택 모드) =====
+
+    @PostMapping("/bulk/trash")
+    public ResponseEntity<Map<String, Object>> bulkTrash(@RequestBody Map<String, List<Long>> body,
+                                                         @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.bulkTrash(body.get("ids"), userDetails));
+    }
+
+    @PostMapping("/bulk/delete")
+    public ResponseEntity<Map<String, Object>> bulkDelete(@RequestBody Map<String, List<Long>> body,
+                                                          @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.bulkDelete(body.get("ids"), userDetails));
+    }
+
+    @PostMapping("/bulk/restore")
+    public ResponseEntity<Map<String, Object>> bulkRestore(@RequestBody Map<String, List<Long>> body,
+                                                           @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(checklistService.bulkRestore(body.get("ids"), userDetails));
+    }
+    // [E] edit by smsong
 
     // 내가 휴지통으로 보낸 가볼곳 목록
     @GetMapping("/trash/{uid}")

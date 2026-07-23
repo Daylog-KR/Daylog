@@ -2560,7 +2560,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('위치 변경을 취소했습니다');
         } else if (pickTarget === 'checklist') {
             pickTarget = 'memory';
-            showToast('가볼곳 추가를 취소함');
+            showToast('체크리스트 추가를 취소함');
         } else {
             selectedFile = null;
             if (fileInput) fileInput.value = '';
@@ -3210,7 +3210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (Daylog._applyRoomProfileMode) Daylog._applyRoomProfileMode(); // [smsong] 멤버뷰 카운트 갱신
                 if (mapMode === 'checklist') renderActiveMapMarkers();
             })
-            .catch(err => console.error("가볼곳 로드 실패:", err)), '가볼곳을 불러오는 중...'); // [smsong] 로딩
+            .catch(err => console.error("체크리스트 로드 실패:", err)), '체크리스트을 불러오는 중...'); // [smsong] 로딩
     }
 
     // 가볼곳 마커 — 사진 대신 제목 말풍선, 타입별 색상, 방문 표시
@@ -3227,7 +3227,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<div class="cl-marker' + visitedCls + (_suppressDrop ? ' nodrop' : '') + '" style="--cl-color:' + meta.color + '">' +
                 check +
                 '<span class="cl-marker-emoji">' + meta.emoji + '</span>' +
-                '<span class="cl-marker-title">' + escapeHtml(item.title || '가볼곳') + '</span>' +
+                '<span class="cl-marker-title">' + escapeHtml(item.title || '체크리스트') + '</span>' +
                 '<span class="cl-marker-tail"></span>' +
                 '</div>';
             const marker = new naver.maps.Marker({
@@ -3298,7 +3298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (action) {
             action.innerHTML = icon('plus',22);
-            action.title = isCl ? '가볼곳 추가' : '기록 남기기';
+            action.title = isCl ? '체크리스트 추가' : '기록 남기기';
             // 추가 버튼은 색이 바뀌지 않도록 모드별 색 클래스를 적용하지 않음
         }
     }
@@ -3339,7 +3339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.DaylogFeed || !scrollEl) {   // 안전 폴백 — 예전처럼 한 번에 그림
             feedEl.innerHTML = '';
             if (!sorted.length) {
-                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>';
+                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트이 없습니다</p></div>';
                 return;
             }
             sorted.forEach(item => feedEl.appendChild(_clCardEl(item)));
@@ -3354,7 +3354,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollEl: scrollEl,
                 pageSize: 5,
                 windowRows: 10,
-                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>',
+                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 체크리스트이 없습니다</p></div>',
                 rowsOf: function (list) {
                     return list.map(function (c) {
                         return { key: 'c:' + c.id, type: 'card', item: c, est: 132 };
@@ -3455,7 +3455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                         });
                 } else {
-                    showToast('가볼곳을 추가했습니다');
+                    showToast('체크리스트을 추가했습니다');
                     loadChecklistsFromServer().then(function () {
                         if (mapMode !== 'checklist') setMapMode('checklist');
                         else refreshMapMarkers();
@@ -4541,7 +4541,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // [B] edit by smsong - 추억/가볼곳 타일을 멤버 카드 오른쪽 끝에 배치
                 `<div class="member-counts">` +
                     `<button class="member-count-btn" data-kind="mem"><b>${memCount}</b><span>추억</span></button>` +
-                    `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>가볼곳</span></button>` +
+                    `<button class="member-count-btn" data-kind="cl"><b>${clCount}</b><span>체크리스트</span></button>` +
                 `</div>`;
             card.querySelector('[data-kind="mem"]').addEventListener('click', () => {
                 var items = memoryList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
@@ -4550,7 +4550,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             card.querySelector('[data-kind="cl"]').addEventListener('click', () => {
                 var items = checklistList.filter(x => x.ownerUid === m.uid).sort(sortByDateDesc);
-                openChecklistListModal(name + '의 가볼곳', items);
+                openChecklistListModal(name + '의 체크리스트', items);
             });
             grid.appendChild(card);
         });
@@ -5245,7 +5245,7 @@ function trashChecklistQuietly(id) {
 }
 
 function trashChecklist(id) {
-    if (!confirm('이 가볼곳을 휴지통으로 옮기시겠습니까?')) return;
+    if (!confirm('이 체크리스트을 휴지통으로 옮기시겠습니까?')) return;
     withLoading(fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '휴지통으로 이동 중...')
         .then(Daylog.handleResponse)
         .then(() => { showToast('휴지통으로 이동했습니다'); closeChecklistDetail(); Daylog.reloadChecklists(); })
@@ -5911,7 +5911,7 @@ function renderTrash(memories, comments, checklists) {
     }
 
     if (checklists.length) {
-        html += '<div class="trash-group-title">가볼곳 ' + checklists.length + '</div>';
+        html += '<div class="trash-group-title">체크리스트 ' + checklists.length + '</div>';
         checklists.forEach(c => {
             const meta = (typeof checklistType === 'function') ? checklistType(c.type) : { emoji: icon('bookmark',15), label: '' };
             const loc = [c.placeName, c.address].filter(Boolean).join(' ');
@@ -5919,7 +5919,7 @@ function renderTrash(memories, comments, checklists) {
                 '<div class="trash-row">' +
                 '<div class="lm-thumb lm-thumb-empty">' + meta.emoji + '</div>' +
                 '<div class="lm-row-main">' +
-                '<div class="lm-row-date">' + escapeHtml(meta.label || '가볼곳') + '</div>' +
+                '<div class="lm-row-date">' + escapeHtml(meta.label || '체크리스트') + '</div>' +
                 '<div class="lm-row-title">' + escapeHtml(c.title || '') + '</div>' +
                 '<div class="lm-row-text">' + escapeHtml(loc) + '</div>' +
                 autoDeleteText(c) + // [smsong]
@@ -5973,7 +5973,7 @@ function restoreChecklist(id) {
 }
 
 function deleteChecklistForever(id) {
-    if (!confirm('이 가볼곳을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
+    if (!confirm('이 체크리스트을 영구적으로 삭제하시겠습니까?\n삭제하면 되돌릴 수 없습니다.')) return;
     withLoading(fetch(`${Daylog.api}/api/checklists/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
         .then(Daylog.handleResponse)
         .then(() => { showToast('영구 삭제했습니다'); openTrashModal(); })
@@ -6023,7 +6023,7 @@ function renderMemberModal(members, isCouple) {
         // [B] edit by smsong - 추억/가볼곳 개수만 표시 (댓글 제거)
         let counts = '';
         counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
-        counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>가볼곳</span></button>`;
+        counts += `<button class="mm-count" data-act="cl" data-uid="${m.uid}"><b>${clCount}</b><span>체크리스트</span></button>`;
         const card = document.createElement('div');
         card.className = 'mm-card';
         card.innerHTML =
@@ -6039,7 +6039,7 @@ function renderMemberModal(members, isCouple) {
             const mem = members.find(x => x.uid === uid);
             const nm = mem ? (mem.nickname || mem.name || uid) : uid;
             if (act === 'mem') openMemoryListModal(nm + '님의 추억', (Daylog.memories || []).filter(x => x.ownerUid === uid));
-            else if (act === 'cl') openChecklistListModal(nm + '님의 가볼곳', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
+            else if (act === 'cl') openChecklistListModal(nm + '님의 체크리스트', (Daylog.checklists || []).filter(x => x.ownerUid === uid));
         });
     });
 }
@@ -6066,7 +6066,7 @@ function openCommentedListModal(title, entries) {
         body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>작성한 댓글이 없습니다</p></div>';
     } else {
         entries.forEach(function (e) {
-            const kindLabel = (e.type === 'memory') ? '추억' : '가볼곳';
+            const kindLabel = (e.type === 'memory') ? '추억' : '체크리스트';
             const dateStr = e.createdAt ? String(e.createdAt).substring(0, 10).replace(/-/g, '.') : '';
             const row = document.createElement('div');
             row.className = 'lm-row cmt-row';
@@ -6083,7 +6083,7 @@ function openCommentedListModal(title, entries) {
                     if (m) openDetailModal(m, true); else showToast('원본 추억을 찾을 수 없습니다');
                 } else {
                     const c = (Daylog.checklists || []).find(x => String(x.id) === String(e.itemId));
-                    if (c) openChecklistDetail(c, true); else showToast('원본 가볼곳을 찾을 수 없습니다');
+                    if (c) openChecklistDetail(c, true); else showToast('원본 체크리스트을 찾을 수 없습니다');
                 }
             });
             body.appendChild(row);
@@ -6134,7 +6134,7 @@ function _lmTileEl(item, kind) {
 
     let chip = '', meta = '';
     if (kind === 'checklist') {
-        const m = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '', label: '가볼곳', color: '#b08968' };
+        const m = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '', label: '체크리스트', color: '#b08968' };
         chip = '<span class="lm-tile-chip' + (item.visited ? ' done' : '') + '">' +
                (item.visited ? icon('check', 11) + ' 다녀옴' : '예정') + '</span>';
         meta = escapeHtml([m.label, item.placeName || item.address || ''].filter(Boolean).join(' · '));
@@ -6240,7 +6240,7 @@ function openMemoryListModal(title, items) {
 function openChecklistListModal(title, items) {
     Daylog._openListKind = null; // 새로고침 시 추억 목록 재구성 로직과 분리
     _lmOpen(title, items, 'checklist',
-        '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>표시할 가볼곳이 없습니다</p></div>');
+        '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>표시할 체크리스트이 없습니다</p></div>');
 }
 
 function closeListModal() {

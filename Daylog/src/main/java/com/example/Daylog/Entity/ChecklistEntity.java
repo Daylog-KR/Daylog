@@ -63,6 +63,19 @@ public class ChecklistEntity {
     // 다녀온 날짜 (visited=true 일 때만 의미 있음)
     private LocalDate visitedDate;
 
+    // [B] edit by smsong - #12 갈 예정일 — 체크리스트 달력에 이 날짜로 표시된다
+    private LocalDate plannedDate;
+
+    // [B] edit by smsong - #12 보관함 플래그
+    //  '다녀왔습니다' 로 추억이 만들어진 뒤 원본을 휴지통이 아니라 보관함으로 옮긴다.
+    //  · archived=true 는 일반 화면(지도/목록)에 절대 노출되지 않는다.
+    //  · deleted(휴지통)와는 별개 축이다. 보관함 → 휴지통으로 다시 옮길 수 있다.
+    @Column(nullable = false)
+    private boolean archived;
+
+    private LocalDateTime archivedAt;
+    // [E] edit by smsong
+
     // [smsong] 소속 방(공유 공간) — 이 방의 멤버끼리만 공유
     private Long roomId;
 

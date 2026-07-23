@@ -29,6 +29,11 @@ public class ChecklistDTO {
     private boolean deleted;  // 휴지통 여부
     private boolean visited;  // 다녀왔는지 여부
     private LocalDate visitedDate; // 다녀온 날짜 (선택)
+    // [B] edit by smsong - #12
+    private LocalDate plannedDate; // 갈 예정일 (달력 표시용)
+    private boolean archived;      // 보관함 여부
+    private LocalDateTime archivedAt;
+    // [E] edit by smsong
     private String ownerUid;
     private LocalDateTime createdAt;
     // [B] edit by smsong - 마지막 수정 시각/수정자 (조회 전용)
@@ -61,6 +66,11 @@ public class ChecklistDTO {
                 .deleted(e.isDeleted())
                 .visited(e.isVisited())
                 .visitedDate(e.getVisitedDate())
+                // [B] edit by smsong - #12
+                .plannedDate(e.getPlannedDate())
+                .archived(e.isArchived())
+                .archivedAt(e.getArchivedAt())
+                // [E] edit by smsong
                 .ownerUid(ownerUid)
                 .createdAt(e.getCreatedAt())
                 // [B] edit by smsong - 마지막 수정 정보 (없으면 생성 시점/작성자로 폴백 → 기존 레코드 호환)
@@ -87,6 +97,7 @@ public class ChecklistDTO {
                 .deleted(deleted)
                 .visited(visited)
                 .visitedDate(visitedDate)
+                .plannedDate(plannedDate)   // [B][E] edit by smsong - #12
                 .owner(owner)
                 .createdAt(createdAt)
                 .build();

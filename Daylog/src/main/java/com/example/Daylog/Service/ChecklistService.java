@@ -210,6 +210,7 @@ public class ChecklistService {
 
         ChecklistEntity entity = dto.dtoToEntity(owner);
         entity.setRoomId(roomId); // [smsong] 방 스코프
+        entity.setArchived(false); // [B][E] edit by smsong - #12
 
         List<String> uploaded = uploadMediaList(mediaFiles);
         List<String> finalUrls = buildOrderedUrls(dto.getMediaOrder(), uploaded);
@@ -231,9 +232,11 @@ public class ChecklistService {
     public List<ChecklistDTO> getAllChecklists(String uid, Long roomId, UserDetails userDetails) {
         roomService.requireMember(uid, roomId); // [smsong] 방 멤버만 조회
         permissionService.requireAccess(uid, roomId); // [smsong] 방 접근 권한 필요
-        return checklistRepository.findByRoomIdAndDeletedFalse(roomId).stream()
+        // [B] edit by smsong - #12 보관함(archived) 항목은 일반 화면에 노출하지 않는다
+        return checklistRepository.findByRoomIdAndDeletedFalseAndArchivedFalse(roomId).stream()
                 .map(ChecklistDTO::entityToDto)
                 .collect(Collectors.toList());
+        // [E] edit by smsong
     }
 
     // 본인 소유 체크리스트 수정 (제목/내용/타입/방문여부/방문일 + 이미지 정렬/추가/삭제)
@@ -246,6 +249,9 @@ public class ChecklistService {
         if (dto.getType() != null)    c.setType(dto.getType());
         c.setVisited(dto.isVisited());
         c.setVisitedDate(dto.isVisited() ? dto.getVisitedDate() : null);
+        // [B] edit by smsong - #12 갈 예정일 (달력 표시용). null 로 보내면 해제된다.
+        c.setPlannedDate(dto.getPlannedDate());
+        // [E] edit by smsong
 
         // [B] edit by smsong - 위치 수정 반영: lat/lng 이 함께 넘어온 경우에만 위치 갱신
         //  (프론트는 위치를 '실제로 변경'했을 때만 lat/lng/placeName/address 를 전송 → 일반 수정에는 영향 없음)
@@ -349,6 +355,89 @@ public class ChecklistService {
         }
         return result;
     }
+
+    // ===================================================================
+    // [B] edit by smsong - #12 보관함
+    //  '다녀왔습니다' → 추억 생성 후 원본 체크리스트를 휴지통이 아니라 여기로 옮긴다.
+    //  · 보관함 항목은 getAllChecklists 에서 제외되어 지도/목록에 뜨지 않는다.
+    //  · 보관함 → 휴지통 이동은 moveToTrash 를 그대로 쓴다(archived 는 유지되지만
+    //    deleted=true 가 되어 보관함 목록에서도 빠진다).
+    // ===================================================================
+
+    /** 보관함으로 이동 */
+    @Transactional
+    public ChecklistDTO archive(Long id, UserDetails userDetails) {
+        ChecklistEntity c = findChecklist(id);
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "보관");
+        c.setArchived(true);
+        c.setArchivedAt(java.time.LocalDateTime.now());
+        c.setDeleted(false);
+        c.setTrashedAt(null);
+        return ChecklistDTO.entityToDto(checklistRepository.save(c));
+    }
+
+    /** 보관 해제 — 다시 일반 목록으로 */
+    @Transactional
+    public ChecklistDTO unarchive(Long id, UserDetails userDetails) {
+        ChecklistEntity c = findChecklist(id);
+        roomService.requireMember(userDetails.getUsername(), c.getRoomId());
+        requireOwnerOrAdmin(c, userDetails, "보관 해제");
+        c.setArchived(false);
+        c.setArchivedAt(null);
+        return ChecklistDTO.entityToDto(checklistRepository.save(c));
+    }
+
+    /** 보관함 목록 (방 전체 공유 — 작성자 제한 없음) */
+    @Transactional(readOnly = true)
+    public List<ChecklistDTO> getArchived(String uid, Long roomId, UserDetails userDetails) {
+        roomService.requireMember(uid, roomId);
+        permissionService.requireAccess(uid, roomId);
+        return checklistRepository
+                .findByRoomIdAndArchivedTrueAndDeletedFalseOrderByVisitedDateDesc(roomId).stream()
+                .map(ChecklistDTO::entityToDto)
+                .collect(Collectors.toList());
+    }
+
+    // ===== 일괄 처리 (보관함/휴지통 선택 모드) =====
+    //  권한이 없는 항목이 섞여도 나머지는 처리하고, 실패한 id 만 돌려준다.
+
+    @Transactional
+    public java.util.Map<String, Object> bulkTrash(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "trash");
+    }
+
+    @Transactional
+    public java.util.Map<String, Object> bulkDelete(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "delete");
+    }
+
+    @Transactional
+    public java.util.Map<String, Object> bulkRestore(List<Long> ids, UserDetails userDetails) {
+        return bulkRun(ids, userDetails, "restore");
+    }
+
+    private java.util.Map<String, Object> bulkRun(List<Long> ids, UserDetails userDetails, String op) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                try {
+                    if ("trash".equals(op)) moveToTrash(id, userDetails);
+                    else if ("delete".equals(op)) permanentDelete(id, userDetails);
+                    else restoreChecklist(id, userDetails);
+                    ok++;
+                } catch (Exception e) {
+                    failed.add(id);
+                }
+            }
+        }
+        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        res.put("success", ok);
+        res.put("failed", failed);
+        return res;
+    }
+    // [E] edit by smsong
 
     // 스케줄러용: 보관 기간(30일) 경과한 휴지통 가볼곳 일괄 영구 삭제
     @Transactional
