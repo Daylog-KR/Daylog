@@ -18,7 +18,7 @@ daylog:
     enabled: true
     cron: "0 0 10 * * *"   # 매일 오전 10시
     zone: Asia/Seoul
-    years: 1               # "1,2,3" 으로 두면 2·3주년도 함께 발송
+    years: 1,2,3           # "1,2,3" 으로 두면 2·3주년도 함께 발송
     link: main.html
 
 google:
@@ -66,6 +66,7 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        default_batch_fetch_size: 100   # 컬렉션을 IN 절로 묶어 조회 → N+1 완화
 
   messages:
     encoding: UTF-8                 # 메시지 소스(국제화) UTF-8로 설정
