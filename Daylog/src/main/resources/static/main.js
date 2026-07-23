@@ -5334,6 +5334,9 @@ function openChecklistDetail(item, overModal) {
     const cdmScroll = cdm.querySelector('.sheet-body');
     if (cdmScroll) cdmScroll.scrollTop = 0;
     _getChecklistSheet().open('full');       // [smsong] 바텀시트로 열기(완전히 위)
+    // [B][E] edit by smsong - #32 시트가 실제로 표시된 뒤 한 번 더 맞춘다.
+    //  (위쪽 호출은 시트가 hidden 이라 폭이 0 일 수 있다 — 재진입 시 절반으로 잘리던 원인)
+    Daylog._fitDetailStage(document.getElementById('cl-detail-view'));
 }
 
 function enterChecklistEdit(item) {
@@ -5895,6 +5898,8 @@ function openDetailModal(memory, overModal) {
     const dmScroll = dm.querySelector('.sheet-body');
     if (dmScroll) dmScroll.scrollTop = 0;   // 항상 맨 위에서 시작
     _getMemorySheet().open('full');         // [smsong] 바텀시트로 열기(완전히 위)
+    // [B][E] edit by smsong - #32 시트가 실제로 표시된 뒤 한 번 더 맞춘다 (체크리스트와 동일)
+    Daylog._fitDetailStage(document.getElementById('detail-view'));
 }
 
 // 상세/수정 모달의 위치 표기 (장소명 + 상세주소) — 없으면 좌표로 역지오코딩
@@ -7324,14 +7329,46 @@ function carouselHtml(urls) {
 
     function vh() { return window.innerHeight || document.documentElement.clientHeight || 700; }
 
-    function sizeStage(stage, ratio) {
-        var w = stage.clientWidth || stage.offsetWidth;
-        if (!w || !ratio) return;
+    // [B] edit by smsong - #32 무대 폭 측정.
+    //  시트가 아직 .hidden(display:none) 이면 clientWidth 가 0 이라 계산이 불가능하다.
+    //  이 경우 부모(시트 본문/모달)에서라도 실제 폭을 찾아본다.
+    function measureWidth(stage) {
+        var w = stage.clientWidth || stage.offsetWidth || 0;
+        if (w) return w;
+        var p = stage.parentElement;
+        for (var i = 0; p && i < 5; i++, p = p.parentElement) {
+            w = p.clientWidth || p.offsetWidth || 0;
+            if (w) return w;
+        }
+        return 0;
+    }
+
+    function applyHeight(stage, ratio, w) {
         var v = vh();
         var h = Math.round(Math.max(v * MIN_VH, Math.min(v * MAX_VH, w * ratio)));
         stage.style.height = h + 'px';
         stage.style.minHeight = h + 'px';
     }
+
+    function sizeStage(stage, ratio) {
+        var w = measureWidth(stage);
+        if (!w || !ratio) return false;
+        applyHeight(stage, ratio, w);
+        return true;
+    }
+
+    // [B] edit by smsong - #32 폭이 아직 0 이면 레이아웃이 잡힐 때까지 프레임 단위로 재시도.
+    //  (시트 열림 애니메이션 동안 여러 프레임이 걸린다)
+    function sizeWhenReady(stage, ratio, tries) {
+        if (sizeStage(stage, ratio)) return;
+        if (!stage.isConnected) return;                 // 이미 닫혀 사라진 상세
+        if ((tries || 0) < 40) {                        // 약 0.6초까지 대기
+            requestAnimationFrame(function () { sizeWhenReady(stage, ratio, (tries || 0) + 1); });
+            return;
+        }
+        applyHeight(stage, ratio, window.innerWidth || 390);  // 최후 폴백
+    }
+    // [E] edit by smsong
 
     Daylog._fitDetailStage = function (root) {
         if (!root) return;
@@ -7344,7 +7381,10 @@ function carouselHtml(urls) {
             if (!img.naturalWidth || !img.naturalHeight) return;
             var ratio = img.naturalHeight / img.naturalWidth;
             stage.setAttribute('data-ratio', ratio);
-            sizeStage(stage, ratio);
+            // [B][E] edit by smsong - #32 예전에는 여기서 clientWidth 가 0 이면 그냥 return 이었다.
+            //  → 이미지가 캐시된 '두 번째 진입'에서는 시트가 뜨기 전에 동기 실행되어 폭이 0 이고,
+            //     높이가 영영 설정되지 않아 CSS 기본값(52dvh, 화면 절반)으로 잘려 보였다.
+            sizeWhenReady(stage, ratio, 0);
         }
         if (img.complete && img.naturalWidth) apply();
         else img.addEventListener('load', apply, { once: true });
