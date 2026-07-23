@@ -1721,16 +1721,15 @@ Daylog._thumbFallback = function (img) {
             return;
         }
     } catch (e) {}
+    // [B] edit by smsong - #20 이중 호출 방어.
+    //  같은 에러로 핸들러가 두 번 불리면, 위에서 src 를 원본으로 막 바꾼 직후라
+    //  complete 가 false 다. 이때는 아직 결과를 모르므로 '실패'로 단정하지 않는다.
+    if (!img.complete) return;
+    // [E] edit by smsong
     img.onerror = null;                   // 원본까지 실패 → 중단(더 이상 재시도 안 함)
     img.classList.add('is-loaded');       // fade 클래스 보장(투명 잔상 방지)
-    // [B] edit by smsong - #19 썸네일·원본이 모두 실패한 경우 표시.
-    //  '로드는 된 것 같은데 빈칸'과 '파일이 실제로 없음'을 화면에서 구분할 수 있게 한다.
-    try {
-        img.setAttribute('data-failed', '1');
-        var tile = img.closest && img.closest('.tg-tile, .lm-tile-art, .tl-thumb, .cl-thumb, .lm-thumb');
-        if (tile) tile.setAttribute('data-failed', '1');
-    } catch (e) {}
-    // [E] edit by smsong
+    // 진단용 표시만 남긴다(화면을 가리지는 않는다 — 잘못 붙어도 사진이 사라지면 안 되므로)
+    try { img.setAttribute('data-failed', '1'); } catch (e) {}
 };
 
 // [B] edit by smsong - #19 썸네일 표시 안전망
@@ -1752,10 +1751,10 @@ Daylog._fixThumbs = function (root) {
         if (im.complete && im.naturalWidth > 0) { im.classList.add('is-loaded'); continue; }
         if (im.__dlBound) continue;
         im.__dlBound = true;
+        // load 만 건다. error 는 인라인 onerror="Daylog._thumbFallback(this)" 가 이미 처리한다.
+        //  여기서 error 를 또 걸면 썸네일 404 한 번에 폴백이 '두 번' 호출되어,
+        //  원본으로 막 교체한 직후인데도 '원본까지 실패'로 오판한다.
         im.addEventListener('load', function () { this.classList.add('is-loaded'); }, { once: true });
-        im.addEventListener('error', function () {
-            try { Daylog._thumbFallback(this); } catch (e) {}
-        });
     }
 };
 
@@ -8142,8 +8141,8 @@ document.addEventListener('DOMContentLoaded', () => {
             //  페이드는 '로드된 순간'에만 애니메이션으로 얹는다 — main.css 의 .tl-thumb 과 같은 전략.
             '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
             '.tg-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
-            '.tg-img[data-failed="1"]{opacity:0;}',
-            '.tg-tile[data-failed="1"]::after{content:"";position:absolute;inset:0;background:var(--gray-100);}',
+            // data-failed 는 진단용 표시일 뿐, 이미지를 숨기지 않는다.
+            //  (잘못 붙는 순간 사진이 통째로 사라져 버리는 위험을 없앤다)
             '.tg-multi{position:absolute;top:6px;right:6px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
             'display:inline-flex;pointer-events:none;}',
             '.tg-tile.notext{background:var(--primary-light);display:flex;flex-direction:column;' +
