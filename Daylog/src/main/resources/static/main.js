@@ -7223,6 +7223,8 @@ document.addEventListener('DOMContentLoaded', () => {
     var _calCls = [];      // 달력용 체크리스트 (보관함 포함)
     var _clView = 'list';  // list | calendar
     var _cy = null, _cm = null;
+    var _sel = null;              // 선택된 날짜 (YYYY-MM-DD)
+    var _pendingPlanned = null;   // 달력에서 체크리스트를 추가할 때 넘길 갈 예정일
     var _loaded = false;
 
     function api() { return Daylog.api; }
@@ -7308,9 +7310,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===================== 달력 =====================
     function initMonth() {
-        if (_cy != null) return;
-        var t = new Date();
-        _cy = t.getFullYear(); _cm = t.getMonth();
+        if (_cy == null) {
+            var t = new Date();
+            _cy = t.getFullYear(); _cm = t.getMonth();
+        }
+        // 선택 날짜가 보고 있는 달 밖이면 보정 — 이번 달이면 오늘, 아니면 1일
+        var pre = String(_cy) + '-' + String(_cm + 1).padStart(2, '0');
+        if (!_sel || _sel.substring(0, 7) !== pre) {
+            var now = new Date();
+            _sel = (now.getFullYear() === _cy && now.getMonth() === _cm) ? ymd(now) : (pre + '-01');
+        }
     }
 
     function render() {
@@ -7346,7 +7355,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var total = it.s.length + it.c.length;
             var dow = new Date(_cy, _cm, d).getDay();
             var cls = 'cal-cell cw-cell' + (total ? ' has' : '') + (dow === 0 ? ' sun' : '') + (dow === 6 ? ' sat' : '') +
-                      (key === todayKey ? ' today' : '');
+                      (key === todayKey ? ' today' : '') + (key === _sel ? ' picked-day' : '');
             var cell = '<div class="' + cls + '" data-date="' + key + '">';
             cell += '<span class="cal-day">' + d + '</span>';
             if (total) {
@@ -7362,6 +7371,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cells += cell;
         }
         html += '<div class="cal-grid cal-days">' + cells + '</div>';
+        // [B][E] edit by smsong - #14 달력 아래 인라인 패널 자리
+        html += '<div id="cw-daypanel" class="cw-daypanel"></div>';
         cont.innerHTML = html;
 
         document.getElementById('cw-prev').addEventListener('click', function () {
@@ -7371,94 +7382,128 @@ document.addEventListener('DOMContentLoaded', () => {
             _cm++; if (_cm > 11) { _cm = 0; _cy++; } render();
         });
         cont.querySelectorAll('.cw-cell:not(.empty)').forEach(function (c) {
-            c.addEventListener('click', function () { openDay(c.getAttribute('data-date')); });
+            c.addEventListener('click', function () {
+                _sel = c.getAttribute('data-date');
+                cont.querySelectorAll('.cw-cell.picked-day').forEach(function (x) { x.classList.remove('picked-day'); });
+                c.classList.add('picked-day');
+                renderDay(_sel);
+                var box = document.getElementById('cw-daypanel');
+                if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
         });
+        renderDay(_sel);
     }
     Daylog._renderChecklistCalendar = render;
 
-    // ===================== 그날의 패널 =====================
-    function closeDay() {
-        var e = document.getElementById('cw-day');
-        if (e && e.parentNode) e.parentNode.removeChild(e);
-    }
+    // ===================== 그날의 목록 (달력 아래 인라인 패널) =====================
+    //  시트로 덮지 않고 달력 밑 여백에 그대로 펼친다. 날짜를 누를 때마다 이 영역만 다시 그린다.
+    function renderDay(key) {
+        var box = document.getElementById('cw-daypanel');
+        if (!box) return;
+        if (!key) { box.innerHTML = ''; return; }
 
-    function openDay(key) {
         var g = groupByDate();
         var it = g[key] || { s: [], c: [] };
-        if (!it.s.length && !it.c.length) { openScheduleForm(key, null); return; }  // 빈 날짜 → 바로 추가
-
-        closeDay();
         var dt = new Date(key);
-        var head = (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 ' + ['일','월','화','수','목','금','토'][dt.getDay()] + '요일';
+        var full = dt.getFullYear() + '년 ' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일';
+        var dow = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
+        var total = it.s.length + it.c.length;
+
+        var addBtns =
+            '<div class="cw-addrow">' +
+                '<button type="button" class="cw-addbtn" id="cw-add-s">' + icon('calendar', 15) + ' 일정 추가</button>' +
+                '<button type="button" class="cw-addbtn" id="cw-add-c">' + icon('bookmark', 15) + ' 체크리스트 추가</button>' +
+            '</div>';
+
+        var html =
+            '<div class="cw-dp-head">' +
+                '<div class="cw-dp-date">' + esc(full) + ' <span class="cw-dp-dow">' + dow + '</span></div>' +
+                (total ? '<span class="cw-dp-cnt">' + total + '</span>' : '') +
+            '</div>';
+
+        if (!total) {
+            html += '<div class="cw-dp-empty">' +
+                '<span class="cw-dp-ic">' + icon('calendar', 30) + '</span>' +
+                '<p>' + esc(full) + '에<br>등록된 일정과 체크리스트가 없어요</p></div>' + addBtns;
+            box.innerHTML = html;
+            bindAdd(key);
+            return;
+        }
 
         var rows = '';
         it.s.forEach(function (s) {
             var time = s.allDay ? '종일' : (s.startTime ? String(s.startTime).substring(0, 5) : '종일');
-            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '" data-type="s" data-id="' + s.id + '">' +
+            rows += '<div class="cw-row sch' + (s.done ? ' done' : '') + '">' +
                 '<button type="button" class="cw-check" data-id="' + s.id + '" data-done="' + (s.done ? '1' : '0') + '" aria-label="완료">' +
                 (s.done ? icon('check', 14) : '') + '</button>' +
-                '<div class="cw-row-main"><div class="cw-row-title">' + esc(s.title) + '</div>' +
+                '<div class="cw-row-main"><div class="cw-row-title">' + esc(s.title) +
+                '<span class="cw-tag sch">일정</span></div>' +
                 '<div class="cw-row-sub">' + esc(time) + (s.content ? ' · ' + esc(s.content) : '') + '</div></div>' +
                 '<button type="button" class="cw-row-edit" data-id="' + s.id + '" aria-label="수정">' + icon('edit', 15) + '</button>' +
                 '</div>';
         });
         it.c.forEach(function (c) {
-            var meta = (typeof checklistType === 'function') ? checklistType(c.type) : { label: '갈 곳', emoji: '' };
+            var meta = (typeof checklistType === 'function') ? checklistType(c.type) : { label: '', emoji: '' };
             var badge = c.archived ? '<span class="cw-tag arch">보관됨</span>'
-                      : (c.visited ? '<span class="cw-tag done">다녀옴</span>' : '');
-            rows += '<div class="cw-row cl" data-type="c" data-id="' + c.id + '">' +
+                      : (c.visited ? '<span class="cw-tag done">다녀옴</span>' : '<span class="cw-tag cl">갈 곳</span>');
+            rows += '<div class="cw-row cl" data-id="' + c.id + '">' +
                 '<span class="cw-ic">' + (meta.emoji || icon('bookmark', 15)) + '</span>' +
                 '<div class="cw-row-main"><div class="cw-row-title">' + esc(c.title) + badge + '</div>' +
                 '<div class="cw-row-sub">' + esc([c.placeName, c.address].filter(Boolean).join(' ')) + '</div></div>' +
-                icon('search', 15, 'color:var(--gray-400);flex:none;') +
                 '</div>';
         });
 
-        var ov = document.createElement('div');
-        ov.id = 'cw-day';
-        ov.innerHTML =
-            '<div class="cw-sheet" role="dialog" aria-modal="true">' +
-                '<div class="cw-grip"></div>' +
-                '<div class="cw-sheet-head"><h3>' + esc(head) + '</h3>' +
-                    '<button type="button" class="cw-x" aria-label="닫기">&times;</button></div>' +
-                '<div class="cw-list">' + rows + '</div>' +
-                '<button type="button" class="cw-add" id="cw-add">' + icon('plus', 17) + ' 일정 추가</button>' +
-            '</div>';
-        document.body.appendChild(ov);
+        box.innerHTML = html + '<div class="cw-dp-list">' + rows + '</div>' + addBtns;
 
-        ov.addEventListener('click', function (e) { if (e.target === ov) closeDay(); });
-        ov.querySelector('.cw-x').addEventListener('click', closeDay);
-        document.getElementById('cw-add').addEventListener('click', function () { closeDay(); openScheduleForm(key, null); });
-
-        // 일정: 완료 토글 / 수정
-        ov.querySelectorAll('.cw-check').forEach(function (b) {
+        // 일정 완료 토글
+        box.querySelectorAll('.cw-check').forEach(function (b) {
             b.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var id = b.getAttribute('data-id'), next = b.getAttribute('data-done') !== '1';
                 withLoading(fetch(api() + '/api/schedules/' + id + '/done?done=' + next, { method: 'PUT', headers: hdr(true) })
                     .then(Daylog.handleResponse), '저장 중...')
                     .then(function () { return loadCalendarData(true); })
-                    .then(function () { render(); closeDay(); openDay(key); })
+                    .then(function () { render(); })
                     .catch(function () { showToast('변경 실패'); });
             });
         });
-        ov.querySelectorAll('.cw-row-edit').forEach(function (b) {
+        // 일정 수정
+        box.querySelectorAll('.cw-row-edit').forEach(function (b) {
             b.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var id = b.getAttribute('data-id');
-                var s = _schedules.find(function (x) { return String(x.id) === String(id); });
-                closeDay(); openScheduleForm(key, s);
+                openScheduleForm(key, _schedules.find(function (x) { return String(x.id) === String(id); }));
             });
         });
-        // 체크리스트: 상세 열기
-        ov.querySelectorAll('.cw-row.cl').forEach(function (r) {
+        // 체크리스트 → 상세
+        box.querySelectorAll('.cw-row.cl').forEach(function (r) {
             r.addEventListener('click', function () {
                 var id = r.getAttribute('data-id');
                 var c = _calCls.find(function (x) { return String(x.id) === String(id); });
-                closeDay();
                 if (c) openChecklistDetail(c, true); else showToast('원본을 찾을 수 없습니다');
             });
         });
+        bindAdd(key);
+    }
+
+    function bindAdd(key) {
+        var a = document.getElementById('cw-add-s');
+        var b = document.getElementById('cw-add-c');
+        if (a) a.addEventListener('click', function () { openScheduleForm(key, null); });
+        if (b) b.addEventListener('click', function () { addChecklistOn(key); });
+    }
+
+    // 체크리스트는 위치를 골라야 하므로 기존 생성 흐름(지도 위치 선택)을 그대로 태운다.
+    //  선택한 날짜는 _pendingPlanned 에 담아 두었다가 작성 폼이 열릴 때 '갈 예정일'에 채운다.
+    function addChecklistOn(key) {
+        _pendingPlanned = key;
+        if (typeof window._startChecklistCreate === 'function') {
+            showToast('지도에서 갈 곳의 위치를 선택해주세요');
+            window._startChecklistCreate();
+        } else {
+            _pendingPlanned = null;
+            showToast('체크리스트 추가를 열 수 없습니다');
+        }
     }
 
     // ===================== 일정 작성/수정 폼 =====================
@@ -7761,33 +7806,39 @@ document.addEventListener('DOMContentLoaded', () => {
             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px;}',
             '.cw-dots{position:absolute;left:0;right:0;bottom:5px;display:flex;align-items:center;justify-content:center;gap:3px;}',
             '.cw-more{font-size:0.56rem;font-weight:700;color:var(--gray-400);}',
-            // 그날의 목록 시트
-            '#cw-day{position:fixed;inset:0;z-index:2600;background:rgba(45,38,32,.5);display:flex;align-items:flex-end;}',
-            '#cw-day .cw-sheet{width:100%;max-width:480px;margin:0 auto;background:var(--bg-color);' +
-            'border-radius:24px 24px 0 0;padding:8px 18px calc(env(safe-area-inset-bottom) + 18px);' +
-            'max-height:78dvh;display:flex;flex-direction:column;animation:cwUp .3s cubic-bezier(.2,.8,.3,1);}',
-            '.cw-grip{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:4px auto 10px;}',
-            '.cw-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}',
-            '.cw-sheet-head h3{margin:0;font-family:var(--font-logo),var(--font-main);font-size:1.12rem;font-weight:600;color:var(--gray-800);}',
-            '.cw-x{border:none;background:transparent;font-size:1.5rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:2px 6px;}',
-            '.cw-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}',
-            '.cw-row{display:flex;align-items:center;gap:11px;padding:12px 2px;border-bottom:1px solid var(--gray-100);cursor:pointer;}',
+            // 달력 아래 인라인 패널
+            '.cw-daypanel{margin-top:16px;padding-top:14px;border-top:1px solid var(--gray-200);}',
+            '.cw-dp-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;}',
+            '.cw-dp-date{font-family:var(--font-logo),var(--font-main);font-size:1.02rem;font-weight:600;color:var(--gray-800);}',
+            '.cw-dp-dow{font-family:var(--font-main);font-size:0.78rem;font-weight:600;color:var(--gray-400);}',
+            '.cw-dp-cnt{font-size:0.7rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);' +
+            'border-radius:999px;padding:2px 8px;}',
+            '.cw-dp-empty{text-align:center;padding:22px 10px 18px;color:var(--gray-400);}',
+            '.cw-dp-ic{display:inline-flex;color:var(--primary-light);margin-bottom:8px;}',
+            '.cw-dp-empty p{margin:0;font-size:0.86rem;line-height:1.6;}',
+            '.cw-dp-list{margin-bottom:4px;}',
+            '.cw-addrow{display:flex;gap:9px;margin-top:12px;}',
+            '.cw-addbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;' +
+            'border:1px dashed var(--primary-light);border-radius:13px;padding:12px 8px;background:transparent;' +
+            'color:var(--primary-dark);font-family:inherit;font-size:0.84rem;font-weight:600;cursor:pointer;white-space:nowrap;}',
+            '.cw-addbtn:active{background:var(--gray-100);}',
+            '.cw-row{display:flex;align-items:center;gap:11px;padding:12px 2px;border-bottom:1px solid var(--gray-100);}',
+            '.cw-row.cl{cursor:pointer;}',
             '.cw-row.done .cw-row-title{text-decoration:line-through;color:var(--gray-400);}',
             '.cw-row-main{flex:1;min-width:0;}',
-            '.cw-row-title{font-size:0.92rem;font-weight:600;color:var(--gray-800);display:flex;align-items:center;gap:6px;}',
-            '.cw-row-sub{font-size:0.76rem;color:var(--gray-400);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.cw-row-title{font-size:0.9rem;font-weight:600;color:var(--gray-800);display:flex;align-items:center;gap:6px;}',
+            '.cw-row-sub{font-size:0.75rem;color:var(--gray-400);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
             '.cw-check{width:22px;height:22px;flex:none;border:2px solid var(--gray-200);border-radius:7px;background:transparent;' +
             'display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;padding:0;}',
             '.cw-row.done .cw-check{background:#2e9e5b;border-color:#2e9e5b;}',
             '.cw-row-edit{border:none;background:transparent;color:var(--gray-400);cursor:pointer;padding:4px;flex:none;}',
             '.cw-ic{flex:none;display:inline-flex;}',
-            '.cw-tag{font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;}',
+            '.cw-tag{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:999px;flex:none;}',
+            '.cw-tag.sch{background:#e3f1e8;color:#2e6e56;}',
+            '.cw-tag.cl{background:var(--primary-light);color:var(--primary-dark);}',
             '.cw-tag.arch{background:var(--gray-100);color:var(--gray-500);}',
             '.cw-tag.done{background:#e3f1e8;color:#2e6e56;}',
-            '.cw-add{margin-top:12px;width:100%;border:1px dashed var(--primary-light);border-radius:14px;padding:13px;' +
-            'background:transparent;color:var(--primary-dark);font-family:inherit;font-size:0.92rem;font-weight:600;cursor:pointer;' +
-            'display:flex;align-items:center;justify-content:center;gap:6px;}',
-            '.cw-add:active{background:var(--gray-100);}',
+            '.cw-cell.picked-day{background:var(--primary-light);border-radius:10px;}',
             // 일정 작성 카드
             '#cw-form{position:fixed;inset:0;z-index:2700;background:rgba(45,38,32,.52);display:flex;align-items:center;justify-content:center;padding:22px;}',
             '#cw-form .cw-card{width:100%;max-width:360px;max-height:88dvh;overflow-y:auto;background:var(--white);' +
@@ -7862,6 +7913,21 @@ document.addEventListener('DOMContentLoaded', () => {
         injectHeader();
         injectPlannedInputs();
         injectArchiveButton();
+
+        // [B] edit by smsong - #14 달력에서 '체크리스트 추가'로 들어온 경우,
+        //  위치 선택을 마치고 작성 폼이 열릴 때 그 날짜를 '갈 예정일'에 자동으로 채운다.
+        var _origOpen = window._openChecklistForm;
+        window._openChecklistForm = function () {
+            if (typeof _origOpen === 'function') _origOpen.apply(this, arguments);
+            injectPlannedInputs();
+            var el = document.getElementById('cl-planned-date');
+            if (el && _pendingPlanned) {
+                el.value = _pendingPlanned;
+                _pendingPlanned = null;
+                showToast('갈 예정일이 선택한 날짜로 채워졌어요');
+            }
+        };
+        // [E] edit by smsong
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
