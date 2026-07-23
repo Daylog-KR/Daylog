@@ -3708,8 +3708,8 @@ document.addEventListener('DOMContentLoaded', () => {
             _tlGridPager = window.DaylogFeed.create({
                 feedEl: gridEl,
                 scrollEl: scrollEl,
-                pageSize: 9,      // 3열 × 3줄
-                windowRows: 8,
+                pageSize: 5,      // [B][E] edit by smsong - #18 목록/체크리스트와 동일하게 5개씩
+                windowRows: 6,
                 estimate: 176,    // 3:4 타일 한 줄 높이 추정 (폭 390 기준 ≈ 174)
                 emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('image', 40) + '</span>' +
                            '<p>기록이 존재하지 않음</p></div>',
@@ -3784,6 +3784,8 @@ document.addEventListener('DOMContentLoaded', () => {
             var _pal0 = document.getElementById('cal-color-palette');
             if (_pal0) _pal0.classList.add('hidden');
             renderTimelineGrid(Daylog._tlFiltered || [...memoryList].sort(sortByDateDesc));
+            // 보기 전환(사진↔목록↔달력)은 같은 메뉴 안이라 보던 위치를 유지한다.
+            //  첫 페이지로 되돌리는 건 탭을 벗어났다 돌아올 때뿐(Daylog._resetFeeds).
             requestAnimationFrame(function () { if (_tlGridPager) _tlGridPager.relayout(); });
             return;
         }
@@ -4082,6 +4084,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog._relayoutFeeds = function () {
         try { if (_tlPager) _tlPager.relayout(); } catch (e) {}
         try { if (_clPager) _clPager.relayout(); } catch (e) {}
+        try { if (_tlGridPager) _tlGridPager.relayout(); } catch (e) {}   // [B][E] #18 사진 그리드
     };
 
     // 탭을 벗어났다가 다시 들어오면 항상 최신 5개부터 — 펼쳐 놓았던 페이지를 초기화한다.
@@ -4089,6 +4092,7 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog._resetFeeds = function () {
         try { if (_tlPager) _tlPager.reset(); } catch (e) {}
         try { if (_clPager) _clPager.reset(); } catch (e) {}
+        try { if (_tlGridPager) _tlGridPager.reset(); } catch (e) {}      // [B][E] #18 사진 그리드
     };
 
     function _tlDateHeadEl(dateKey) {
