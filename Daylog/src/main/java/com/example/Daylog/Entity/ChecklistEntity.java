@@ -70,7 +70,12 @@ public class ChecklistEntity {
     //  '다녀왔습니다' 로 추억이 만들어진 뒤 원본을 휴지통이 아니라 보관함으로 옮긴다.
     //  · archived=true 는 일반 화면(지도/목록)에 절대 노출되지 않는다.
     //  · deleted(휴지통)와는 별개 축이다. 보관함 → 휴지통으로 다시 옮길 수 있다.
-    @Column(nullable = false)
+    //
+    //  ⚠ columnDefinition 의 default 는 반드시 필요하다.
+    //     ddl-auto=update 로 '이미 데이터가 있는 테이블'에 NOT NULL 컬럼을 기본값 없이 추가하면
+    //     PostgreSQL 이 거부하고, Hibernate 는 그 실패를 로그만 남기고 넘어간다.
+    //     → 컬럼이 안 생긴 채 앱이 뜨고, 조회할 때 "column archived does not exist" 로 터진다.
+    @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean archived;
 
     private LocalDateTime archivedAt;
