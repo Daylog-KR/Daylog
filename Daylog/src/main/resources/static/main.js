@@ -7920,12 +7920,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 '</div>' +
                 '<div class="cw-dt-when">' + esc(when) + '<span class="cw-dt-sep">·</span>' + esc(time) + '</div>' +
                 '<h3 class="cw-dt-title">' + esc(s.title) + '</h3>' +
-                // [B] edit by smsong - #27-fix 예약된 알림 표시 + 여기서 바로 수정 진입
-                '<div class="cw-dt-rm' + (canEdit ? ' editable' : '') + '" id="cw-dt-rm"' +
-                    (canEdit ? ' role="button" tabindex="0" aria-label="알림 변경"' : '') + '>' +
-                    '<div class="cw-dt-rm-head">' + icon('bell', 13) + ' 알림' +
-                        (canEdit ? '<span class="cw-dt-rm-edit">' + icon('edit', 11) + ' 변경</span>' : '') +
-                    '</div>' +
+                // [B] edit by smsong - #27-fix 예약된 알림 '조회 전용'.
+                //  수정은 상단 [✎] 버튼 → 일정 수정 폼에서만 한다(진입점 이중화 방지).
+                '<div class="cw-dt-rm" id="cw-dt-rm">' +
+                    '<div class="cw-dt-rm-head">' + icon('bell', 13) + ' 알림</div>' +
                     '<div class="cw-dt-rm-row"><span class="cw-rm-no">1차</span>' +
                         '<span class="' + (s.remind1 && s.remind1 !== 'NONE' ? 'on' : '') + '">' + esc(remindLabel(s.remind1)) + '</span></div>' +
                     '<div class="cw-dt-rm-row"><span class="cw-rm-no">2차</span>' +
@@ -7949,20 +7947,6 @@ document.addEventListener('DOMContentLoaded', () => {
             openScheduleForm(dateKey || dkey(s.scheduleDate), s);
         });
 
-        // [B] edit by smsong - #27-fix 알림 영역을 누르면 바로 수정 폼(알림 강조)으로
-        var rmBox = document.getElementById('cw-dt-rm');
-        if (rmBox && canEdit) {
-            var goRemind = function () {
-                closeScheduleDetail();
-                openScheduleForm(dateKey || dkey(s.scheduleDate), s, true);
-            };
-            rmBox.addEventListener('click', goRemind);
-            rmBox.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRemind(); }
-            });
-        }
-        // [E] edit by smsong
-
         var tb = document.getElementById('cw-dt-trash');
         if (tb) tb.addEventListener('click', function () {
             if (!confirm('이 일정을 휴지통으로 옮기시겠습니까?')) return;
@@ -7980,8 +7964,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e && e.parentNode) e.parentNode.removeChild(e);
     }
 
-    // [B][E] edit by smsong - #27-fix focusRemind: 상세의 '알림 변경'으로 들어오면 알림 줄을 강조/스크롤
-    function openScheduleForm(dateKey, s, focusRemind) {
+    function openScheduleForm(dateKey, s) {
         closeScheduleForm();
         var editing = !!s;
         var ov = document.createElement('div');
@@ -8020,16 +8003,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         var allday = document.getElementById('cw-allday'), timeEl = document.getElementById('cw-time');
         allday.addEventListener('change', function () { timeEl.disabled = allday.checked; if (allday.checked) timeEl.value = ''; });
-
-        // [B][E] edit by smsong - #27-fix 알림 변경으로 들어온 경우 그 줄로 스크롤 + 잠깐 강조
-        if (focusRemind) {
-            var sec = document.getElementById('cw-rm-sec');
-            if (sec) {
-                sec.classList.add('flash');
-                try { sec.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { sec.scrollIntoView(); }
-                setTimeout(function () { sec.classList.remove('flash'); }, 1400);
-            }
-        }
 
         document.getElementById('cw-save').addEventListener('click', function () {
             var title = document.getElementById('cw-title').value.trim();
@@ -8381,17 +8354,11 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-dt-sep{color:var(--gray-200);}',
             '.cw-dt-title{margin:0 0 14px;font-family:var(--font-logo),var(--font-main);font-size:1.3rem;' +
             'font-weight:600;line-height:1.36;color:var(--gray-800);word-break:keep-all;}',
-            // [B] edit by smsong - #27-fix 상세의 알림 요약
-            //  읽기 전용 텍스트라 '바꿀 수 있다'는 신호가 없었다 → 헤더 + [변경] 어포던스 추가.
+            // [B] edit by smsong - #27-fix 상세의 알림 요약 (조회 전용)
+            //  수정 진입점은 상단 [✎] 버튼 하나로 통일한다.
             '.cw-dt-rm{border:1px solid var(--gray-200);border-radius:13px;padding:0 13px 4px;}',
-            '.cw-dt-rm.editable{cursor:pointer;transition:background .15s,border-color .15s;}',
-            '.cw-dt-rm.editable:hover{border-color:var(--primary);}',
-            '.cw-dt-rm.editable:active{background:var(--gray-100);}',
             '.cw-dt-rm-head{display:flex;align-items:center;gap:6px;padding:10px 0 8px;' +
             'font-size:0.78rem;font-weight:700;color:var(--gray-500);border-bottom:1px solid var(--gray-100);}',
-            '.cw-dt-rm-edit{margin-left:auto;display:inline-flex;align-items:center;gap:4px;' +
-            'font-size:0.75rem;font-weight:600;color:var(--primary-dark);background:var(--primary-light);' +
-            'border-radius:999px;padding:3px 9px;}',
             '.cw-dt-rm-row{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:0.84rem;color:var(--gray-400);}',
             '.cw-dt-rm-row+.cw-dt-rm-row{border-top:1px solid var(--gray-100);}',
             '.cw-dt-rm-row span.on{color:var(--primary-dark);font-weight:600;}',
@@ -8458,10 +8425,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'background:var(--white);cursor:pointer;appearance:none;-webkit-appearance:none;}',
             '.cw-rsel:focus{outline:none;border-color:var(--primary);}',
             '.cw-caret{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--gray-400);}',
-            // 상세에서 '알림 변경'으로 들어왔을 때 어디를 보라고 알려주는 강조
-            '.cw-rm-sec{border-radius:12px;margin:0 -8px;padding:2px 8px 4px;}',
-            '.cw-rm-sec.flash{animation:cwFlash 1.2s ease;}',
-            '@keyframes cwFlash{0%,100%{background:transparent}22%,62%{background:var(--primary-light)}}',
+            '.cw-rm-sec{display:block;}',
             // [E] edit by smsong
             '.cw-save{margin-top:18px;width:100%;border:none;border-radius:14px;padding:14px;background:var(--primary);' +
             'color:#fff;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;}',
