@@ -2397,6 +2397,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 type: window._clEditSelectedType || (_detailChecklist && _detailChecklist.type) || 'ETC',
                 visited: !!(document.getElementById('cl-edit-visited') || {}).checked,
                 visitedDate: (document.getElementById('cl-edit-visited-date') || {}).value || '',
+                // [B][E] edit by smsong - #31 위치를 다시 고르고 돌아와도 갈 예정일/알림이 날아가지 않게
+                plannedDate: (document.getElementById('cl-edit-planned-date') || {}).value || '',
+                remind1: (document.getElementById('cl-edit-r1') || {}).value || 'NONE',
+                remind2: (document.getElementById('cl-edit-r2') || {}).value || 'NONE',
                 order: mgr ? mgr.getMediaOrder() : [],
                 files: mgr ? mgr.getNewFiles() : []
             };
@@ -2490,6 +2494,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (chk) chk.checked = !!snap.visited;
                     if (dt) { dt.disabled = !snap.visited; dt.value = snap.visitedDate || ''; }
                     if (chk) { var lbl = chk.closest('.cl-check-label'); if (lbl) lbl.classList.toggle('checked', !!snap.visited); }
+                    // [B] edit by smsong - #31 갈 예정일/알림 복원 (+ 알림 블록 표시 동기화)
+                    var pd = document.getElementById('cl-edit-planned-date');
+                    if (pd) {
+                        pd.value = snap.plannedDate || '';
+                        var r1 = document.getElementById('cl-edit-r1'), r2 = document.getElementById('cl-edit-r2');
+                        if (r1) r1.value = snap.remind1 || 'NONE';
+                        if (r2) r2.value = snap.remind2 || 'NONE';
+                        var rb = document.getElementById('cl-edit-planned-date-rm');
+                        if (rb) rb.classList.toggle('hidden', !pd.value);
+                    }
+                    // [E] edit by smsong
                     _rebuildMediaMgr(window._clEditMgr, snap.order, snap.files);
                 }
                 if (changed) _applyEditLocLabel('cl-edit-loc');
@@ -3519,6 +3534,8 @@ document.addEventListener('DOMContentLoaded', () => {
             .then((created) => {
                 closeChecklistModal();
                 pickTarget = 'memory';
+                // [B][E] edit by smsong - #31 새 체크리스트(갈 예정일 포함)를 달력이 바로 반영하도록
+                try { if (Daylog._invalidateCalendar) Daylog._invalidateCalendar(true); } catch (e) {}
                 // [B] edit by smsong - '다녀왔습니다'로 추가하면 추억으로 기록하고, 가볼곳은 제거(추억으로 이동)
                 if (created && created.visited) {
                     ensureMemoryForChecklist(created)
@@ -5220,6 +5237,29 @@ function openChecklistDetail(item, overModal) {
     const visitedHtml = item.visited
         ? '<span class="meta-item cl-meta-visited">' + icon('check',13) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
         : '<span class="meta-item cl-meta-todo">아직 안 가봤습니다</span>';
+
+    // [B] edit by smsong - #31 갈 예정일 + 예약된 알림 (조회 전용).
+    //  수정은 상단 [✎] → 수정 폼에서. 예정일이 없으면 블록 자체를 그리지 않는다.
+    const _rmLabel = (c) => (Daylog._remindLabel ? Daylog._remindLabel(c) : (c || '없음'));
+    const _rmRow = (no, code) => {
+        const on = code && code !== 'NONE';
+        return '<div class="cl-plan-row">' +
+            '<span class="cl-plan-k">' + icon('bell', 13) + ' 알림 ' + no + '</span>' +
+            '<span class="cl-plan-v' + (on ? ' on' : '') + '">' + escapeHtml(_rmLabel(code)) + '</span>' +
+        '</div>';
+    };
+    const plannedHtml = item.plannedDate
+        ? '<div class="cl-plan-box">' +
+            '<div class="cl-plan-row">' +
+                '<span class="cl-plan-k">' + icon('calendar', 13) + ' 갈 예정일</span>' +
+                '<span class="cl-plan-v on">' + escapeHtml(fmtDate(item.plannedDate)) + '</span>' +
+            '</div>' +
+            _rmRow('1차', item.remind1) +
+            _rmRow('2차', item.remind2) +
+          '</div>'
+        : '';
+    // [E] edit by smsong
+
     const _clUrls = mediaUrlsOf(item);
     // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거: 캐러셀이 첫 장만 즉시, 나머지는 lazy → 개수 무관 즉시 표시
     const imageHtml = carouselHtml(_clUrls);
@@ -5245,6 +5285,7 @@ function openChecklistDetail(item, overModal) {
         '<div class="da-avatar" id="cl-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
         '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
         '</div>' +
+        plannedHtml +   // [B][E] edit by smsong - #31 갈 예정일 + 알림
         (item.content ? '<div class="dtl-text"><p>' + contentHtml + '</p></div>' : '') +
         // [smsong] 가볼곳 댓글 영역 (추억과 동일, id는 cl- 접두어로 분리)
         '<div class="comments-section dtl-comments">' +
@@ -5421,6 +5462,16 @@ function saveChecklistEdit() {
     const newFiles = mgr ? mgr.getNewFiles() : [];
     if (visited && (!order || order.length === 0)) { showToast('다녀온 곳은 사진을 1장 이상 첨부해주십시오'); return; }
     if (order && order.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); return; }
+    // [B] edit by smsong - #31 알림 값 읽기.
+    //  Daylog._remindVal 은 달력 모듈(IIFE)에서 주입되는데, 그게 없으면 예전 코드는
+    //  조용히 null 을 보내 알림이 '항상 해제'로 저장됐다. → 셀렉트를 직접 읽는 폴백을 둔다.
+    const _rv = (id) => {
+        if (typeof Daylog._remindVal === 'function') return Daylog._remindVal(id);
+        const el = document.getElementById(id);
+        const v = el ? el.value : 'NONE';
+        return (v && v !== 'NONE') ? v : null;
+    };
+    // [E] edit by smsong
     const dto = {
         title: title,
         content: document.getElementById('cl-edit-content').value,
@@ -5430,8 +5481,8 @@ function saveChecklistEdit() {
         // [B][E] edit by smsong - #13 갈 예정일 (빈 값이면 null → 달력에서 해제)
         plannedDate: (document.getElementById('cl-edit-planned-date') || {}).value || null,
         // [B][E] edit by smsong - #27 예정일 알림
-        remind1: Daylog._remindVal ? Daylog._remindVal('cl-edit-r1') : null,
-        remind2: Daylog._remindVal ? Daylog._remindVal('cl-edit-r2') : null,
+        remind1: _rv('cl-edit-r1'),
+        remind2: _rv('cl-edit-r2'),
         mediaOrder: order
     };
     // [B] edit by smsong - 위치를 '실제로 변경'했을 때만 위치 필드를 함께 전송(미변경 시 기존과 동일 페이로드 → 회귀 없음)
@@ -5457,6 +5508,15 @@ function saveChecklistEdit() {
         .then(Daylog.handleResponse)
         .then((updated) => {
             _editLocPicked = null; // [smsong] 수정 위치 소비
+            // [B] edit by smsong - #31 저장 결과를 상세 캐시에 반영 + 달력 캐시 무효화.
+            //  달력(_calCls)은 _loaded 플래그로 한 번만 받아오므로, 비워주지 않으면
+            //  달력에서 다시 연 상세가 예전 갈 예정일·알림을 그대로 보여준다.
+            //  (목록/지도는 아래 Daylog.reloadChecklists() 가 서버에서 다시 받아온다)
+            if (updated && _detailChecklist && String(_detailChecklist.id) === String(updated.id)) {
+                _detailChecklist = updated;
+            }
+            try { if (Daylog._invalidateCalendar) Daylog._invalidateCalendar(true); } catch (e) {}
+            // [E] edit by smsong
             closeChecklistDetail();
             // [B] edit by smsong - 처음으로 '다녀옴'이 되면 추억으로 기록하고 가볼곳은 제거(추억으로 이동)
             if (updated && updated.visited && !wasVisited) {
@@ -5497,7 +5557,13 @@ function trashChecklist(id) {
     if (!confirm('이 체크리스트를 휴지통으로 옮기시겠습니까?')) return;
     withLoading(fetch(`${Daylog.api}/api/checklists/${id}/trash`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '휴지통으로 이동 중...')
         .then(Daylog.handleResponse)
-        .then(() => { showToast('휴지통으로 이동했습니다'); closeChecklistDetail(); Daylog.reloadChecklists(); })
+        .then(() => {
+            showToast('휴지통으로 이동했습니다');
+            closeChecklistDetail();
+            // [B][E] edit by smsong - #31 달력에서도 즉시 사라지도록
+            try { if (Daylog._invalidateCalendar) Daylog._invalidateCalendar(true); } catch (e) {}
+            Daylog.reloadChecklists();
+        })
         .catch(err => { console.error(err); showToast('이동 실패. 다시 시도해주십시오.'); });
 }
 
@@ -8665,6 +8731,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('cw-detail')) { closeScheduleDetail(); return true; }
         if (document.getElementById('cw-archive')) { closeArchive(); return true; }
         return false;
+    };
+    // [E] edit by smsong
+
+    // [B] edit by smsong - #31 체크리스트가 지도/목록 쪽에서 바뀌면 달력 캐시를 무효화한다.
+    //  _calCls/_schedules 는 _loaded 플래그로 한 번만 받아오기 때문에, 이걸 안 비우면
+    //  달력에서 연 상세가 예전 값(갈 예정일·알림)을 그대로 보여준다 → '수정이 안 먹는' 것처럼 보임.
+    Daylog._invalidateCalendar = function (reloadNow) {
+        _loaded = false;
+        if (reloadNow && document.getElementById('checklist-calendar')) {
+            return loadCalendarData(true).then(render).catch(function () {});
+        }
+        return Promise.resolve();
     };
     // [E] edit by smsong
 

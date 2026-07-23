@@ -1855,9 +1855,50 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .cl-file-input { font-size: 0.85rem; }
 
 /* ---- 가볼곳 상세 ---- */
-.cl-type-tag-lg { font-size: 0.82rem; padding: 5px 13px; margin-bottom: 10px; align-self: flex-start; }
+/* [B] edit by smsong - #31 상단 배지 줄.
+   예전에는 .dtl-badges 에 규칙이 없어 타입 칩(.cl-type-tag-lg: 0.82rem/5px 13px)과
+   방문 배지(.meta-item: 0.85rem/6px 12px)의 글꼴·패딩이 달라 높이가 어긋나 보였다.
+   → 컨테이너를 flex 로 만들고 두 칩의 높이/글꼴/패딩을 한 규칙으로 못 박는다. */
+.dtl-badges {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 8px; margin: 0 0 10px;
+}
+.dtl-badges .cl-type-tag-lg,
+.dtl-badges .meta-item {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 28px; padding: 0 13px; margin: 0;
+    border-radius: 999px;
+    font-size: 0.78rem; font-weight: 700; line-height: 1;
+    white-space: nowrap; box-shadow: none;
+}
 .cl-meta-visited { background: #e3f3e8; color: #2e7d4f; }
 .cl-meta-todo { background: var(--primary-light); color: var(--primary-dark); }
+
+/* [B] edit by smsong - #31 갈 예정일 + 예약된 알림 (상세 조회 전용) */
+.cl-plan-box {
+    margin: 14px 0 0;
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    padding: 2px 14px;
+}
+.cl-plan-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 0;
+    font-size: 0.84rem;
+}
+.cl-plan-row + .cl-plan-row { border-top: 1px solid var(--gray-100); }
+.cl-plan-k {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--gray-500); font-weight: 600; flex: none;
+}
+.cl-plan-v {
+    color: var(--gray-400);
+    text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cl-plan-v.on { color: var(--primary-dark); font-weight: 600; }
+/* [E] edit by smsong */
+
 .cl-edit-loc-wrap { margin-bottom: 14px; }
 
 /* =========================================================
