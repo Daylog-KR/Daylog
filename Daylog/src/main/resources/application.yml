@@ -18,8 +18,18 @@ daylog:
     enabled: true
     cron: "0 0 10 * * *"   # 매일 오전 10시
     zone: Asia/Seoul
-    years: 1,2,3           # "1,2,3" 으로 두면 2·3주년도 함께 발송
+    years: "1,2,3"         # 문자열로 파싱되어야 하므로 따옴표 권장 ("1" 이면 1년 전만)
     link: main.html
+  # [B] edit by smsong - #11 커플 기념일(100일 단위 / N주년) 푸시
+  #  · 커플 방의 coupleSince 기준으로 오늘이 100일/200일… 또는 N주년이면
+  #    coupleLeftUid / coupleRightUid 두 사람에게 각각 알림을 보낸다.
+  #  · 끄려면 enabled: false
+  couple-anniversary:
+    enabled: true
+    cron: "0 0 9 * * *"    # 매일 오전 9시
+    zone: Asia/Seoul
+    link: main.html
+  # [E] edit by smsong
 
 google:
   cloud:
@@ -52,6 +62,14 @@ spring:
 
   application:
     name: REMS
+
+  # [B] edit by smsong - 스케줄러가 3개(추억 리마인더 / 다녀온 곳 기념일 / 커플 기념일)라
+  #  기본 풀 크기 1이면 하나가 오래 돌 때 나머지가 밀린다. 2~3으로 여유를 준다.
+  task:
+    scheduling:
+      pool:
+        size: 3
+  # [E] edit by smsong
 
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
