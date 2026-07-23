@@ -7511,13 +7511,25 @@ document.addEventListener('DOMContentLoaded', () => {
         for (var i = 0; i < REMIND_OPTS.length; i++) if (REMIND_OPTS[i][0] === code) return REMIND_OPTS[i][1];
         return '없음';
     }
+    // [B] edit by smsong - #27-fix 알림 드롭다운
+    //  ⚠ 예전에는 class="cw-in cw-sel" 이었는데, 아래 보관함/휴지통 '선택 모드'의
+    //     동그라미 체크박스가 같은 이름(.cw-sel)을 쓰면서 display:none 이 이 select 를 덮어썼다.
+    //     → 알림 입력칸이 화면에 아예 나오지 않았다. 전용 클래스(.cw-rsel)로 분리한다.
+    //  · appearance:none 을 쓰는 대신 화살표(caret)를 직접 그려 드롭다운임을 명확히 한다.
+    var CARET_SVG = '<svg class="cw-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" ' +
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" ' +
+        'aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
     function remindSelect(id, val) {
         var v = val || 'NONE';
         var o = REMIND_OPTS.map(function (x) {
             return '<option value="' + x[0] + '"' + (x[0] === v ? ' selected' : '') + '>' + x[1] + '</option>';
         }).join('');
-        return '<select id="' + id + '" class="cw-in cw-sel">' + o + '</select>';
+        return '<span class="cw-selwrap">' +
+                   '<select id="' + id + '" class="cw-rsel" aria-label="알림 시점">' + o + '</select>' +
+                   CARET_SVG +
+               '</span>';
     }
+    // [E] edit by smsong
     function remindVal(id) {
         var el = document.getElementById(id);
         var v = el ? el.value : 'NONE';
@@ -7908,13 +7920,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 '</div>' +
                 '<div class="cw-dt-when">' + esc(when) + '<span class="cw-dt-sep">·</span>' + esc(time) + '</div>' +
                 '<h3 class="cw-dt-title">' + esc(s.title) + '</h3>' +
-                // [B][E] edit by smsong - #27 예약된 알림 표시
-                '<div class="cw-dt-rm">' +
+                // [B] edit by smsong - #27-fix 예약된 알림 표시 + 여기서 바로 수정 진입
+                '<div class="cw-dt-rm' + (canEdit ? ' editable' : '') + '" id="cw-dt-rm"' +
+                    (canEdit ? ' role="button" tabindex="0" aria-label="알림 변경"' : '') + '>' +
+                    '<div class="cw-dt-rm-head">' + icon('bell', 13) + ' 알림' +
+                        (canEdit ? '<span class="cw-dt-rm-edit">' + icon('edit', 11) + ' 변경</span>' : '') +
+                    '</div>' +
                     '<div class="cw-dt-rm-row"><span class="cw-rm-no">1차</span>' +
                         '<span class="' + (s.remind1 && s.remind1 !== 'NONE' ? 'on' : '') + '">' + esc(remindLabel(s.remind1)) + '</span></div>' +
                     '<div class="cw-dt-rm-row"><span class="cw-rm-no">2차</span>' +
                         '<span class="' + (s.remind2 && s.remind2 !== 'NONE' ? 'on' : '') + '">' + esc(remindLabel(s.remind2)) + '</span></div>' +
                 '</div>' +
+                // [E] edit by smsong
                 (s.content ? '<div class="cw-dt-body">' + esc(s.content).replace(/\n/g, '<br>') + '</div>' : '') +
                 '<div class="cw-dt-who">' +
                     '<span class="cw-dt-avatar" style="background-image:url(\'' + photo + '\')"></span>' +
@@ -7931,6 +7948,20 @@ document.addEventListener('DOMContentLoaded', () => {
             closeScheduleDetail();
             openScheduleForm(dateKey || dkey(s.scheduleDate), s);
         });
+
+        // [B] edit by smsong - #27-fix 알림 영역을 누르면 바로 수정 폼(알림 강조)으로
+        var rmBox = document.getElementById('cw-dt-rm');
+        if (rmBox && canEdit) {
+            var goRemind = function () {
+                closeScheduleDetail();
+                openScheduleForm(dateKey || dkey(s.scheduleDate), s, true);
+            };
+            rmBox.addEventListener('click', goRemind);
+            rmBox.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRemind(); }
+            });
+        }
+        // [E] edit by smsong
 
         var tb = document.getElementById('cw-dt-trash');
         if (tb) tb.addEventListener('click', function () {
@@ -7949,7 +7980,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e && e.parentNode) e.parentNode.removeChild(e);
     }
 
-    function openScheduleForm(dateKey, s) {
+    // [B][E] edit by smsong - #27-fix focusRemind: 상세의 '알림 변경'으로 들어오면 알림 줄을 강조/스크롤
+    function openScheduleForm(dateKey, s, focusRemind) {
         closeScheduleForm();
         var editing = !!s;
         var ov = document.createElement('div');
@@ -7971,10 +8003,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     '<input type="time" id="cw-time" class="cw-in cw-time"' + ((!editing || s.allDay) ? ' disabled' : '') +
                     ' value="' + esc(editing && s.startTime ? String(s.startTime).substring(0, 5) : '') + '">' +
                 '</div>' +
-                // [B][E] edit by smsong - #27 예정 알림
-                '<label class="cw-lb">알림 <span class="cw-opt">방 멤버 모두에게 갑니다</span></label>' +
-                '<div class="cw-rm-row"><span class="cw-rm-no">1차</span>' + remindSelect('cw-r1', editing ? s.remind1 : null) + '</div>' +
-                '<div class="cw-rm-row"><span class="cw-rm-no">2차</span>' + remindSelect('cw-r2', editing ? s.remind2 : null) + '</div>' +
+                // [B] edit by smsong - #27-fix 예정 알림 (섹션으로 묶어 강조 가능하게)
+                '<div class="cw-rm-sec" id="cw-rm-sec">' +
+                    '<label class="cw-lb">' + icon('bell', 12) + ' 알림 <span class="cw-opt">방 멤버 모두에게 갑니다</span></label>' +
+                    '<div class="cw-rm-row"><span class="cw-rm-no">1차</span>' + remindSelect('cw-r1', editing ? s.remind1 : null) + '</div>' +
+                    '<div class="cw-rm-row"><span class="cw-rm-no">2차</span>' + remindSelect('cw-r2', editing ? s.remind2 : null) + '</div>' +
+                '</div>' +
+                // [E] edit by smsong
                 '<button type="button" class="cw-save" id="cw-save">' + (editing ? '저장하기' : '추가하기') + '</button>' +
                 (editing ? '<button type="button" class="cw-del" id="cw-del">' + icon('trash', 14) + ' 휴지통으로</button>' : '') +
             '</div>';
@@ -7985,6 +8020,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         var allday = document.getElementById('cw-allday'), timeEl = document.getElementById('cw-time');
         allday.addEventListener('change', function () { timeEl.disabled = allday.checked; if (allday.checked) timeEl.value = ''; });
+
+        // [B][E] edit by smsong - #27-fix 알림 변경으로 들어온 경우 그 줄로 스크롤 + 잠깐 강조
+        if (focusRemind) {
+            var sec = document.getElementById('cw-rm-sec');
+            if (sec) {
+                sec.classList.add('flash');
+                try { sec.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { sec.scrollIntoView(); }
+                setTimeout(function () { sec.classList.remove('flash'); }, 1400);
+            }
+        }
 
         document.getElementById('cw-save').addEventListener('click', function () {
             var title = document.getElementById('cw-title').value.trim();
@@ -8336,11 +8381,21 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-dt-sep{color:var(--gray-200);}',
             '.cw-dt-title{margin:0 0 14px;font-family:var(--font-logo),var(--font-main);font-size:1.3rem;' +
             'font-weight:600;line-height:1.36;color:var(--gray-800);word-break:keep-all;}',
-            // #27 상세의 알림 요약
-            '.cw-dt-rm{border:1px solid var(--gray-200);border-radius:13px;padding:4px 13px;}',
+            // [B] edit by smsong - #27-fix 상세의 알림 요약
+            //  읽기 전용 텍스트라 '바꿀 수 있다'는 신호가 없었다 → 헤더 + [변경] 어포던스 추가.
+            '.cw-dt-rm{border:1px solid var(--gray-200);border-radius:13px;padding:0 13px 4px;}',
+            '.cw-dt-rm.editable{cursor:pointer;transition:background .15s,border-color .15s;}',
+            '.cw-dt-rm.editable:hover{border-color:var(--primary);}',
+            '.cw-dt-rm.editable:active{background:var(--gray-100);}',
+            '.cw-dt-rm-head{display:flex;align-items:center;gap:6px;padding:10px 0 8px;' +
+            'font-size:0.78rem;font-weight:700;color:var(--gray-500);border-bottom:1px solid var(--gray-100);}',
+            '.cw-dt-rm-edit{margin-left:auto;display:inline-flex;align-items:center;gap:4px;' +
+            'font-size:0.75rem;font-weight:600;color:var(--primary-dark);background:var(--primary-light);' +
+            'border-radius:999px;padding:3px 9px;}',
             '.cw-dt-rm-row{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:0.84rem;color:var(--gray-400);}',
             '.cw-dt-rm-row+.cw-dt-rm-row{border-top:1px solid var(--gray-100);}',
             '.cw-dt-rm-row span.on{color:var(--primary-dark);font-weight:600;}',
+            // [E] edit by smsong
             '.cw-dt-body{margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-100);' +
             'font-size:0.9rem;line-height:1.75;color:var(--gray-600);white-space:pre-line;word-break:break-word;}',
             '.cw-dt-who{display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:13px;' +
@@ -8390,15 +8445,24 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-switch{display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
             '.cw-switch input{width:17px;height:17px;accent-color:var(--primary);}',
             '.cw-time{flex:1;}',
-            // #27 알림 선택 줄
-            '.cw-sel{appearance:none;-webkit-appearance:none;background-image:none;}',
+            // [B] edit by smsong - #27-fix 알림 선택 줄
+            //  ⚠ 예전 '.cw-sel' 은 아래 '선택 모드' 동그라미(display:none)와 이름이 겹쳐
+            //     알림 드롭다운이 통째로 사라졌다. 전용 클래스(.cw-rsel/.cw-selwrap)로 분리.
             '.cw-rm-row{display:flex;align-items:center;gap:10px;margin-top:8px;}',
             '.cw-rm-no{flex:none;width:26px;font-size:0.74rem;font-weight:700;color:var(--gray-400);}',
             '.cw-rm-block{margin-top:12px;padding-top:12px;border-top:1px dashed var(--gray-200);}',
             '.cw-rm-lb{display:block;margin-bottom:4px;font-size:0.82rem;color:var(--gray-500);font-weight:500;}',
-            '.cw-rm-block select{width:100%;box-sizing:border-box;border:1px solid var(--gray-200);border-radius:12px;' +
-            'padding:11px;font-family:inherit;font-size:0.88rem;color:var(--gray-800);background:var(--white);}',
-            '.cw-rm-row .cw-in{flex:1;}',
+            '.cw-selwrap{position:relative;display:block;flex:1 1 auto;min-width:0;}',
+            '.cw-rsel{display:block;width:100%;box-sizing:border-box;border:1px solid var(--gray-200);border-radius:12px;' +
+            'padding:12px 36px 12px 13px;font-family:inherit;font-size:0.9rem;color:var(--gray-800);' +
+            'background:var(--white);cursor:pointer;appearance:none;-webkit-appearance:none;}',
+            '.cw-rsel:focus{outline:none;border-color:var(--primary);}',
+            '.cw-caret{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--gray-400);}',
+            // 상세에서 '알림 변경'으로 들어왔을 때 어디를 보라고 알려주는 강조
+            '.cw-rm-sec{border-radius:12px;margin:0 -8px;padding:2px 8px 4px;}',
+            '.cw-rm-sec.flash{animation:cwFlash 1.2s ease;}',
+            '@keyframes cwFlash{0%,100%{background:transparent}22%,62%{background:var(--primary-light)}}',
+            // [E] edit by smsong
             '.cw-save{margin-top:18px;width:100%;border:none;border-radius:14px;padding:14px;background:var(--primary);' +
             'color:#fff;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;}',
             '.cw-save:active{transform:scale(.99);}',
@@ -8471,18 +8535,30 @@ document.addEventListener('DOMContentLoaded', () => {
         injectPlannedInputs();
         injectArchiveButton();
 
-        // [B] edit by smsong - #14 달력에서 '체크리스트 추가'로 들어온 경우,
-        //  위치 선택을 마치고 작성 폼이 열릴 때 그 날짜를 '갈 예정일'에 자동으로 채운다.
+        // [B] edit by smsong - #14/#29 체크리스트 생성 폼의 '갈 예정일'은 항상 빈 값으로 시작한다.
+        //  · 이 입력칸은 injectPlannedInputs() 가 DOM 에 한 번만 꽂아두고 재사용하므로,
+        //    이전 작성에서 남은 값이나 달력에서 흘러들어온 날짜가 그대로 남아 있을 수 있다.
+        //    사용자가 고르지 않은 날짜가 저장되는 걸 막기 위해 폼을 열 때마다 초기화한다.
+        //  · 알림(1차/2차)도 같이 NONE 으로 되돌리고, 예정일이 없으므로 알림 블록은 숨긴다.
+        //  · 달력의 '체크리스트' 버튼에서 고른 날짜를 물려받고 싶으면 아래 플래그만 true 로.
+        var AUTOFILL_PLANNED_FROM_CALENDAR = false;
         var _origOpen = window._openChecklistForm;
         window._openChecklistForm = function () {
             if (typeof _origOpen === 'function') _origOpen.apply(this, arguments);
             injectPlannedInputs();
             var el = document.getElementById('cl-planned-date');
-            if (el && _pendingPlanned) {
-                el.value = _pendingPlanned;
-                _pendingPlanned = null;
-                showToast('갈 예정일이 선택한 날짜로 채워졌어요');
+            if (el) {
+                var fill = (AUTOFILL_PLANNED_FROM_CALENDAR && _pendingPlanned) ? _pendingPlanned : '';
+                el.value = fill;
+                var r1 = document.getElementById('cl-r1'), r2 = document.getElementById('cl-r2');
+                if (r1) r1.value = 'NONE';
+                if (r2) r2.value = 'NONE';
+                var rb = document.getElementById('cl-planned-date-rm');
+                if (rb) rb.classList.toggle('hidden', !fill);
+                if (fill) showToast('갈 예정일이 선택한 날짜로 채워졌어요');
             }
+            // 위치 선택을 중간에 취소해도 다음 생성으로 새어 나가지 않도록 항상 비운다
+            _pendingPlanned = null;
         };
         // [E] edit by smsong
     }

@@ -207,6 +207,13 @@ public class ChecklistService {
         if (!dto.isVisited()) {
             dto.setVisitedDate(null);
         }
+        // [B] edit by smsong - #27-fix 갈 예정일이 없으면 예약 알림도 의미가 없다.
+        //  (프론트에서도 막고 있지만, 예정일 없이 remind 만 저장돼 스케줄러가 영영 못 찾는 걸 방지)
+        if (dto.getPlannedDate() == null) {
+            dto.setRemind1(null);
+            dto.setRemind2(null);
+        }
+        // [E] edit by smsong
 
         ChecklistEntity entity = dto.dtoToEntity(owner);
         entity.setRoomId(roomId); // [smsong] 방 스코프
