@@ -358,6 +358,113 @@ window.addEventListener('pageshow', function () {
 })(window);
 // [E] edit by smsong
 
+// ==========================================================================
+// [B] edit by smsong - #7 상세보기 몰입형 개편 (필름 & 페이지)
+//
+//  구조
+//   · .dtl-stage  — 사진. 화면 상단에 sticky 로 고정되고, 아래 종이가 그 위를 덮으며 올라온다.
+//   · .dtl-page   — 종이. 큰 상단 라운드로 사진 위에 26px 겹쳐 얹힌다.
+//   · 헤더(닫기/수정/휴지통)와 드래그 핸들은 사진 위에 떠 있는 반투명 원형 칩이 된다.
+//
+//  적용 방식
+//   · 시트 '껍데기'를 바꾸는 규칙은 :has() 로 조회 화면이 떠 있을 때만 걸린다.
+//     → 수정 폼(#detail-edit-form)이 뜨면 자동으로 기존 시트 모양으로 돌아간다.
+//       JS 에서 클래스를 토글할 필요가 없어, 편집 진입/이탈 경로가 늘어도 어긋나지 않는다.
+//   · :has() 미지원 브라우저는 껍데기 규칙만 빠지고 내용 스타일은 그대로 적용된다.
+//
+//  main.css 는 건드리지 않는다. 되돌리려면 이 블록만 지우면 된다.
+// ==========================================================================
+(function () {
+    'use strict';
+    if (document.getElementById('dtl-imm-style')) return;
+
+    // 조회 화면이 떠 있는 상세 시트에만 적용
+    var BASE = ['.detail-sheet .detail-content:has(#detail-view:not(.hidden) .dtl)',
+                '.detail-sheet .detail-content:has(#cl-detail-view:not(.hidden) .dtl)'];
+
+    // 시트 껍데기용 규칙: 두 모달 각각에 대해 셀렉터를 전개
+    function g(sels, body) {
+        var out = [];
+        BASE.forEach(function (b) { sels.forEach(function (x) { out.push(b + x); }); });
+        return out.join(',') + body;
+    }
+    function s(sel, body) { return g([sel], body); }
+
+    var css = [
+        // ================= 시트 껍데기: 화면 꽉 채우기 =================
+        s('', '{height:100dvh;max-height:100dvh;min-height:100dvh;border-radius:0;box-shadow:none;background:var(--bg-color);}'),
+        s(' .sheet-body', '{padding:0;}'),
+
+        // 드래그 핸들 — 사진 위 반투명 알약 (안내 문구는 몰입형에서 제거)
+        s(' .sheet-handle', '{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:0;right:0;z-index:6;padding:6px 0;}'),
+        s(' .sheet-handle::before', '{width:38px;height:4px;background:rgba(253,251,247,.62);}'),
+        s(' .sheet-handle::after', '{content:none;}'),
+
+        // 헤더 — 사진 위에 뜨는 원형 칩. row-reverse 라 닫기가 왼쪽, 수정/휴지통이 오른쪽.
+        s(' .detail-modal-header',
+          '{position:absolute;top:0;left:0;right:0;z-index:7;margin:0;border:none;background:none;' +
+          'padding:calc(env(safe-area-inset-top) + 24px) 14px 0;' +
+          'display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;}'),
+        s(' .detail-modal-header .detail-header-actions', '{gap:9px;}'),
+        g([' .detail-modal-header .close-modal',
+           ' .detail-modal-header .detail-edit-btn',
+           ' .detail-modal-header .detail-trash-btn'],
+          '{width:34px;height:34px;min-width:34px;padding:0;margin:0;border:none;border-radius:50%;' +
+          'background:rgba(36,31,27,.44);color:#fdfbf7;opacity:1;' +
+          'display:flex;align-items:center;justify-content:center;font-size:1.3rem;line-height:1;}'),
+        g([' .detail-modal-header .close-modal:hover',
+           ' .detail-modal-header .detail-edit-btn:hover',
+           ' .detail-modal-header .detail-trash-btn:hover'],
+          '{background:rgba(36,31,27,.64);color:#fdfbf7;}'),
+
+        // ================= 무대(사진) =================
+        s(' .dtl-stage', '{height:46dvh;min-height:46dvh;background:#241f1b;}'),
+        s(' .dtl-stage.empty', '{height:23dvh;min-height:23dvh;background:var(--primary);}'),
+        s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
+        s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:cover;}'),
+        s(' .dtl-stage .detail-carousel', '{height:100%;margin:0;}'),
+        // _fitCarousel 이 인라인 height 를 넣으므로 !important 로 덮는다
+        s(' .dtl-stage .carousel-track', '{height:100%!important;}'),
+        s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:cover;}'),
+        g([' .dtl-stage .carousel-count', ' .dtl-stage .carousel-arrow'], '{display:none;}'),
+        // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에)
+        s(' .dtl-stage .carousel-dots',
+          '{position:absolute;left:16px;right:16px;bottom:40px;top:auto;transform:none;' +
+          'display:flex;gap:5px;margin:0;padding:0;z-index:3;}'),
+        s(' .dtl-stage .carousel-dot',
+          '{flex:1 1 auto;width:auto;height:3px;border-radius:2px;margin:0;box-shadow:none;' +
+          'background:rgba(253,251,247,.36);}'),
+        s(' .dtl-stage .carousel-dot.active', '{background:#fdfbf7;transform:none;}'),
+
+        // ================= 내용 (:has() 없어도 적용되도록 스코프 밖) =================
+        '.dtl{display:block;}',
+        // sticky — 종이가 올라오는 동안 사진은 제자리에 머문다
+        '.dtl-stage{position:sticky;top:0;z-index:0;overflow:hidden;display:flex;align-items:center;justify-content:center;}',
+        '.dtl-stage.empty .dtl-stage-ic{color:rgba(253,251,247,.55);}',
+        '.dtl-page{position:relative;z-index:1;margin-top:-26px;background:var(--bg-color);' +
+        'border-radius:26px 26px 0 0;min-height:58dvh;' +
+        'padding:20px 20px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 30px);}',
+        '.dtl-eyebrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 9px;' +
+        'font-size:0.72rem;letter-spacing:0.02em;color:var(--gray-400);}',
+        '.dtl-eyebrow .dtl-sep{color:var(--gray-200);}',
+        '.dtl-loc{display:inline-flex;align-items:center;gap:4px;cursor:pointer;}',
+        '.dtl-loc:active{opacity:.6;}',
+        '.dtl-title{font-family:var(--font-logo),var(--font-main);font-size:1.44rem;font-weight:600;' +
+        'line-height:1.34;color:var(--gray-800);margin:0 0 13px;word-break:keep-all;}',
+        '.dtl-badges{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px;}',
+        '.dtl-author{display:flex;align-items:center;gap:8px;margin:0 0 17px;}',
+        '.dtl-text{font-size:0.94rem;line-height:1.82;color:var(--gray-600);}',
+        '.dtl-text p{margin:0;white-space:pre-line;}',
+        '.dtl-comments{margin-top:24px;padding-top:19px;border-top:1px solid var(--gray-200);}'
+    ].join('');
+
+    var st = document.createElement('style');
+    st.id = 'dtl-imm-style';
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+})();
+// [E] edit by smsong
+
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
@@ -4789,27 +4896,30 @@ function openChecklistDetail(item, overModal) {
     // [B] edit by smsong - 상세 이미지 전체 사전 로드 제거: 캐러셀이 첫 장만 즉시, 나머지는 lazy → 개수 무관 즉시 표시
     const imageHtml = carouselHtml(_clUrls);
 
+    // [B] edit by smsong - #7 몰입형 상세 (가볼곳). 구조는 추억과 동일, 배지만 추가.
+    //  · id 는 전부 기존 그대로 유지 (cl-detail-loc / cl-author-avatar / cl-comments-* / cl-new-comment-*)
     view.innerHTML =
-        '<div class="detail-container">' +
-        '<div class="detail-header">' +
+        '<div class="dtl">' +
+        '<div class="dtl-stage' + (_clUrls.length ? '' : ' empty') + '">' +
+        (_clUrls.length ? imageHtml : '<span class="dtl-stage-ic">' + icon('bookmark', 42) + '</span>') +
+        '</div>' +
+        '<div class="dtl-page">' +
+        '<div class="dtl-eyebrow">' +
+        '<span class="dtl-loc meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' +
+        (loc ? icon('pin', 13) + ' ' + escapeHtml(loc) : icon('pin', 13) + ' 위치 정보 없음') + '</span>' +
+        '</div>' +
+        '<div class="dtl-badges">' +
         '<span class="cl-type-tag cl-type-tag-lg" style="--cl-color:' + meta.color + '">' + meta.emoji + ' ' + meta.label + '</span>' +
-        '<h2 class="detail-title">' + escapeHtml(item.title || '') + '</h2>' +
-        '<div class="detail-author">' +
+        visitedHtml +
+        '</div>' +
+        '<h2 class="dtl-title">' + escapeHtml(item.title || '') + '</h2>' +
+        '<div class="detail-author dtl-author">' +
         '<div class="da-avatar" id="cl-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
         '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
         '</div>' +
-        '<div class="detail-meta">' +
-        visitedHtml +
-        (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</span>' : '') +
-        '</div>' +
-        '</div>' +
-        // [B] edit by smsong - 마지막 수정 일시/수정자 표시 제거
-        //  + 본문 → 사진 순서로 배치 (기존: 사진 → 본문)
-        (item.content ? '<div class="detail-body"><p>' + contentHtml + '</p></div>' : '') +
-        imageHtml +
-        // [E] edit by smsong
+        (item.content ? '<div class="dtl-text"><p>' + contentHtml + '</p></div>' : '') +
         // [smsong] 가볼곳 댓글 영역 (추억과 동일, id는 cl- 접두어로 분리)
-        '<div class="comments-section">' +
+        '<div class="comments-section dtl-comments">' +
         '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="cl-comments-count">0</span></div>' +
         '<div class="comments-list" id="cl-comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
         '<div class="comment-compose">' +
@@ -4817,7 +4927,9 @@ function openChecklistDetail(item, overModal) {
         '<button type="button" class="comment-send-btn" id="cl-new-comment-send">등록</button>' +
         '</div>' +
         '</div>' +
+        '</div>' +
         '</div>';
+    // [E] edit by smsong
 
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
@@ -5211,23 +5323,25 @@ function openDetailModal(memory, overModal) {
         '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
         '</div>';
 
+    // [B] edit by smsong - #7 몰입형 상세: 무대(사진) → 종이(글·댓글)
+    //  · id 는 전부 기존 그대로 유지 (detail-loc / detail-author-avatar / comments-* / new-comment-*)
+    //    → applyDetailLocation, loadComments, submitComment 등 기존 로직이 그대로 동작한다.
     view.innerHTML =
-        '<div class="detail-container">' +
-        '<div class="detail-header">' +
-        '<h2 class="detail-title">' + escapeHtml(memory.title || '') + '</h2>' +
+        '<div class="dtl">' +
+        '<div class="dtl-stage' + (_memUrls.length ? '' : ' empty') + '">' +
+        (_memUrls.length ? imageHtml : '<span class="dtl-stage-ic">' + icon('book', 42) + '</span>') +
+        '</div>' +
+        '<div class="dtl-page">' +
+        '<div class="dtl-eyebrow">' +
+        '<span>' + escapeHtml(dateStr) + '</span>' +
+        '<span class="dtl-sep">·</span>' +
+        '<span class="dtl-loc meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin', 13) + ' 위치 확인 중…</span>' +
+        '</div>' +
+        '<h2 class="dtl-title">' + escapeHtml(memory.title || '') + '</h2>' +
         authorHtml +
-        '<div class="detail-meta">' +
-        '<span class="meta-item">' + icon('calendar',13) + ' ' + escapeHtml(dateStr) + '</span>' +
-        '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin',13) + ' 위치 확인 중…</span>' +
-        '</div>' +
-        '</div>' +
-        // [B] edit by smsong - 마지막 수정 일시/수정자 표시 제거
-        //  + 본문 → 사진 순서로 배치 (기존: 사진 → 본문)
-        '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
-        imageHtml +
-        // [E] edit by smsong
+        (memory.content ? '<div class="dtl-text"><p>' + contentHtml + '</p></div>' : '') +
         // 댓글 영역
-        '<div class="comments-section">' +
+        '<div class="comments-section dtl-comments">' +
         '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
         '<div class="comments-list" id="comments-list"><div class="comments-loading">댓글을 불러오는 중…</div></div>' +
         '<div class="comment-compose">' +
@@ -5235,7 +5349,9 @@ function openDetailModal(memory, overModal) {
         '<button type="button" class="comment-send-btn" id="new-comment-send">등록</button>' +
         '</div>' +
         '</div>' +
+        '</div>' +
         '</div>';
+    // [E] edit by smsong
 
     // 헤더 영역: (소유자만) 수정/휴지통 버튼을 '추억 상세' 위치에 작게 배치
     const headerActions = document.getElementById('detail-header-actions');
