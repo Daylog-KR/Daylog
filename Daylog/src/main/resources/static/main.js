@@ -1457,6 +1457,10 @@ function autoDeleteText(o) {
     return '<div class="trash-autodel">' + label + '</div>';
 }
 // [E] edit by smsong
+// [B] edit by smsong - 현재 미사용. 상세보기에서 '마지막 수정' 줄을 없앴다.
+//  다시 표시하려면 openDetailModal / openChecklistDetail 의 view.innerHTML 안에
+//  editedByHtml(memory) + / editedByHtml(item) + 한 줄만 되살리면 된다.
+// [E] edit by smsong
 function editedByHtml(item) {
     // [smsong] 실제 수정 이력이 없으면(미수정) 표시하지 않음 → 빈 줄 없이 위치~사진 간격만 유지
     if (!item || !item.updatedAt) return '';
@@ -4799,9 +4803,11 @@ function openChecklistDetail(item, overModal) {
         (loc ? '<span class="meta-item meta-loc-clickable" id="cl-detail-loc" title="지도에서 보기">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</span>' : '') +
         '</div>' +
         '</div>' +
-        editedByHtml(item) + // [smsong] 마지막 수정 일시/수정자
-        imageHtml +
+        // [B] edit by smsong - 마지막 수정 일시/수정자 표시 제거
+        //  + 본문 → 사진 순서로 배치 (기존: 사진 → 본문)
         (item.content ? '<div class="detail-body"><p>' + contentHtml + '</p></div>' : '') +
+        imageHtml +
+        // [E] edit by smsong
         // [smsong] 가볼곳 댓글 영역 (추억과 동일, id는 cl- 접두어로 분리)
         '<div class="comments-section">' +
         '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="cl-comments-count">0</span></div>' +
@@ -5215,9 +5221,11 @@ function openDetailModal(memory, overModal) {
         '<span class="meta-item meta-loc-clickable" id="detail-loc" title="지도에서 보기">' + icon('pin',13) + ' 위치 확인 중…</span>' +
         '</div>' +
         '</div>' +
-        editedByHtml(memory) + // [smsong] 마지막 수정 일시/수정자
-        imageHtml +
+        // [B] edit by smsong - 마지막 수정 일시/수정자 표시 제거
+        //  + 본문 → 사진 순서로 배치 (기존: 사진 → 본문)
         '<div class="detail-body"><p>' + contentHtml + '</p></div>' +
+        imageHtml +
+        // [E] edit by smsong
         // 댓글 영역
         '<div class="comments-section">' +
         '<div class="comments-head">' + icon('comment',15) + ' 댓글 <span class="comments-count" id="comments-count">0</span></div>' +
