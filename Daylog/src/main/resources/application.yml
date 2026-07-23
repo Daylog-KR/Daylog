@@ -10,7 +10,7 @@ jwt:
 
 daylog:
   reminder:
-    enabled: true
+    enabled: false
     interval-hours: 3     # 시간조정: ← 3 → 5 또는 8
     start-hour: 9
     end-hour: 21
