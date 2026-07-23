@@ -506,7 +506,35 @@ window.addEventListener('pageshow', function () {
         '.lm-tile-title{font-size:0.86rem;font-weight:600;color:var(--gray-800);line-height:1.35;' +
         'overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}',
         '.lm-tile-meta{font-size:0.72rem;color:var(--gray-400);line-height:1.3;' +
-        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+
+        // ================= [B] edit by smsong - #11 커플 기념일 축하 폼 =================
+        '#anniv-modal{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;' +
+        'justify-content:center;padding:24px;background:rgba(45,38,32,.52);animation:annivFade .22s ease;}',
+        '#anniv-modal .anniv-card{width:100%;max-width:340px;background:var(--white);border-radius:24px;' +
+        'padding:30px 24px 20px;text-align:center;box-shadow:0 20px 56px rgba(0,0,0,.28);' +
+        'animation:annivPop .38s cubic-bezier(.2,.8,.3,1);cursor:pointer;}',
+        // 시그니처 — 숫자를 크게 새긴 원형 메달
+        '#anniv-modal .anniv-medal{width:104px;height:104px;margin:0 auto 18px;border-radius:50%;' +
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;' +
+        'background:var(--primary-light);color:var(--primary-dark);' +
+        'box-shadow:inset 0 0 0 3px var(--white),0 6px 18px rgba(176,137,104,.34);}',
+        '#anniv-modal .anniv-big{font-family:var(--font-logo),var(--font-main);font-size:2.3rem;' +
+        'font-weight:600;line-height:1;letter-spacing:-.01em;}',
+        '#anniv-modal .anniv-unit{font-size:0.78rem;font-weight:600;letter-spacing:.06em;opacity:.82;}',
+        '#anniv-modal .anniv-title{margin:0 0 7px;font-size:1.1rem;font-weight:700;line-height:1.45;' +
+        'color:var(--gray-800);word-break:keep-all;}',
+        '#anniv-modal .anniv-sub{margin:0 0 4px;font-size:0.82rem;color:var(--gray-500);}',
+        '#anniv-modal .anniv-hint{margin:0 0 20px;font-size:0.72rem;color:var(--gray-400);}',
+        '#anniv-modal .anniv-ok{width:100%;border:none;border-radius:14px;padding:14px;cursor:pointer;' +
+        'font-family:inherit;font-size:1rem;font-weight:700;background:var(--primary);color:#fff;' +
+        'transition:filter .15s,transform .1s;}',
+        '#anniv-modal .anniv-ok:active{transform:scale(.98);}',
+        '#anniv-modal .anniv-nomore{display:flex;align-items:center;justify-content:center;gap:7px;' +
+        'margin-top:14px;font-size:0.78rem;color:var(--gray-400);cursor:pointer;user-select:none;}',
+        '#anniv-modal .anniv-nomore input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;}',
+        '@keyframes annivFade{from{opacity:0}to{opacity:1}}',
+        '@keyframes annivPop{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:none}}'
     ].join('');
 
     var st = document.createElement('style');
@@ -4546,6 +4574,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function afterRoomInfo() {
         if (isCoupleRoom()) { loadProfiles(true); applyCoupleEditButtons(); }
         else applyRoomProfileMode();
+        // [B] edit by smsong - #11 오늘이 커플 기념일이면 축하 폼을 띄운다
+        //  (멤버 닉네임이 들어있는 roomInfo 가 채워진 뒤라 이름을 바로 쓸 수 있다)
+        try { maybeShowAnniversary(); } catch (e) {}
+        // [E] edit by smsong
     }
     Daylog.loadRoomInfo = loadRoomInfo;
 
@@ -6352,6 +6384,141 @@ function calculateDDay(start) {
     const el = document.getElementById('dday-count');
     if (el) el.innerText = daysSince(start);
 }
+
+// ==========================================================================
+// [B] edit by smsong - #11 커플 기념일 축하 폼 (100일 단위 / N주년)
+//
+//  · 커플 방(coupleSince 설정됨)에 들어올 때 오늘이 기념일이면 축하 폼을 먼저 띄운다.
+//  · 방의 모든 멤버에게 뜬다. 문구는 방에 지정된 두 사람(coupleLeftUid / coupleRightUid)의
+//    닉네임으로 만들고, 보는 사람이 그 둘 중 하나면 '나 → 상대' 순으로 바꿔 부른다.
+//  · 축포는 디데이 폼과 같은 WFX 엔진(fireWelcomeBurst). 폼을 탭할 때마다 더 터진다.
+//  · 하단 '이 축하 다시 보지 않기'를 누르면 그 계정 + 그 방 + 그 기념일에 대해 다시 뜨지 않는다.
+//
+//  ※ 서버 판정과 같은 규칙: 시작일이 D+1 (daysSince). 100의 배수 = N일, 같은 월/일 = N주년.
+// ==========================================================================
+
+// 오늘이 기념일이면 { key, label, big, unit } 반환, 아니면 null
+function coupleMilestoneToday(sinceStr) {
+    if (!sinceStr) return null;
+    var s = new Date(sinceStr);
+    if (isNaN(s.getTime())) return null;
+    var t = new Date();
+
+    // 주년이 100일 단위보다 우선 (같은 날 겹치면 주년으로 축하)
+    if (s.getMonth() === t.getMonth() && s.getDate() === t.getDate()) {
+        var yr = t.getFullYear() - s.getFullYear();
+        if (yr >= 1) return { key: 'y' + yr, label: yr + '주년', big: String(yr), unit: '주년' };
+    }
+    var n = daysSince(sinceStr);
+    if (n > 0 && n % 100 === 0) return { key: 'd' + n, label: n + '일', big: String(n), unit: '일' };
+    return null;
+}
+
+function _annivSeenKey(ms) {
+    return 'daylog_anniv_seen:' + (Daylog.currentUid || '') + ':' + getRoomId() + ':' + ms.key;
+}
+
+// 커플 슬롯 두 사람의 표시 이름 (닉네임 우선)
+function _coupleNames() {
+    var r = Daylog.roomInfo || {};
+    var members = r.members || [];
+    function nameOf(uid) {
+        if (!uid) return '';
+        var m = members.find(function (x) { return x && x.uid === uid; });
+        if (!m) return '';
+        var nk = (m.nickname && String(m.nickname).trim()) ? m.nickname : '';
+        if (nk) return nk;
+        return (typeof normalizeDisplayName === 'function') ? normalizeDisplayName(m.name) : (m.name || '');
+    }
+    return { left: nameOf(r.coupleLeftUid), right: nameOf(r.coupleRightUid),
+             leftUid: r.coupleLeftUid, rightUid: r.coupleRightUid };
+}
+
+function closeAnnivModal() {
+    var el = document.getElementById('anniv-modal');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function showAnnivModal(ms) {
+    closeAnnivModal();
+    var c = _coupleNames();
+    var me = Daylog.currentUid;
+
+    // 보는 사람이 커플 중 하나면 '나 → 상대' 순으로
+    var a = c.left, b = c.right;
+    if (me && me === c.rightUid) { a = c.right; b = c.left; }
+    var headline;
+    if (a && b) {
+        headline = (me === c.leftUid || me === c.rightUid)
+            ? escapeHtml(a) + '님, ' + escapeHtml(b) + '님과 ' + ms.label + '이에요 🎉'
+            : escapeHtml(a) + '님과 ' + escapeHtml(b) + '님, ' + ms.label + '이에요 🎉';
+    } else {
+        headline = '오늘은 ' + ms.label + '이에요 🎉';
+    }
+
+    var since = getDdayStart();
+    var sub = '';
+    if (since) {
+        var s = new Date(since);
+        sub = s.getFullYear() + '년 ' + (s.getMonth() + 1) + '월 ' + s.getDate() + '일부터 오늘까지';
+    }
+
+    var ov = document.createElement('div');
+    ov.id = 'anniv-modal';
+    ov.innerHTML =
+        '<div class="anniv-card" role="dialog" aria-modal="true" aria-label="' + escapeHtml(ms.label) + ' 축하">' +
+            '<div class="anniv-medal"><span class="anniv-big">' + escapeHtml(ms.big) + '</span>' +
+                '<span class="anniv-unit">' + escapeHtml(ms.unit) + '</span></div>' +
+            '<h3 class="anniv-title">' + headline + '</h3>' +
+            (sub ? '<p class="anniv-sub">' + escapeHtml(sub) + '</p>' : '') +
+            '<p class="anniv-hint">화면을 톡톡 두드리면 축포가 더 터져요</p>' +
+            '<button type="button" class="anniv-ok" id="anniv-ok">고마워요</button>' +
+            '<label class="anniv-nomore"><input type="checkbox" id="anniv-nomore-chk"> 이 축하 다시 보지 않기</label>' +
+        '</div>';
+    document.body.appendChild(ov);
+
+    // 탭할 때마다 축포가 겹쳐 터지도록 (디데이 폼과 동일한 방식)
+    var fireEv = ('onpointerdown' in window) ? 'pointerdown' : 'click';
+    ov.querySelector('.anniv-card').addEventListener(fireEv, function (e) {
+        if (e.target && e.target.closest && e.target.closest('.anniv-ok, .anniv-nomore')) return;
+        if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst();
+    });
+    setTimeout(function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); }, 200);
+
+    function done() {
+        var chk = document.getElementById('anniv-nomore-chk');
+        if (chk && chk.checked) {
+            try { localStorage.setItem(_annivSeenKey(ms), '1'); } catch (e) {}
+        }
+        closeAnnivModal();
+    }
+    document.getElementById('anniv-ok').addEventListener('click', done);
+    ov.addEventListener('click', function (e) { if (e.target === ov) done(); });
+}
+
+// 방에 들어올 때 호출 — 오늘이 기념일이고 아직 '그만 보기'를 누르지 않았다면 띄운다
+function maybeShowAnniversary() {
+    try {
+        if (!isCoupleRoom()) return;
+        var since = getDdayStart();
+        if (!since) return;
+        var ms = coupleMilestoneToday(since);
+        if (!ms) return;
+        if (localStorage.getItem(_annivSeenKey(ms))) return;
+    } catch (e) { return; }
+
+    // 다른 모달(환영/닉네임/알림 동의 등)이 떠 있으면 양보했다가 다시 시도
+    var tries = 0;
+    (function wait() {
+        var busy = document.querySelector('#pc-overlay, .modal:not(.hidden), .room-modal:not(.hidden)');
+        if (!busy) { showAnnivModal(ms); return; }
+        if (tries++ > 12) return;   // 약 6초 대기 후 포기 (다음 진입 때 다시 시도)
+        setTimeout(wait, 500);
+    })();
+}
+Daylog.maybeShowAnniversary = maybeShowAnniversary;
+// [E] edit by smsong
+
 
 // ===== 사진 편집(크롭/줌) 상태 & 제어 =====
 const _crop = { natW: 0, natH: 0, base: 1, zoom: 1, x: 0, y: 0, size: 0, onDone: null, url: null, dragging: false, sx: 0, sy: 0, bx: 0, by: 0, sourceInput: null /* [smsong] 취소 시 갤러리 재오픈 소스 */ };
