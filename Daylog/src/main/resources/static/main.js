@@ -2146,6 +2146,9 @@ document.addEventListener('DOMContentLoaded', () => {
             //  탭을 벗어났다 돌아오면 이전에 스크롤로 펼쳐 둔 항목이 그대로 남아 있으므로 초기화.
             //  (스크롤은 바로 위에서 이미 맨 위로 올려 둔 상태)
             if (Daylog._resetFeeds) Daylog._resetFeeds();
+            // [B][E] edit by smsong - #26 달력 보기는 항상 이번 달/오늘부터
+            if (Daylog._resetTimelineCalendar) Daylog._resetTimelineCalendar();
+            if (Daylog._resetChecklistCalendar) Daylog._resetChecklistCalendar();
             // display:none 상태에서는 높이를 잴 수 없으니, 보이게 된 뒤 한 번 더 계산
             requestAnimationFrame(function () { if (Daylog._relayoutFeeds) Daylog._relayoutFeeds(); });
             // [E] edit by smsong
@@ -3963,6 +3966,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     Daylog._renderCalendar = renderCalendar; // 외부(로드 후)에서 갱신용
+    // [B][E] edit by smsong - #26 탭을 옮길 때마다 달력을 이번 달로 되돌린다
+    Daylog._resetTimelineCalendar = function () {
+        var t = new Date();
+        _calYear = t.getFullYear(); _calMonth = t.getMonth();
+        if (_tlView === 'calendar') renderCalendar();
+    };
     Daylog._setTimelineView = setTimelineView;
 
     // [B] edit by smsong - #15 그리드 버튼/컨테이너 주입 + 기본 보기 적용 (main.html 무수정)
@@ -6060,9 +6069,11 @@ function openTrashModal() {
     withLoading(Promise.all([
         fetch(`${Daylog.api}/api/memories/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
         fetch(`${Daylog.api}/comment/trash`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
-        fetch(`${Daylog.api}/api/checklists/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
-    ]).then(([memories, comments, checklists]) => {
-        renderTrash(memories || [], comments || [], checklists || []);
+        fetch(`${Daylog.api}/api/checklists/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => []),
+        // [B][E] edit by smsong - #23 일정도 휴지통에 표시
+        fetch(`${Daylog.api}/api/schedules/trash/${uid}`, { headers: Daylog.authHeaders(true) }).then(Daylog.handleResponse).catch(() => [])
+    ]).then(([memories, comments, checklists, schedules]) => {
+        renderTrash(memories || [], comments || [], checklists || [], schedules || []);
     }), '휴지통을 불러오는 중...'); // [smsong] 로딩
 }
 
@@ -6071,14 +6082,15 @@ function closeTrashModal() {
     if (modal) modal.classList.add('hidden');
 }
 
-function renderTrash(memories, comments, checklists) {
+function renderTrash(memories, comments, checklists, schedules) {
     const body = document.getElementById('trash-modal-body');
     if (!body) return;
+    schedules = schedules || []; // [B][E] edit by smsong - #23
     // [B][E] edit by smsong - #13 렌더 후 선택 모드 툴바 부착
     setTimeout(function () { if (Daylog._setupTrashSelect) Daylog._setupTrashSelect(); }, 0);
     checklists = checklists || [];
 
-    if (!memories.length && !comments.length && !checklists.length) {
+    if (!memories.length && !comments.length && !checklists.length && !schedules.length) {
         body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('trash',40) + '</span><p>휴지통이 비어 있습니다</p></div>';
         return;
     }
@@ -6151,8 +6163,48 @@ function renderTrash(memories, comments, checklists) {
         });
     }
 
+    // [B] edit by smsong - #23 일정 그룹
+    if (schedules.length) {
+        html += '<div class="trash-group-title">일정 ' + schedules.length + '</div>';
+        schedules.forEach(sc => {
+            const when = sc.scheduleDate ? String(sc.scheduleDate).substring(0, 10).replace(/-/g, '.') : '';
+            const time = sc.allDay ? '종일' : (sc.startTime ? String(sc.startTime).substring(0, 5) : '종일');
+            html +=
+                '<div class="trash-row" data-kind="schedule" data-id="' + sc.id + '">' +
+                '<div class="lm-thumb lm-thumb-empty">' + icon('calendar', 18, 'color:#2e9e5b;') + '</div>' +
+                '<div class="lm-row-main">' +
+                '<div class="lm-row-date">' + escapeHtml(when + ' · ' + time) + '</div>' +
+                '<div class="lm-row-title">' + escapeHtml(sc.title || '') + '</div>' +
+                '<div class="lm-row-text">' + escapeHtml(sc.content || '') + '</div>' +
+                autoDeleteText(sc) +
+                '</div>' +
+                '<div class="trash-actions">' +
+                '<button type="button" class="trash-restore" onclick="restoreSchedule(' + sc.id + ')">복원</button>' +
+                '<button type="button" class="trash-delete" onclick="deleteScheduleForever(' + sc.id + ')">영구삭제</button>' +
+                '</div>' +
+                '</div>';
+        });
+    }
+    // [E] edit by smsong
+
     body.innerHTML = html;
 }
+
+// [B] edit by smsong - #23 일정 복원 / 영구 삭제
+function restoreSchedule(id) {
+    withLoading(fetch(`${Daylog.api}/api/schedules/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('일정을 복원했어요'); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
+        .catch(() => showToast('복원 실패'));
+}
+function deleteScheduleForever(id) {
+    if (!confirm('이 일정을 영구 삭제합니다.\n' + (Daylog.PERM_WARN || ''))) return;
+    withLoading(fetch(`${Daylog.api}/api/schedules/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
+        .then(Daylog.handleResponse)
+        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
+        .catch(() => showToast('삭제 실패'));
+}
+// [E] edit by smsong
 
 function restoreMemory(id) {
     withLoading(fetch(`${Daylog.api}/api/memories/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
@@ -8009,7 +8061,6 @@ document.addEventListener('DOMContentLoaded', () => {
             '<div class="cw-full-head">' +
                 '<h3>보관함<span class="cw-cnt">' + items.length + '</span></h3>' +
                 '<div class="cw-head-act">' +
-                    (items.length ? '<button type="button" class="cw-selbtn" id="cw-a-sel">선택</button>' : '') +
                     '<button type="button" class="cw-x" id="cw-a-close" aria-label="닫기">&times;</button>' +
                 '</div>' +
             '</div>' +
@@ -8018,14 +8069,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>보관된 항목이 없습니다</p></div>') + '</div>' +
             '<div class="cw-bar" id="cw-a-bar">' +
                 '<button type="button" class="cw-bar-all" id="cw-a-all">전체 선택</button>' +
-                '<span class="cw-bar-cnt" id="cw-a-cnt">0개 선택</span>' +
-                '<button type="button" class="cw-bar-go" id="cw-a-trash">휴지통으로</button>' +
+                '<span class="cw-bar-cnt" id="cw-a-cnt">선택된 항목 없음</span>' +
+                '<button type="button" class="cw-bar-go" id="cw-a-trash" disabled>휴지통으로</button>' +
             '</div>';
         document.body.appendChild(ov);
 
         document.getElementById('cw-a-close').addEventListener('click', closeArchive);
-        bindSelect(ov, '.cw-arow', {
-            selBtn: 'cw-a-sel', bar: 'cw-a-bar', all: 'cw-a-all', cnt: 'cw-a-cnt',
+        if (items.length) bindSelect(ov, '.cw-arow', {
+            bar: 'cw-a-bar', all: 'cw-a-all', cnt: 'cw-a-cnt', ignore: 'button',
             actions: [{ id: 'cw-a-trash', run: bulkArchiveToTrash }]
         });
     }
@@ -8045,51 +8096,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===================== 선택 모드 (보관함/휴지통 공용) =====================
-    //  opts = { selBtn, bar, all, cnt, actions:[{id, run(ids, root)}] }
+    // [B] edit by smsong - #24 선택 모드 재설계
+    //  · '선택' 토글 버튼을 없앴다. 각 항목 왼쪽에 체크가 항상 떠 있어 바로 고를 수 있다.
+    //  · 하단 바도 항상 떠 있고, 실행 버튼만 '하나 이상 골랐을 때' 활성화된다.
+    //  · '전체 선택'은 언제나 누를 수 있다(전체 선택 ↔ 전체 해제 토글).
+    //  opts = { bar, all, cnt, actions:[{id, run(ids, root)}], ignore }
     function bindSelect(root, rowSel, opts) {
-        var on = false;
-        var selBtn = document.getElementById(opts.selBtn);
         var bar = document.getElementById(opts.bar);
         var allBtn = document.getElementById(opts.all);
         var cntEl = document.getElementById(opts.cnt);
         if (!bar) return;
 
+        root.classList.add('selecting');   // 체크 표시 상시 노출
+        bar.classList.add('show');         // 하단 바 상시 노출
+
+        function rows() { return root.querySelectorAll(rowSel); }
         function ids() {
             return Array.prototype.map.call(root.querySelectorAll(rowSel + '.picked'),
                 function (r) { return Number(r.getAttribute('data-id')); });
         }
         function paint() {
             var n = ids().length;
-            if (cntEl) cntEl.textContent = n + '개 선택';
-            bar.classList.toggle('show', on);
-            root.classList.toggle('selecting', on);
-            if (selBtn) selBtn.textContent = on ? '취소' : '선택';
+            if (cntEl) cntEl.textContent = n ? (n + '개 선택') : '선택된 항목 없음';
+            (opts.actions || []).forEach(function (a) {
+                var b = document.getElementById(a.id);
+                if (b) b.disabled = (n === 0);
+            });
+            if (allBtn) allBtn.textContent = (n > 0 && n === rows().length) ? '전체 해제' : '전체 선택';
         }
-        if (selBtn) selBtn.addEventListener('click', function () {
-            on = !on;
-            if (!on) root.querySelectorAll(rowSel + '.picked').forEach(function (r) { r.classList.remove('picked'); });
-            paint();
-        });
         if (allBtn) allBtn.addEventListener('click', function () {
-            var rows = root.querySelectorAll(rowSel);
-            var every = ids().length === rows.length && rows.length > 0;
-            rows.forEach(function (r) { r.classList.toggle('picked', !every); });
+            var list = rows();
+            var every = list.length > 0 && ids().length === list.length;
+            Array.prototype.forEach.call(list, function (r) { r.classList.toggle('picked', !every); });
             paint();
         });
-        root.querySelectorAll(rowSel).forEach(function (r) {
+        Array.prototype.forEach.call(rows(), function (r) {
             r.addEventListener('click', function (e) {
-                if (!on) return;
-                e.stopPropagation(); e.preventDefault();
+                // 행 안의 복원/영구삭제 같은 개별 버튼은 그대로 동작시킨다
+                if (e.target && e.target.closest && e.target.closest(opts.ignore || '.trash-actions, button')) return;
                 r.classList.toggle('picked');
                 paint();
-            }, true);
+            });
         });
         (opts.actions || []).forEach(function (a) {
             var b = document.getElementById(a.id);
-            if (b) b.addEventListener('click', function () { a.run(ids(), root); });
+            if (b) b.addEventListener('click', function () { if (!b.disabled) a.run(ids(), root); });
         });
         paint();
     }
+    // [E] edit by smsong
+
     Daylog._bindSelect = bindSelect;
 
     // ===================== 휴지통 선택 모드 =====================
@@ -8098,25 +8154,19 @@ document.addEventListener('DOMContentLoaded', () => {
         var body = document.getElementById('trash-modal-body');
         var modal = document.getElementById('trash-modal');
         if (!body || !modal || !body.querySelector('.trash-row')) return;
-        if (document.getElementById('cw-t-bar')) return;
+        var oldBar = document.getElementById('cw-t-bar');
+        if (oldBar && oldBar.parentNode) oldBar.parentNode.removeChild(oldBar);   // [B][E] #24 재렌더 시 새로
 
-        var head = modal.querySelector('.modal-header');
-        if (head && !document.getElementById('cw-t-sel')) {
-            var b = document.createElement('button');
-            b.type = 'button'; b.id = 'cw-t-sel'; b.className = 'cw-selbtn';
-            b.textContent = '선택';
-            head.insertBefore(b, head.querySelector('.close-modal'));
-        }
         var bar = document.createElement('div');
         bar.className = 'cw-bar'; bar.id = 'cw-t-bar';
         bar.innerHTML =
             '<button type="button" class="cw-bar-all" id="cw-t-all">전체 선택</button>' +
-            '<span class="cw-bar-cnt" id="cw-t-cnt">0개 선택</span>' +
-            '<button type="button" class="cw-bar-go danger" id="cw-t-del">영구 삭제</button>';
+            '<span class="cw-bar-cnt" id="cw-t-cnt">선택된 항목 없음</span>' +
+            '<button type="button" class="cw-bar-go danger" id="cw-t-del" disabled>영구 삭제</button>';
         modal.querySelector('.list-content').appendChild(bar);
 
         bindSelect(modal, '.trash-row', {
-            selBtn: 'cw-t-sel', bar: 'cw-t-bar', all: 'cw-t-all', cnt: 'cw-t-cnt',
+            bar: 'cw-t-bar', all: 'cw-t-all', cnt: 'cw-t-cnt',
             actions: [{ id: 'cw-t-del', run: bulkTrashDelete }]
         });
     }
@@ -8307,10 +8357,19 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-cnt{font-family:var(--font-main);font-size:0.72rem;font-weight:600;color:var(--primary-dark);' +
             'background:var(--primary-light);border-radius:999px;padding:2px 9px;}',
             '.cw-head-act{display:flex;align-items:center;gap:6px;}',
-            '.cw-selbtn{border:1px solid var(--gray-200);background:transparent;border-radius:10px;padding:6px 12px;' +
-            'font-family:inherit;font-size:0.8rem;font-weight:600;color:var(--gray-600);cursor:pointer;}',
+            // ===== #25 X 버튼 스타일 통일 =====
+            //  main.css 의 .close-modal 과 같은 모양을 스타일이 없던 버튼들에도 입힌다.
+            //  (.close-btn 은 main.css 에 규칙이 아예 없어 기본 버튼 모양으로 나오고 있었다)
+            '.close-btn,.cw-x,#cw-a-close,.cw-dt-btn#cw-dt-close{background:none;border:none;font-size:1.6rem;line-height:1;' +
+            'color:var(--gray-400);cursor:pointer;width:34px;height:34px;border-radius:50%;padding:0;' +
+            'display:inline-flex;align-items:center;justify-content:center;flex:none;' +
+            'transition:background .2s,color .2s;font-family:inherit;}',
+            '.close-btn:hover,.cw-x:hover{background:var(--gray-100);color:var(--gray-600);}',
+            '.close-btn:active,.cw-x:active{background:var(--gray-200);}',
             '.cw-note{margin:0 0 12px;font-size:0.76rem;line-height:1.5;color:var(--gray-400);}',
-            '.cw-abody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:90px;}',
+            '.cw-abody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:96px;}',
+            // #24 하단 바가 상시 노출이라 마지막 항목이 가리지 않도록 여백
+            '.selecting .trash-body{padding-bottom:96px;}',
             '.cw-arow{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--gray-100);cursor:pointer;}',
             '.cw-th{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none;background:var(--gray-100);}',
             '.cw-th.empty{display:flex;align-items:center;justify-content:center;color:var(--primary);}',
@@ -8332,8 +8391,12 @@ document.addEventListener('DOMContentLoaded', () => {
             'font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
             '.cw-bar-cnt{flex:1;font-size:0.82rem;color:var(--gray-500);}',
             '.cw-bar-go{border:none;border-radius:11px;padding:11px 16px;background:var(--primary);color:#fff;' +
-            'font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap;}',
+            'font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap;' +
+            'transition:opacity .15s,background .15s;}',
             '.cw-bar-go.danger{background:#b5462f;}',
+            // #24 아무것도 안 골랐을 때는 비활성
+            '.cw-bar-go:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default;}',
+            '.cw-bar-cnt{transition:color .15s;}',
             '@keyframes cwUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}',
             '@keyframes cwPop{from{transform:translateY(14px) scale(.96);opacity:0}to{transform:none;opacity:1}}',
             '@keyframes cwFade{from{opacity:0}to{opacity:1}}'
@@ -8368,6 +8431,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
+
+    // [B][E] edit by smsong - #26 탭 이동 시 이번 달 + 오늘 선택으로 초기화
+    Daylog._resetChecklistCalendar = function () {
+        var t = new Date();
+        _cy = t.getFullYear(); _cm = t.getMonth(); _sel = ymd(t);
+        if (_clView === 'calendar' && document.getElementById('checklist-calendar')) render();
+    };
 
     Daylog._reloadCalendar = function () { return withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...'); };
     Daylog._calendarView = function () { return _clView; };
