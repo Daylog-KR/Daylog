@@ -1878,8 +1878,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (containerScroll) containerScroll.scrollTop = 0;
             window.scrollTo(0, 0);
             document.body.classList.remove('map-immersive'); // 지도 몰입모드 해제 → 헤더/하단바 복귀
-            // [B] edit by smsong - #2 탭이 보이게 된 뒤 피드 가상 스크롤 재계산
-            //  (display:none 상태에서는 높이를 잴 수 없어 반드시 한 번 다시 계산해야 한다)
+            // [B] edit by smsong - #2 탭 전환 시 피드를 첫 페이지(최신 5개)로 되돌린다.
+            //  탭을 벗어났다 돌아오면 이전에 스크롤로 펼쳐 둔 항목이 그대로 남아 있으므로 초기화.
+            //  (스크롤은 바로 위에서 이미 맨 위로 올려 둔 상태)
+            if (Daylog._resetFeeds) Daylog._resetFeeds();
+            // display:none 상태에서는 높이를 잴 수 없으니, 보이게 된 뒤 한 번 더 계산
             requestAnimationFrame(function () { if (Daylog._relayoutFeeds) Daylog._relayoutFeeds(); });
             // [E] edit by smsong
             if (targetTab === 'tab-map' && map) {
@@ -3731,6 +3734,13 @@ document.addEventListener('DOMContentLoaded', () => {
     Daylog._relayoutFeeds = function () {
         try { if (_tlPager) _tlPager.relayout(); } catch (e) {}
         try { if (_clPager) _clPager.relayout(); } catch (e) {}
+    };
+
+    // 탭을 벗어났다가 다시 들어오면 항상 최신 5개부터 — 펼쳐 놓았던 페이지를 초기화한다.
+    //  (초기화하지 않으면 이전에 스크롤로 불러 둔 수십 건이 그대로 다시 그려진다)
+    Daylog._resetFeeds = function () {
+        try { if (_tlPager) _tlPager.reset(); } catch (e) {}
+        try { if (_clPager) _clPager.reset(); } catch (e) {}
     };
 
     function _tlDateHeadEl(dateKey) {
