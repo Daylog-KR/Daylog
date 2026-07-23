@@ -59,7 +59,11 @@ public class ChecklistService {
     private void requireOwnerOrAdmin(ChecklistEntity c, UserDetails ud, String action) {
         boolean admin = ud != null && c.getRoomId() != null
                 && permissionService.isOwner(c.getRoomId(), ud.getUsername());
-        if (!isOwner(c, ud) && !admin) {
+        // [B][E] edit by smsong - #36 '커플' 방이면 관리자/멤버는 작성자가 아니어도 관리할 수 있다.
+        //  (일반 등급은 canManageAny 에서 걸러진다. 실제 수정/삭제 가능 여부는 requireCanEdit 등이 별도로 검사)
+        boolean coupleManager = ud != null && c.getRoomId() != null
+                && permissionService.canManageAny(ud.getUsername(), c.getRoomId());
+        if (!isOwner(c, ud) && !admin && !coupleManager) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 게시글만 " + action + "할 수 있습니다");
         }
     }

@@ -64,6 +64,29 @@ public class PermissionService {
     public void requireCanDelete(String uid, Long roomId){ if (!canDelete(uid, roomId)) throw forbid("삭제 권한이 없습니다"); }
     private ResponseStatusException forbid(String m) { return new ResponseStatusException(HttpStatus.FORBIDDEN, m); }
 
+    // [B] edit by smsong - #36 '커플' 방에서는 작성자가 아니어도 남의 게시글을 관리할 수 있다.
+    //  둘이 같은 기록을 함께 쓰는 공간이라 '내가 올린 것만 수정'이 오히려 불편하다는 요구.
+    //
+    //  대상: 관리자(방장) 또는 멤버(canCreate=true). '일반'(canCreate=false)은 무조건 제외한다.
+    //  ⚠ 이 메서드는 '작성자 제한'만 풀어 준다. 실제 동작 가능 여부는 기존대로
+    //     requireCanEdit / requireCanTrash / requireCanDelete 가 따로 검사한다.
+    //     (예: 커플 방 멤버라도 canEdit=false 면 수정은 여전히 막힌다)
+    public boolean isCoupleRoom(Long roomId) {
+        if (roomId == null) return false;
+        return roomRepository.findById(roomId)
+                .map(r -> "COUPLE".equalsIgnoreCase(r.getType()))
+                .orElse(false);
+    }
+
+    public boolean canManageAny(String uid, Long roomId) {
+        if (uid == null || roomId == null) return false;
+        if (!isCoupleRoom(roomId)) return false;
+        if (isOwner(roomId, uid)) return true;                       // 관리자(방장)
+        return isMember(roomId, uid)
+                && rowOf(roomId, uid).map(PermissionEntity::isCanCreate).orElse(false);   // 멤버
+    }
+    // [E] edit by smsong
+
     private void syncSnapshot(PermissionEntity e, UserEntity u) {
         if (u == null) return;
         e.setName(u.getName()); e.setNickname(u.getNickname()); e.setEmail(u.getEmail());

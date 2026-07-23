@@ -60,7 +60,11 @@ public class MemoryService {
     private void requireOwnerOrAdmin(MemoryEntity m, UserDetails ud, String action) {
         boolean admin = ud != null && m.getRoomId() != null
                 && permissionService.isOwner(m.getRoomId(), ud.getUsername());
-        if (!isOwner(m, ud) && !admin) {
+        // [B][E] edit by smsong - #36 '커플' 방이면 관리자/멤버는 작성자가 아니어도 관리할 수 있다.
+        //  (일반 등급은 canManageAny 에서 걸러진다. 실제 수정/삭제 가능 여부는 requireCanEdit 등이 별도로 검사)
+        boolean coupleManager = ud != null && m.getRoomId() != null
+                && permissionService.canManageAny(ud.getUsername(), m.getRoomId());
+        if (!isOwner(m, ud) && !admin && !coupleManager) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 게시글만 " + action + "할 수 있습니다");
         }
     }

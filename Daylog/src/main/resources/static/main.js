@@ -1019,9 +1019,22 @@ function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.ca
 // [B] edit by smsong - #2 작성자(본인) 또는 관리자(방장)만 수정/휴지통/삭제 가능
 function _isAdminPerm() { var p = _myPerm(); return !!(p && p.admin); }
 function isOwnerOf(item) { return !!(item && item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid); }
-function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canEdit)); }   // 수정 버튼
-function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
-function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
+
+// [B] edit by smsong - #36 '커플' 방에서는 관리자/멤버가 남이 올린 것도 관리할 수 있다.
+//  둘이 함께 쓰는 공간이라 '내가 올린 것만 수정'이 오히려 불편하다는 요구.
+//  · 대상: 관리자(admin) 또는 멤버(canCreate). '일반'(canCreate=false)은 무조건 제외.
+//  · 이건 '작성자 제한'만 푸는 것이고, 실제 버튼 노출은 아래처럼 canEdit/canTrash/canDelete 를 그대로 본다.
+//  · 서버(PermissionService.canManageAny)도 같은 규칙으로 검사하므로 화면과 실제 권한이 어긋나지 않는다.
+function canManageAnyInRoom() {
+    var p = _myPerm();
+    return isCoupleRoom() && !!(p && (p.admin || p.canCreate));
+}
+function _asOwner(item) { return isOwnerOf(item) || canManageAnyInRoom(); }
+// [E] edit by smsong
+
+function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canEdit)); }   // 수정 버튼
+function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
+function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
 // 생성 FAB 표시/차단 (권한 없으면 숨김)
 function applyPermButtons() {
     var show = canCreateObject();
@@ -5779,35 +5792,71 @@ function dismissDetailModal() {
     closeDetailModal();
 }
 
-function dismissTopLayer() {
-    // 위 → 아래 순서. 한 겹만 처리하고 즉시 끝낸다.
-    const lb = document.getElementById('lightbox');
-    if (lb && !lb.classList.contains('hidden')) { closeLightbox(); return; }
+// [B] edit by smsong - #36 현재 열려 있는 레이어를 '위 → 아래' 순서로 돌려준다.
+//  ESC(dismissTopLayer)와 안드로이드 뒤로가기(nav.js)가 같은 목록을 본다 → 동작이 항상 일치한다.
+function openLayerStack() {
+    var L = [];
+    var add = function (name, el, cond, close) { if (el && cond) L.push({ name: name, close: close }); };
 
-    const ep = document.getElementById('edit-page');
-    if (ep && ep.classList.contains('open')) { ep.classList.remove('open'); return; }
+    var lb = document.getElementById('lightbox');
+    add('lightbox', lb, lb && !lb.classList.contains('hidden'), closeLightbox);
 
-    // 달력 모듈(일정 폼 → 년월 선택 → 일정 상세 → 보관함)은 모듈 내부에서 순서대로 처리
-    if (typeof Daylog._dismissCalendarLayer === 'function' && Daylog._dismissCalendarLayer()) return;
+    var ep = document.getElementById('edit-page');
+    add('edit-page', ep, ep && ep.classList.contains('open'), function () { ep.classList.remove('open'); });
 
-    const clModal = document.getElementById('checklist-modal');
-    if (clModal && !clModal.classList.contains('hidden')) { closeChecklistModal(); return; }
+    // 추억 순서 조정 시트
+    var mo = document.getElementById('mo-overlay');
+    add('mo-overlay', mo, !!mo, function () { if (mo.parentNode) mo.parentNode.removeChild(mo); });
 
-    const memModal = document.getElementById('memory-modal');
-    if (memModal && !memModal.classList.contains('hidden')) { closeMemoryModal(); return; }
+    // 달력 모듈(일정 폼 → 년월 선택 → 일정 상세 → 보관함)
+    if (typeof Daylog._calendarLayers === 'function') {
+        try { L = L.concat(Daylog._calendarLayers() || []); } catch (e) {}
+    }
 
-    const clDetail = document.getElementById('checklist-detail-modal');
-    if (clDetail && !clDetail.classList.contains('hidden')) { dismissChecklistDetail(); return; }
+    var clModal = document.getElementById('checklist-modal');
+    add('checklist-modal', clModal, clModal && !clModal.classList.contains('hidden'), closeChecklistModal);
 
-    const memDetail = document.getElementById('detail-modal');
-    if (memDetail && !memDetail.classList.contains('hidden')) { dismissDetailModal(); return; }
+    var memModal = document.getElementById('memory-modal');
+    add('memory-modal', memModal, memModal && !memModal.classList.contains('hidden'), closeMemoryModal);
 
-    const trashModal = document.getElementById('trash-modal');
-    if (trashModal && !trashModal.classList.contains('hidden')) { closeTrashModal(); return; }
+    // 체크리스트 상세 — 수정 중이면 '상세' 위에 '수정' 레이어가 하나 더 있는 것으로 본다.
+    //  덕분에 뒤로가기가 수정 → 상세 → 목록 순서로 정확히 한 단계씩 물러난다.
+    var clDetail = document.getElementById('checklist-detail-modal');
+    if (clDetail && !clDetail.classList.contains('hidden')) {
+        var clEdit = document.getElementById('cl-edit-form');
+        if (clEdit && !clEdit.classList.contains('hidden')) {
+            L.push({ name: 'checklist-edit', close: exitChecklistEdit });
+        }
+        L.push({ name: 'checklist-detail', close: closeChecklistDetail });
+    }
 
-    const listModal = document.getElementById('list-modal');
-    if (listModal && !listModal.classList.contains('hidden')) { closeListModal(); return; }
+    var memDetail = document.getElementById('detail-modal');
+    if (memDetail && !memDetail.classList.contains('hidden')) {
+        var memEdit = document.getElementById('detail-edit-form');
+        if (memEdit && !memEdit.classList.contains('hidden')) {
+            L.push({ name: 'memory-edit', close: exitDetailEdit });
+        }
+        L.push({ name: 'memory-detail', close: closeDetailModal });
+    }
+
+    var trashModal = document.getElementById('trash-modal');
+    add('trash-modal', trashModal, trashModal && !trashModal.classList.contains('hidden'), closeTrashModal);
+
+    var listModal = document.getElementById('list-modal');
+    add('list-modal', listModal, listModal && !listModal.classList.contains('hidden'), closeListModal);
+
+    return L;
 }
+
+//  상세 시트가 '수정 모드'면 시트를 닫지 않고 상세 보기로만 되돌린다.
+//  → 수정 폼에서 뒤로가기를 누르면 상세로, 한 번 더 누르면 목록으로 나간다.
+function dismissTopLayer() {
+    var L = openLayerStack();
+    if (!L.length) return false;
+    try { L[0].close(); } catch (e) {}
+    return true;
+}
+// [E] edit by smsong
 
 // main.html 의 인라인 onclick 에서 쓰도록 전역 노출
 window.dismissChecklistDetail = dismissChecklistDetail;
@@ -8945,16 +8994,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // [E] edit by smsong
 
-    // [B] edit by smsong - 겹쳐 뜬 레이어를 '가장 위 하나'만 닫는다.
-    //  ESC / 뒤로가기 성격의 공용 핸들러(dismissTopLayer)가 호출한다.
-    //  닫을 게 있었으면 true, 없으면 false 를 돌려준다.
-    Daylog._dismissCalendarLayer = function () {
-        if (document.getElementById('cw-form')) { closeScheduleForm(); return true; }
+    // [B] edit by smsong - #36 이 모듈이 띄운 레이어를 '위 → 아래' 순서로 알려준다.
+    //  ESC(dismissTopLayer)와 안드로이드 뒤로가기(nav.js)가 이 목록을 함께 쓴다.
+    Daylog._calendarLayers = function () {
+        var L = [];
+        if (document.getElementById('cw-form')) L.push({ name: 'cw-form', close: closeScheduleForm });
         var mp = document.getElementById('cw-mp');
-        if (mp) { if (mp.parentNode) mp.parentNode.removeChild(mp); return true; }
-        if (document.getElementById('cw-detail')) { closeScheduleDetail(); return true; }
-        if (document.getElementById('cw-archive')) { closeArchive(); return true; }
-        return false;
+        if (mp) L.push({ name: 'cw-mp', close: function () { if (mp.parentNode) mp.parentNode.removeChild(mp); } });
+        if (document.getElementById('cw-detail')) L.push({ name: 'cw-detail', close: closeScheduleDetail });
+        if (document.getElementById('cw-archive')) L.push({ name: 'cw-archive', close: closeArchive });
+        return L;
+    };
+
+    // 겹쳐 뜬 레이어를 '가장 위 하나'만 닫는다. 닫을 게 있었으면 true.
+    Daylog._dismissCalendarLayer = function () {
+        var L = Daylog._calendarLayers();
+        if (!L.length) return false;
+        try { L[0].close(); } catch (e) {}
+        return true;
     };
     // [E] edit by smsong
 
@@ -9232,6 +9289,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof onSaved === 'function') onSaved(serverOk);
             });
         });
+    };
+})();
+// [E] edit by smsong
+
+// ==========================================================================
+// [B] edit by smsong - #36 안드로이드 뒤로가기 연결 (nav.js)
+//
+//  · 레이어 목록은 openLayerStack() 하나로 통일 → ESC 와 뒤로가기가 항상 같게 동작한다.
+//  · 레이어가 하나도 없을 때는 '기본 탭'으로 돌아가고, 이미 기본 탭이면
+//    "한 번 더 누르면 종료" 안내 후 다음 뒤로가기에 앱을 나간다.
+// ==========================================================================
+(function () {
+    'use strict';
+    if (!window.DaylogNav) return;   // nav.js 미로딩 시 조용히 무시
+
+    var DEFAULT_TAB = 'tab-map';
+
+    window.DaylogNav.registerProvider(function () {
+        try { return openLayerStack(); } catch (e) { return []; }
+    });
+
+    window.DaylogNav.onEmpty = function () {
+        // 지도 몰입 모드면 먼저 해제
+        if (document.body.classList.contains('map-immersive')) {
+            document.body.classList.remove('map-immersive');
+            return true;
+        }
+        // 선택 모드(보관함/휴지통 일괄 처리)가 켜져 있으면 먼저 해제
+        var bar = document.querySelector('.cw-bar.show, .sel-bar.show');
+        if (bar) {
+            var cancel = bar.querySelector('[data-act="cancel"], .cw-bar-cancel, .sel-cancel');
+            if (cancel) { cancel.click(); return true; }
+        }
+        // 기본 탭이 아니면 기본 탭으로
+        var active = document.body.getAttribute('data-active-tab');
+        if (active && active !== DEFAULT_TAB) {
+            var nav = document.querySelector('.nav-item[data-tab="' + DEFAULT_TAB + '"]');
+            if (nav) { nav.click(); return true; }
+        }
+        return false;   // 처리할 게 없다 → nav.js 가 '한 번 더 누르면 종료' 안내
     };
 })();
 // [E] edit by smsong
