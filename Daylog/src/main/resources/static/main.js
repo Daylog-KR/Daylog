@@ -66,6 +66,298 @@ window.addEventListener('pageshow', function () {
 })();
 // [E] edit by smsong
 
+// ==========================================================================
+// [B] edit by smsong - #2 피드 페이저 (무한 스크롤 + 가상 스크롤)
+//
+//  왜 필요한가
+//   · 추억/가볼곳이 수백 건이 되면 renderTimeline() 이 카드 수백 개를 한 번에 DOM 에 그린다.
+//     → 탭 전환이 멈추고, 이미지 디코딩이 몰려 스크롤이 끊기고, 저사양 기기에서는 탭이 죽는다.
+//
+//  이 블록이 하는 일
+//   1) 최초에는 최신순 5개만 노출한다.                        (pageSize)
+//   2) 바닥 근처까지 스크롤하면 로딩 폼(.lo-spinner)을 띄우고 5개씩 더 노출한다.
+//   3) 노출된 항목이 몇 개든, 실제 DOM 에 남기는 행은 화면에 보이는 5~10행뿐이다.
+//      위/아래로 다시 스크롤하면 그 구간을 다시 그린다. (가상 스크롤)
+//   4) 사라진 행의 자리는 위/아래 스페이서 <div> 높이가 대신하므로 스크롤바 길이가 유지된다.
+//
+//  필요한 CSS 는 이 블록이 직접 <style> 로 주입한다(main.css 수정 불필요).
+//  나중에 서버 페이징(GET ?offset=&size=)으로 바꾸려면 opts.fetchMore 만 채우면 된다.
+// ==========================================================================
+(function (global) {
+    'use strict';
+
+    var DEF = {
+        pageSize: 5,      // 한 번에 더 노출할 '항목' 수
+        windowRows: 10,   // DOM 에 동시에 유지할 최소 '행' 수 (화면이 더 길면 필요한 만큼만 늘어남)
+        buffer: 200,      // 화면 위/아래 여유 px (스크롤 시 빈 칸이 보이지 않게)
+        estimate: 116,    // 아직 한 번도 그려보지 않은 행의 높이 추정치(px)
+        loadDelay: 280,   // 로딩 폼이 최소한 이만큼은 보이도록 (깜빡임 방지)
+        nearBottom: 240,  // 바닥에서 이만큼 남으면 다음 페이지 요청
+        loadingText: '불러오는 중...',
+        endText: '모두 확인했습니다'
+    };
+
+    // 가상 스크롤용 CSS 주입 (한 번만)
+    function injectStyle() {
+        if (document.getElementById('vf-style')) return;
+        var css =
+            /* 화면 밖 행의 자리를 대신 차지하는 스페이서 — 아무 장식도 없어야 한다 */
+            '.vf-spacer{width:100%;pointer-events:none;}' +
+            /* flow-root: 카드의 margin 이 밖으로 새지 않게 가둔다.
+               행 높이를 offsetTop 차이로 재기 때문에 이 한 줄이 스크롤 정확도를 좌우한다 */
+            '.vf-rows{display:flow-root;}' +
+            /* 추가 조회 중 로딩 폼 — 전역 로딩 오버레이(.lo-spinner/.lo-text)와 같은 모양을 목록 안에 둔다 */
+            '.vf-more{display:none;align-items:center;justify-content:center;gap:10px;padding:18px 0 22px;}' +
+            '.vf-more.show{display:flex;}' +
+            '.vf-more .lo-spinner{width:22px;height:22px;border-width:2.5px;}' +
+            '.vf-more .lo-text{font-size:0.82rem;}' +
+            '.vf-end{display:none;text-align:center;padding:18px 0 26px;font-size:0.8rem;color:var(--gray-500,#a99e90);}' +
+            '@media (prefers-reduced-motion: reduce){.vf-more .lo-spinner{animation-duration:1.6s;}}';
+        var st = document.createElement('style');
+        st.id = 'vf-style';
+        st.textContent = css;
+        document.head.appendChild(st);
+    }
+
+    function div(cls, css) {
+        var d = document.createElement('div');
+        if (cls) d.className = cls;
+        if (css) d.style.cssText = css;
+        return d;
+    }
+
+    /**
+     * opts = {
+     *   feedEl        : 목록이 그려질 컨테이너 (#timeline-feed / #checklist-feed)
+     *   scrollEl      : 실제로 스크롤되는 요소 (main.container)
+     *   rowsOf(items) : 노출할 항목 배열 → 행 배열 [{ key, type, est, ... }] (날짜 헤더 포함 가능)
+     *   renderRow(row): 행 1개 → HTMLElement
+     *   emptyHtml     : 항목이 0개일 때 보여줄 HTML
+     *   sigOf(items)  : 목록 동일 여부 판정 키 (기본: id 나열)
+     *   onWindow(els) : 창을 다시 그릴 때마다 호출 (댓글 배지 재적용 등)
+     *   onData(items) : 데이터가 실제로 바뀌었을 때 1회 호출 (댓글 수 조회 등)
+     *   fetchMore(offset, size) -> Promise<Array>   (선택) 서버 페이징 훅
+     * }
+     */
+    function create(opts) {
+        var o = {}, k;
+        for (k in DEF) o[k] = DEF[k];
+        for (k in opts) o[k] = opts[k];
+
+        var feedEl = o.feedEl, scrollEl = o.scrollEl;
+        if (!feedEl || !scrollEl) return null;
+        injectStyle();
+
+        // ---- 내부 상태 ----
+        var items = [];        // 전체 항목(정렬된 원본)
+        var rows = [];         // 현재 '노출된' 항목으로 만든 행 배열
+        var loaded = 0;        // 노출된 항목 수 (5 → 10 → 15 …)
+        var heights = {};      // row.key → 실제 측정 높이(px, margin 포함)
+        var winStart = -1, winEnd = -1;
+        var busy = false;
+        var sig = null;
+
+        // ---- 고정 DOM 골격 ----
+        var spTop = div('vf-spacer', 'height:0px');
+        var rowsEl = div('vf-rows');
+        var spBot = div('vf-spacer', 'height:0px');
+        var moreEl = div('vf-more');
+        moreEl.innerHTML = '<div class="lo-spinner"></div><div class="lo-text vf-more-text"></div>';
+        moreEl.querySelector('.vf-more-text').textContent = o.loadingText;
+        var endEl = div('vf-end');
+        endEl.textContent = o.endText;
+
+        function mount() {
+            feedEl.innerHTML = '';
+            feedEl.appendChild(spTop);
+            feedEl.appendChild(rowsEl);
+            feedEl.appendChild(spBot);
+            feedEl.appendChild(moreEl);
+            feedEl.appendChild(endEl);
+        }
+
+        function rowH(i) {
+            var r = rows[i];
+            return heights[r.key] || r.est || o.estimate;
+        }
+
+        // 피드 상단이 스크롤 컨테이너 기준 몇 px 지점인지
+        function feedTop() {
+            var f = feedEl.getBoundingClientRect();
+            var s = scrollEl.getBoundingClientRect();
+            return (f.top - s.top) + scrollEl.scrollTop;
+        }
+
+        // 탭이 숨겨져 있으면(display:none) 측정이 무의미 → 보일 때 다시 계산한다
+        function visible() {
+            return !!(feedEl.offsetParent || feedEl.offsetWidth || feedEl.offsetHeight);
+        }
+
+        function buildRows() {
+            rows = o.rowsOf(items.slice(0, loaded)) || [];
+        }
+
+        // 렌더된 행들의 실제 높이를 측정해 heights 에 반영.
+        // offsetTop 차이로 재므로 margin(및 margin collapsing)이 자연스럽게 포함된다.
+        function measure() {
+            var kids = rowsEl.children;
+            if (!kids.length) return false;
+            var bottom = rowsEl.offsetTop + rowsEl.offsetHeight;
+            var changed = false;
+            for (var i = 0; i < kids.length; i++) {
+                var key = kids[i].getAttribute('data-vf-key');
+                if (!key) continue;
+                var next = (i + 1 < kids.length) ? kids[i + 1].offsetTop : bottom;
+                var h = next - kids[i].offsetTop;
+                if (h > 0 && heights[key] !== h) { heights[key] = h; changed = true; }
+            }
+            return changed;
+        }
+
+        function prefixOf(n) {
+            var pre = new Array(n + 1);
+            pre[0] = 0;
+            for (var i = 0; i < n; i++) pre[i + 1] = pre[i] + rowH(i);
+            return pre;
+        }
+
+        function setSpacers(pre, s, e) {
+            spTop.style.height = pre[s] + 'px';
+            spBot.style.height = Math.max(0, pre[rows.length] - pre[e]) + 'px';
+        }
+
+        // ---- 창(window) 계산 + 그리기 ----
+        function layout(force) {
+            if (!items.length || !visible()) return;
+
+            var n = rows.length;
+            var pre = prefixOf(n);
+            var viewTop = scrollEl.scrollTop - feedTop();
+            var viewH = scrollEl.clientHeight || global.innerHeight || 700;
+
+            var s = 0;
+            while (s < n - 1 && pre[s + 1] < viewTop - o.buffer) s++;
+            var e = s;
+            while (e < n && pre[e] < viewTop + viewH + o.buffer) e++;
+            if (e - s < o.windowRows) e = s + o.windowRows;   // 최소 windowRows 행 유지
+            if (e > n) e = n;
+
+            if (force || s !== winStart || e !== winEnd) {
+                var beforeTop = pre[s];
+                winStart = s; winEnd = e;
+
+                var frag = document.createDocumentFragment();
+                var made = [];
+                for (var j = s; j < e; j++) {
+                    var el = o.renderRow(rows[j]);
+                    if (!el) continue;
+                    el.setAttribute('data-vf-key', rows[j].key);
+                    frag.appendChild(el);
+                    made.push(el);
+                }
+                rowsEl.innerHTML = '';
+                rowsEl.appendChild(frag);
+                setSpacers(pre, s, e);
+
+                if (measure()) {
+                    pre = prefixOf(n);
+                    // 창 위쪽 높이가 달라졌으면 스크롤이 튀지 않게 보정
+                    var delta = pre[s] - beforeTop;
+                    if (delta) scrollEl.scrollTop += delta;
+                    setSpacers(pre, s, e);
+                }
+                if (o.onWindow) { try { o.onWindow(made); } catch (err) { console.warn('[Daylog] onWindow:', err); } }
+            } else {
+                setSpacers(pre, s, e);
+            }
+
+            // 바닥 근처 → 다음 5개
+            var hasMore = loaded < items.length;
+            endEl.style.display = (!hasMore && items.length > o.pageSize) ? '' : 'none';
+            if (hasMore && !busy && (viewTop + viewH) > (pre[n] - o.nearBottom)) loadMore();
+        }
+
+        function loadMore() {
+            if (busy || loaded >= items.length) return;
+            busy = true;
+            moreEl.classList.add('show');
+
+            var next = Math.min(items.length, loaded + o.pageSize);
+            var t0 = Date.now();
+            var task = o.fetchMore ? Promise.resolve(o.fetchMore(loaded, o.pageSize)) : Promise.resolve(null);
+
+            task.then(function (more) {
+                // fetchMore 가 배열을 돌려주면 뒤에 붙인다 (서버 페이징 모드)
+                if (more && more.length) { items = items.concat(more); next = loaded + more.length; }
+            }).catch(function (err) {
+                console.warn('[Daylog] 추가 조회 실패:', err);
+            }).then(function () {
+                var wait = Math.max(0, o.loadDelay - (Date.now() - t0));
+                setTimeout(function () {
+                    loaded = next;
+                    buildRows();
+                    moreEl.classList.remove('show');
+                    busy = false;
+                    layout(true);
+                }, wait);
+            });
+        }
+
+        // ---- 스크롤/리사이즈 연결 ----
+        var ticking = false;
+        function onScroll() {
+            if (ticking) return;
+            ticking = true;
+            global.requestAnimationFrame(function () { ticking = false; layout(false); });
+        }
+        scrollEl.addEventListener('scroll', onScroll, { passive: true });
+        global.addEventListener('resize', function () { layout(true); });
+
+        // ---- 외부 API ----
+        return {
+            /** 전체 목록 교체. 내용이 같으면 지금까지 펼친 페이지/스크롤을 유지한다. */
+            setItems: function (list) {
+                var arr = list || [];
+                var newSig = o.sigOf ? o.sigOf(arr)
+                                     : arr.map(function (x) { return x && x.id; }).join(',');
+                var same = (newSig === sig && feedEl.contains(rowsEl));
+                sig = newSig;
+                items = arr;
+
+                if (!items.length) {
+                    rows = []; loaded = 0; winStart = winEnd = -1;
+                    feedEl.innerHTML = o.emptyHtml || '';
+                    return;
+                }
+                if (same) {
+                    loaded = Math.min(Math.max(loaded, o.pageSize), items.length);
+                } else {
+                    loaded = Math.min(o.pageSize, items.length);
+                    winStart = winEnd = -1;
+                    mount();
+                    if (o.onData) { try { o.onData(items); } catch (err) { console.warn('[Daylog] onData:', err); } }
+                }
+                buildRows();
+                layout(true);
+            },
+            /** 탭 전환 등으로 보이게 됐을 때 다시 계산 */
+            relayout: function () { layout(true); },
+            /** 첫 페이지로 되돌림 */
+            reset: function () {
+                loaded = Math.min(o.pageSize, items.length);
+                winStart = winEnd = -1;
+                buildRows();
+                layout(true);
+            },
+            /** 디버그용 — 콘솔에서 확인 */
+            count: function () { return { loaded: loaded, total: items.length, dom: rowsEl.children.length }; }
+        };
+    }
+
+    global.DaylogFeed = { create: create };
+})(window);
+// [E] edit by smsong
+
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || 'http://localhost:8086';
 const TOKEN_KEY = 'accessToken';
 
@@ -1586,6 +1878,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (containerScroll) containerScroll.scrollTop = 0;
             window.scrollTo(0, 0);
             document.body.classList.remove('map-immersive'); // 지도 몰입모드 해제 → 헤더/하단바 복귀
+            // [B] edit by smsong - #2 탭이 보이게 된 뒤 피드 가상 스크롤 재계산
+            //  (display:none 상태에서는 높이를 잴 수 없어 반드시 한 번 다시 계산해야 한다)
+            requestAnimationFrame(function () { if (Daylog._relayoutFeeds) Daylog._relayoutFeeds(); });
+            // [E] edit by smsong
             if (targetTab === 'tab-map' && map) {
                 naver.maps.Event.trigger(map, 'resize');
             }
@@ -1735,6 +2031,11 @@ document.addEventListener('DOMContentLoaded', () => {
         locationMode.classList.remove('hidden');
         mapWrapper.classList.add('picking');
         document.body.classList.add('picking');
+        // [B] edit by smsong - #1 위치 설정 화면에서는 지도만 보이도록 기존 마커 제거
+        clearAllMarkers();
+        // 현재 위치 점(파란 점)까지 숨기려면 아래 주석을 해제하십시오.
+        // if (currentLocMarker) currentLocMarker.setMap(null);
+        // [E] edit by smsong
 
         // 지도를 탭하면 그 지점으로 중앙(점)을 이동 — 확정은 버튼으로
         if (mapClickListener) naver.maps.Event.removeListener(mapClickListener);
@@ -1995,6 +2296,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mapClickListener) { naver.maps.Event.removeListener(mapClickListener); mapClickListener = null; }
         if (mapIdleListener) { naver.maps.Event.removeListener(mapIdleListener); mapIdleListener = null; }
         clearTimeout(centerLabelTimer);
+        // [B] edit by smsong - #1 위치 설정이 끝나면(확정/취소 모두) 마커 복구
+        // if (currentLocMarker && map) currentLocMarker.setMap(map); // 위에서 숨겼다면 함께 해제
+        refreshMapMarkers();
+        // [E] edit by smsong
     }
 
     // '이 위치로 설정하기' — 지도 중앙 점을 위치로 확정
@@ -2724,8 +3029,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // [B] edit by smsong - #1 마커 일괄 제거 (위치 선택 모드 진입 등)
+    function clearAllMarkers() {
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+    }
+    // [E] edit by smsong
+
     // 현재 모드 + 지도 필터를 적용해 마커 렌더
     function renderActiveMapMarkers() {
+        // [B] edit by smsong - #1 위치 설정 중에는 추억/가볼곳 마커를 그리지 않는다(지도만 표시).
+        //  마커 생성 함수가 아니라 이 진입점 한 곳만 막아, 위치 선택 중 백그라운드 새로고침
+        //  (loadMemoriesFromServer 등)이 돌아도 마커가 다시 튀어나오지 않게 한다.
+        if (isWaitingForMapClick) { clearAllMarkers(); return; }
+        // [E] edit by smsong
         if (mapMode === 'checklist') {
             let list = [...checklistList];
             if (_mapClVisited === 'VISITED') list = list.filter(c => c.visited);
@@ -2774,41 +3091,72 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 가볼곳 목록(탭) 렌더 — 타임라인과 유사한 카드 리스트
+    // 가볼곳 목록(탭) 렌더 — 타임라인과 동일한 무한 스크롤 + 가상 스크롤
+    // [B] edit by smsong - #2
+    var _clPager = null;
+
+    function _clCardEl(item) {
+        const meta = checklistType(item.type);
+        const card = document.createElement('div');
+        card.className = 'cl-card' + (item.visited ? ' visited' : '');
+        const badge = item.visited
+            ? '<span class="cl-visited-badge">' + icon('check', 12) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
+            : '<span class="cl-todo-badge">가볼 예정</span>';
+        const loc = [item.placeName, item.address].filter(Boolean).join(' ');
+        card.innerHTML =
+            '<div class="cl-card-main">' +
+            '<div class="cl-card-tags">' +
+            '<span class="cl-type-tag" style="--cl-color:' + meta.color + '">' + meta.emoji + ' ' + meta.label + '</span>' +
+            badge +
+            '</div>' +
+            '<h4 class="cl-card-title">' + escapeHtml(item.title || '') + '</h4>' +
+            (item.content ? '<p class="cl-card-text">' + escapeHtml(item.content) + '</p>' : '') +
+            (loc ? '<div class="cl-card-loc">' + icon('pin', 13) + ' ' + escapeHtml(loc) + '</div>' : '') +
+            commentBadgeHtml('checklist', item.id) +
+            '</div>' +
+            thumbHtml(coverUrlOf(item), 'cl-thumb');
+        card.addEventListener('click', () => openChecklistDetail(item));
+        return card;
+    }
+
     function renderChecklistFeed(sorted) {
-        const feed = document.getElementById('checklist-feed');
-        if (!feed) return;
-        feed.innerHTML = '';
-        if (!sorted.length) {
-            feed.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark',40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>';
+        const feedEl = document.getElementById('checklist-feed');
+        if (!feedEl) return;
+        const scrollEl = document.querySelector('main.container');
+
+        if (!window.DaylogFeed || !scrollEl) {   // 안전 폴백 — 예전처럼 한 번에 그림
+            feedEl.innerHTML = '';
+            if (!sorted.length) {
+                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>';
+                return;
+            }
+            sorted.forEach(item => feedEl.appendChild(_clCardEl(item)));
+            applyCommentBadges('checklist');
+            fetchCommentCounts('checklist');
             return;
         }
-        sorted.forEach(item => {
-            const meta = checklistType(item.type);
-            const card = document.createElement('div');
-            card.className = 'cl-card' + (item.visited ? ' visited' : '');
-            const badge = item.visited
-                ? '<span class="cl-visited-badge">' + icon('check',12) + ' 다녀옴' + (item.visitedDate ? ' · ' + fmtDate(item.visitedDate) : '') + '</span>'
-                : '<span class="cl-todo-badge">가볼 예정</span>';
-            const loc = [item.placeName, item.address].filter(Boolean).join(' ');
-            card.innerHTML =
-                '<div class="cl-card-main">' +
-                '<div class="cl-card-tags">' +
-                '<span class="cl-type-tag" style="--cl-color:' + meta.color + '">' + meta.emoji + ' ' + meta.label + '</span>' +
-                badge +
-                '</div>' +
-                '<h4 class="cl-card-title">' + escapeHtml(item.title || '') + '</h4>' +
-                (item.content ? '<p class="cl-card-text">' + escapeHtml(item.content) + '</p>' : '') +
-                (loc ? '<div class="cl-card-loc">' + icon('pin',13) + ' ' + escapeHtml(loc) + '</div>' : '') +
-                commentBadgeHtml('checklist', item.id) +
-                '</div>' +
-                thumbHtml(coverUrlOf(item), 'cl-thumb');
-            card.addEventListener('click', () => openChecklistDetail(item));
-            feed.appendChild(card);
-        });
-        applyCommentBadges('checklist');
-        fetchCommentCounts('checklist');
+
+        if (!_clPager) {
+            _clPager = window.DaylogFeed.create({
+                feedEl: feedEl,
+                scrollEl: scrollEl,
+                pageSize: 5,
+                windowRows: 10,
+                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('bookmark', 40) + '</span><p>아직 등록된 가볼곳이 없습니다</p></div>',
+                rowsOf: function (list) {
+                    return list.map(function (c) {
+                        return { key: 'c:' + c.id, type: 'card', item: c, est: 132 };
+                    });
+                },
+                renderRow: function (row) { return _clCardEl(row.item); },
+                onWindow: function () { applyCommentBadges('checklist'); },
+                onData: function () { fetchCommentCounts('checklist'); }
+            });
+            Daylog._clPager = _clPager; // 콘솔 디버그용
+        }
+        _clPager.setItems(sorted);
     }
+    // [E] edit by smsong
 
     // 가볼곳 작성 폼 열기 (위치는 currentLatLng/currentLocationMeta 에서 가져옴)
     window._openChecklistForm = function () {
@@ -3141,6 +3489,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bList) bList.classList.add('active');
             if (bCal) bCal.classList.remove('active');
             if (colorWrap) colorWrap.style.display = 'none';
+            // [B] edit by smsong - #2 달력 → 목록으로 돌아오면 가상 스크롤 재계산
+            requestAnimationFrame(function () { if (Daylog._relayoutFeeds) Daylog._relayoutFeeds(); });
+            // [E] edit by smsong
             var pal = document.getElementById('cal-color-palette');
             if (pal) pal.classList.add('hidden');
         }
@@ -3371,60 +3722,100 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- 타임라인 (날짜별 그룹 + 좌측정렬 제목/내용/위치 + 우측 썸네일) ---
-    function renderTimeline(sorted) {
-        const timelineFeed = document.getElementById('timeline-feed');
-        timelineFeed.innerHTML = '';
+    // [B] edit by smsong - #2 무한 스크롤 + 가상 스크롤로 전환.
+    //  · 최초 5개 → 아래로 스크롤하면 로딩 폼과 함께 5개씩 추가
+    //  · DOM 에 남는 카드는 화면에 보이는 5~10행뿐(위/아래로 다시 스크롤하면 다시 그림)
+    var _tlPager = null;
 
-        if (!sorted.length) {
-            timelineFeed.innerHTML =
-                '<div class="empty-state"><span class="es-icon">' + icon('book',40) + '</span>' +
-                '<p>기록이 존재하지 않음</p></div>';
+    // 피드 두 개(타임라인/가볼곳)를 한 번에 다시 계산 — 탭 전환 직후 호출
+    Daylog._relayoutFeeds = function () {
+        try { if (_tlPager) _tlPager.relayout(); } catch (e) {}
+        try { if (_clPager) _clPager.relayout(); } catch (e) {}
+    };
+
+    function _tlDateHeadEl(dateKey) {
+        const head = document.createElement('div');
+        head.className = 'tl-date-head';
+        head.innerHTML = '<span class="tl-date-dot"></span>' +
+            '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
+        return head;
+    }
+
+    function _tlCardEl(memory) {
+        const card = document.createElement('div');
+        card.className = 'tl-card';
+        card.innerHTML =
+            '<div class="tl-main">' +
+            '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
+            '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
+            '<div class="tl-loc">' +
+            '<div class="tl-loc-row">' +
+            '<span class="tl-loc-icon">' + icon('pin', 13) + '</span>' +
+            '<span class="tl-place"></span>' +
+            '</div>' +
+            '<span class="tl-addr"></span>' +
+            '</div>' +
+            commentBadgeHtml('memory', memory.id) +
+            '</div>' +
+            thumbHtml(coverUrlOf(memory), 'tl-thumb');
+        applyCardLocation(card, memory);
+        card.addEventListener('click', () => openDetailModal(memory));
+        return card;
+    }
+
+    function renderTimeline(sorted) {
+        const feedEl = document.getElementById('timeline-feed');
+        if (!feedEl) return;
+        const scrollEl = document.querySelector('main.container');
+
+        // 페이저를 쓸 수 없는 환경이면 예전처럼 한 번에 그린다(안전 폴백)
+        if (!window.DaylogFeed || !scrollEl) {
+            feedEl.innerHTML = '';
+            if (!sorted.length) {
+                feedEl.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40) + '</span>' +
+                    '<p>기록이 존재하지 않음</p></div>';
+                return;
+            }
+            let last = null;
+            sorted.forEach(m => {
+                const d = (m.createdAt || '').substring(0, 10) || '날짜미상';
+                if (d !== last) { feedEl.appendChild(_tlDateHeadEl(d)); last = d; }
+                feedEl.appendChild(_tlCardEl(m));
+            });
+            applyCommentBadges('memory');
+            fetchCommentCounts('memory');
             return;
         }
 
-        const groups = {};
-        sorted.forEach(m => {
-            const key = (m.createdAt || '').substring(0, 10) || '날짜미상';
-            (groups[key] = groups[key] || []).push(m);
-        });
-
-        let idx = 0;
-        Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateKey => {
-            const head = document.createElement('div');
-            head.className = 'tl-date-head';
-            head.innerHTML = '<span class="tl-date-dot"></span>' +
-                '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
-            timelineFeed.appendChild(head);
-
-            groups[dateKey].forEach(memory => {
-                const card = document.createElement('div');
-                card.className = 'tl-card';
-
-                const thumb = thumbHtml(coverUrlOf(memory), 'tl-thumb');
-
-                card.innerHTML =
-                    '<div class="tl-main">' +
-                    '<h4 class="tl-title">' + escapeHtml(memory.title || '') + '</h4>' +
-                    '<p class="tl-text">' + escapeHtml(memory.content || '') + '</p>' +
-                    '<div class="tl-loc">' +
-                    '<div class="tl-loc-row">' +
-                    '<span class="tl-loc-icon">' + icon('pin',13) + '</span>' +
-                    '<span class="tl-place"></span>' +
-                    '</div>' +
-                    '<span class="tl-addr"></span>' +
-                    '</div>' +
-                    commentBadgeHtml('memory', memory.id) +
-                    '</div>' +
-                    thumb;
-
-                applyCardLocation(card, memory);
-                card.addEventListener('click', () => openDetailModal(memory));
-                timelineFeed.appendChild(card);
+        if (!_tlPager) {
+            _tlPager = window.DaylogFeed.create({
+                feedEl: feedEl,
+                scrollEl: scrollEl,
+                pageSize: 5,     // 한 번에 5개씩
+                windowRows: 10,  // DOM 에 유지할 행 수(화면이 더 길면 필요한 만큼만 늘어남)
+                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('book', 40) + '</span>' +
+                           '<p>기록이 존재하지 않음</p></div>',
+                // 날짜 헤더 + 카드로 행 배열 구성 (목록이 날짜 내림차순이라 같은 날짜가 붙어 있다)
+                rowsOf: function (list) {
+                    var out = [], last = null;
+                    list.forEach(function (m) {
+                        var d = (m.createdAt || '').substring(0, 10) || '날짜미상';
+                        if (d !== last) { out.push({ key: 'h:' + d, type: 'head', date: d, est: 46 }); last = d; }
+                        out.push({ key: 'm:' + m.id, type: 'card', item: m, est: 118 });
+                    });
+                    return out;
+                },
+                renderRow: function (row) {
+                    return (row.type === 'head') ? _tlDateHeadEl(row.date) : _tlCardEl(row.item);
+                },
+                onWindow: function () { applyCommentBadges('memory'); }, // 새로 그려진 카드에 배지 재적용
+                onData: function () { fetchCommentCounts('memory'); }    // 목록이 바뀐 경우에만 1회 조회
             });
-        });
-        applyCommentBadges('memory');   // 캐시 즉시 반영
-        fetchCommentCounts('memory');   // 최신 수 갱신
+            Daylog._tlPager = _tlPager; // 콘솔 디버그용
+        }
+        _tlPager.setItems(sorted);
     }
+    // [E] edit by smsong
 
     // ==========================================
     //  내 정보 (프로필) — 사람 구분 & 프로필 이미지

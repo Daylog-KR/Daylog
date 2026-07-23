@@ -15,9 +15,16 @@ self.addEventListener('push', function (event) {
     var title = data.title || 'Daylog';
     var options = {
         body: data.body || '',
+        // 안드로이드 상태바/알림 왼쪽 작은 아이콘 = badge.
+        //  시스템이 알파(투명도)만 읽고 색을 다시 칠하므로, 불투명한 컬러 PNG 를 주면
+        //  전체가 칠해져 '네모'로 보인다. → 투명 배경 + 흰색 실루엣 전용 아이콘을 쓴다.
+        badge: 'icons/badge-96.png',
+        // 알림 오른쪽 큰 아이콘 (안드로이드) — 여기는 컬러 앱 아이콘 그대로 OK
         icon: 'icons/icon-192.png',
-        badge: 'icons/icon-192.png',
         vibrate: [80, 40, 80],
+        // 같은 대상에 대한 알림이 겹쳐 쌓이지 않도록 (tag 없으면 목록이 지저분해짐)
+        tag: data.tag || undefined,
+        renotify: data.tag ? true : undefined,
         data: { url: data.url || '/' }
     };
     event.waitUntil(self.registration.showNotification(title, options));

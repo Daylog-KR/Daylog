@@ -734,7 +734,7 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.27"></script>
+<script src="main.js?v=1.0.28"></script>
 <script src="push.js?v=1.0.24"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>

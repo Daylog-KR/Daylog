@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -33,5 +34,11 @@ public interface ChecklistRepository extends JpaRepository<ChecklistEntity, Long
 
     // [B] edit by smsong - 휴지통 30일 자동 삭제: 이동(trashedAt)된 지 기준시각 이전인 가볼곳
     List<ChecklistEntity> findByDeletedTrueAndTrashedAtBefore(LocalDateTime cutoff);
+    // [E] edit by smsong
+
+    // [B] edit by smsong - #4 '1년 전 오늘 다녀왔어요' 리마인더용.
+    //  '다녀왔어요' 로 표시되고 휴지통이 아닌 가볼곳 중, 다녀온 날짜가 지정일(= N년 전 오늘)인 것.
+    //  VisitAnniversaryScheduler 가 하루 1회 호출한다.
+    List<ChecklistEntity> findByVisitedTrueAndDeletedFalseAndVisitedDate(LocalDate visitedDate);
     // [E] edit by smsong
 }

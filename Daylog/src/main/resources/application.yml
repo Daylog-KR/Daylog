@@ -14,6 +14,12 @@ daylog:
     interval-hours: 3     # 시간조정: ← 3 → 5 또는 8
     start-hour: 20
     end-hour: 21
+  visit-anniversary:
+    enabled: true
+    cron: "0 0 10 * * *"   # 매일 오전 10시
+    zone: Asia/Seoul
+    years: 1               # "1,2,3" 으로 두면 2·3주년도 함께 발송
+    link: main.html
 
 google:
   cloud:
