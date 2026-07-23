@@ -3656,11 +3656,87 @@ document.addEventListener('DOMContentLoaded', () => {
         if (_tlPlaceFilter) list = list.filter(m => (m.placeName || '').trim() === _tlPlaceFilter);
         if (day) list = list.filter(m => (m.createdAt || '').substring(0, 10) === day);
         renderTimeline(list);
-        if (_tlView === 'calendar') renderCalendar(); // [B] edit by smsong - 달력 뷰 동기화
+        // [B] edit by smsong - #15 그리드/달력도 같은 필터 결과로 동기화
+        Daylog._tlFiltered = list;
+        if (_tlView === 'grid') renderTimelineGrid(list);
+        if (_tlView === 'calendar') renderCalendar();
+        // [E] edit by smsong
     }
 
-    // ===== [B] edit by smsong - 타임라인/달력 보기 =====
-    var _tlView = 'list';
+    // ===== [B] edit by smsong - #15 인스타그램식 사진 그리드 보기 =====
+    //  · 3열 정사각 썸네일만. 글자 없이 사진으로만 훑는 화면이라 기본 보기로 쓴다.
+    //  · 목록/달력과 같은 필터(_tlKeyword / _tlPlaceFilter / 날짜)를 그대로 따른다.
+    //  · 무한 + 가상 스크롤은 DaylogFeed 를 그대로 쓴다. 3열이므로 한 번에 9개(3줄)씩.
+    var _tlGridPager = null;
+
+    function _tlGridTile(m) {
+        var t = document.createElement('button');
+        t.type = 'button';
+        t.className = 'tg-tile';
+        var cover = coverUrlOf(m);
+        var many = (mediaUrlsOf(m) || []).length > 1;
+        if (cover) {
+            t.innerHTML =
+                '<img class="tg-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
+                '" loading="lazy" decoding="async" alt=""' +
+                ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">' +
+                (many ? '<span class="tg-multi" aria-label="사진 여러 장">' +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+                    'stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="13" height="13" rx="2"/>' +
+                    '<path d="M16 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/></svg></span>' : '');
+        } else {
+            // 사진 없는 추억도 빠지지 않도록 제목만 얹은 타일로
+            t.className += ' notext';
+            t.innerHTML = '<span class="tg-noimg">' + icon('book', 20) + '</span>' +
+                          '<span class="tg-title">' + escapeHtml(m.title || '') + '</span>';
+        }
+        t.addEventListener('click', function () { openDetailModal(m); });
+        return t;
+    }
+
+    function renderTimelineGrid(sorted) {
+        var gridEl = document.getElementById('timeline-grid');
+        var scrollEl = document.querySelector('main.container');
+        if (!gridEl) return;
+
+        if (!window.DaylogFeed || !scrollEl) {   // 안전 폴백
+            gridEl.innerHTML = '';
+            (sorted || []).forEach(function (m) { gridEl.appendChild(_tlGridTile(m)); });
+            return;
+        }
+        if (!_tlGridPager) {
+            _tlGridPager = window.DaylogFeed.create({
+                feedEl: gridEl,
+                scrollEl: scrollEl,
+                pageSize: 9,      // 3열 × 3줄
+                windowRows: 8,
+                estimate: 124,
+                emptyHtml: '<div class="empty-state"><span class="es-icon">' + icon('image', 40) + '</span>' +
+                           '<p>기록이 존재하지 않음</p></div>',
+                rowsOf: function (list) {
+                    var rows = [];
+                    for (var i = 0; i < list.length; i += 3) {
+                        var g = list.slice(i, i + 3);
+                        rows.push({ key: 'g:' + g.map(function (x) { return x.id; }).join('-'), items: g });
+                    }
+                    return rows;
+                },
+                renderRow: function (row) {
+                    var line = document.createElement('div');
+                    line.className = 'tg-row';
+                    row.items.forEach(function (m) { line.appendChild(_tlGridTile(m)); });
+                    for (var k = row.items.length; k < 3; k++) line.appendChild(document.createElement('span'));
+                    return line;
+                }
+            });
+            Daylog._tlGridPager = _tlGridPager;
+        }
+        _tlGridPager.setItems(sorted);
+    }
+    // [E] edit by smsong
+
+    // ===== [B] edit by smsong - 타임라인 보기 (그리드 / 목록 / 달력) =====
+    var _tlView = 'grid';   // [B][E] edit by smsong - #15 기본은 사진 그리드
     var _calYear = null, _calMonth = null; // month: 0-11
     // 추억 날짜 테두리 색상 (기기 저장, 로그아웃/재시작 후에도 유지)
     var CAL_COLORS = ['#2e9e5b', '#3f7fb0', '#d05a4a', '#8a6fbf', '#e08a3c', '#d46a9a', '#b08968', '#333333'];
@@ -3691,9 +3767,27 @@ document.addEventListener('DOMContentLoaded', () => {
         _tlView = view;
         var feed = document.getElementById('timeline-feed');
         var cal = document.getElementById('timeline-calendar');
+        var grid = document.getElementById('timeline-grid');
         var bList = document.getElementById('tl-view-list');
         var bCal = document.getElementById('tl-view-cal');
+        var bGrid = document.getElementById('tl-view-grid');
         var colorWrap = document.getElementById('tl-color-wrap');
+        if (bGrid) bGrid.classList.toggle('active', view === 'grid');
+        if (grid) grid.classList.toggle('hidden', view !== 'grid');
+        // [B] edit by smsong - #15 사진 그리드
+        if (view === 'grid') {
+            if (feed) feed.classList.add('hidden');
+            if (cal) cal.classList.add('hidden');
+            if (bList) bList.classList.remove('active');
+            if (bCal) bCal.classList.remove('active');
+            if (colorWrap) colorWrap.style.display = 'none';
+            var _pal0 = document.getElementById('cal-color-palette');
+            if (_pal0) _pal0.classList.add('hidden');
+            renderTimelineGrid(Daylog._tlFiltered || [...memoryList].sort(sortByDateDesc));
+            requestAnimationFrame(function () { if (_tlGridPager) _tlGridPager.relayout(); });
+            return;
+        }
+        // [E] edit by smsong
         if (view === 'calendar') {
             _initCalMonthIfNeeded();
             if (feed) feed.classList.add('hidden');
@@ -3798,6 +3892,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     Daylog._renderCalendar = renderCalendar; // 외부(로드 후)에서 갱신용
+    Daylog._setTimelineView = setTimelineView;
+
+    // [B] edit by smsong - #15 그리드 버튼/컨테이너 주입 + 기본 보기 적용 (main.html 무수정)
+    (function injectGridView() {
+        var tog = document.querySelector('#tab-timeline .tl-view-toggle');
+        var feed = document.getElementById('timeline-feed');
+        if (!tog || !feed || document.getElementById('tl-view-grid')) return;
+
+        var b = document.createElement('button');
+        b.type = 'button'; b.id = 'tl-view-grid'; b.className = 'tl-view-btn active';
+        b.title = '사진으로 보기'; b.setAttribute('aria-label', '사진으로 보기');
+        b.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/>' +
+            '<rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>';
+        tog.insertBefore(b, tog.firstChild);   // 그리드 · 목록 · 달력 순
+        b.addEventListener('click', function () { setTimelineView('grid'); });
+
+        var g = document.createElement('div');
+        g.id = 'timeline-grid';
+        feed.parentNode.insertBefore(g, feed);
+
+        // 기본 보기 = 그리드
+        var bl = document.getElementById('tl-view-list');
+        if (bl) bl.classList.remove('active');
+        feed.classList.add('hidden');
+    })();
+    // [E] edit by smsong
     // 검색어(제목/내용/위치) 검색
     const tlKw = document.getElementById('tl-filter-keyword');
     const tlKwBtn = document.getElementById('tl-keyword-search');
@@ -7221,7 +7343,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     var _schedules = [];   // 방의 일정
     var _calCls = [];      // 달력용 체크리스트 (보관함 포함)
-    var _clView = 'list';  // list | calendar
+    var _clView = 'calendar';  // list | calendar — [B][E] edit by smsong - #15 기본은 달력
     var _cy = null, _cm = null;
     var _sel = null;              // 선택된 날짜 (YYYY-MM-DD)
     var _pendingPlanned = null;   // 달력에서 체크리스트를 추가할 때 넘길 갈 예정일
@@ -7288,6 +7410,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('cl-view-list').addEventListener('click', function () { setView('list'); });
         document.getElementById('cl-view-cal').addEventListener('click', function () { setView('calendar'); });
+
+        // [B] edit by smsong - #15 기본 보기 = 달력. 여기서는 화면 상태만 맞추고
+        //  데이터는 체크리스트 탭에 실제로 들어올 때 불러온다(초기 로딩 낭비 방지).
+        if (_clView === 'calendar') {
+            feed.classList.add('hidden');
+            cal.classList.remove('hidden');
+            document.getElementById('cl-view-list').classList.remove('active');
+            document.getElementById('cl-view-cal').classList.add('active');
+        }
+        // [E] edit by smsong
     }
 
     function setView(v) {
@@ -7839,6 +7971,20 @@ document.addEventListener('DOMContentLoaded', () => {
             '.cw-tag.arch{background:var(--gray-100);color:var(--gray-500);}',
             '.cw-tag.done{background:#e3f1e8;color:#2e6e56;}',
             '.cw-cell.picked-day{background:var(--primary-light);border-radius:10px;}',
+            // ===== #15 타임라인 사진 그리드 (인스타그램식) =====
+            '#timeline-grid{margin:0 -20px;}',   // 콘텐츠 여백을 무시하고 화면 끝까지
+            '.tg-row{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-bottom:2px;}',
+            '.tg-tile{position:relative;aspect-ratio:1/1;width:100%;padding:0;border:none;overflow:hidden;' +
+            'background:var(--gray-100);cursor:pointer;display:block;}',
+            '.tg-tile:active{opacity:.82;}',
+            '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .25s ease;}',
+            '.tg-img.is-loaded{opacity:1;}',
+            '.tg-multi{position:absolute;top:6px;right:6px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
+            'display:inline-flex;pointer-events:none;}',
+            '.tg-tile.notext{background:var(--primary-light);display:flex;flex-direction:column;' +
+            'align-items:center;justify-content:center;gap:6px;padding:10px;color:var(--primary-dark);}',
+            '.tg-title{font-size:0.7rem;font-weight:600;line-height:1.35;text-align:center;' +
+            'overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}',
             // 일정 작성 카드
             '#cw-form{position:fixed;inset:0;z-index:2700;background:rgba(45,38,32,.52);display:flex;align-items:center;justify-content:center;padding:22px;}',
             '#cw-form .cw-card{width:100%;max-width:360px;max-height:88dvh;overflow-y:auto;background:var(--white);' +
@@ -7932,7 +8078,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
 
-    Daylog._reloadCalendar = function () { return loadCalendarData(true).then(render); };
+    Daylog._reloadCalendar = function () { return withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...'); };
     Daylog._calendarView = function () { return _clView; };
 })();
 // [E] edit by smsong
