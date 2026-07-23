@@ -391,6 +391,25 @@ window.addEventListener('pageshow', function () {
     function s(sel, body) { return g([sel], body); }
 
     var css = [
+        // ================= [B] edit by smsong - #8 상·하단 네비 숨김 =================
+        //  추억/가볼곳 상세가 완전히 열려 있는 동안에는 상단바(.navbar)와 하단 네비(.bottom-nav)를
+        //  감춰 화면 전체를 상세에 내준다.
+        //
+        //   · opacity 로만 감춘다. display:none 으로 지우면 .navbar 가 문서 흐름에서 빠지면서
+        //     .container 높이(calc(100dvh - header - nav))와 어긋나 뒤 화면이 통째로 리플로우된다.
+        //   · 상단바는 z:100, 시트는 z:90 이라 원래 시트 위쪽 60px 이 상단바 뒤에 깔려 있었다.
+        //     투명해지면 그 아래 시트가 그대로 비치므로, 가려져 있던 닫기/수정/휴지통 칩도 같이 보인다.
+        //   · .at-full 은 시트가 'full' 스냅일 때만 붙는다(createDetailSheet.snap).
+        //     → 시트를 1/3 로 내려 뒤 화면을 보는 순간 네비가 즉시 돌아온다.
+        //   · 수정 폼(#detail-edit-form)이 뜨면 :has() 조건이 깨져 네비가 돌아온다.
+        '.navbar,.bottom-nav{transition:opacity .2s ease;}',
+        'body:has(#detail-modal.at-full:not(.hidden) #detail-view:not(.hidden) .dtl) .navbar,' +
+        'body:has(#detail-modal.at-full:not(.hidden) #detail-view:not(.hidden) .dtl) .bottom-nav,' +
+        'body:has(#checklist-detail-modal.at-full:not(.hidden) #cl-detail-view:not(.hidden) .dtl) .navbar,' +
+        'body:has(#checklist-detail-modal.at-full:not(.hidden) #cl-detail-view:not(.hidden) .dtl) .bottom-nav' +
+        '{opacity:0;pointer-events:none;}',
+        // [E] edit by smsong
+
         // ================= 시트 껍데기: 화면 꽉 채우기 =================
         s('', '{height:100dvh;max-height:100dvh;min-height:100dvh;border-radius:0;box-shadow:none;background:var(--bg-color);}'),
         s(' .sheet-body', '{padding:0;}'),
@@ -445,7 +464,10 @@ window.addEventListener('pageshow', function () {
         '.dtl-stage.empty .dtl-stage-ic{color:rgba(253,251,247,.55);}',
         '.dtl-page{position:relative;z-index:1;margin-top:-26px;background:var(--bg-color);' +
         'border-radius:26px 26px 0 0;min-height:58dvh;' +
-        'padding:20px 20px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 30px);}',
+        // [B] edit by smsong - #8 하단 네비가 숨겨지므로 그만큼 비워 두던 여백을 줄인다.
+        //  (되돌리려면 아래 줄을 calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 30px) 로)
+        'padding:20px 20px calc(env(safe-area-inset-bottom) + 44px);}',
+        // [E] edit by smsong
         '.dtl-eyebrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 9px;' +
         'font-size:0.72rem;letter-spacing:0.02em;color:var(--gray-400);}',
         '.dtl-eyebrow .dtl-sep{color:var(--gray-200);}',
@@ -5195,6 +5217,10 @@ function createDetailSheet(modalId, onClosed) {
     }
     function snap(name, animate) {
         current = name;
+        // [B] edit by smsong - #8 시트가 완전히 위(full)일 때만 .at-full 표시 → CSS 가 상·하단 네비를 감춘다.
+        //  1/3 로 내려 뒤 화면(지도/타임라인)을 보는 상태에서는 네비가 다시 필요하므로 여기서 토글한다.
+        modal.classList.toggle('at-full', name === 'full');
+        // [E] edit by smsong
         apply(metrics()[name], animate !== false);
         if (name === 'closed') {
             clearTimeout(closeTimer);
