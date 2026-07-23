@@ -12,7 +12,7 @@ daylog:
   reminder:
     enabled: false
     interval-hours: 3     # 시간조정: ← 3 → 5 또는 8
-    start-hour: 9
+    start-hour: 20
     end-hour: 21
 
 google:
