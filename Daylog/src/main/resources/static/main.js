@@ -511,9 +511,14 @@ window.addEventListener('pageshow', function () {
         // ================= [B] edit by smsong - #11 커플 기념일 축하 폼 =================
         '#anniv-modal{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;' +
         'justify-content:center;padding:24px;background:rgba(45,38,32,.52);animation:annivFade .22s ease;}',
-        '#anniv-modal .anniv-card{width:100%;max-width:340px;background:var(--white);border-radius:24px;' +
-        'padding:30px 24px 20px;text-align:center;box-shadow:0 20px 56px rgba(0,0,0,.28);' +
-        'animation:annivPop .38s cubic-bezier(.2,.8,.3,1);cursor:pointer;}',
+        '#anniv-modal .anniv-card{position:relative;width:100%;max-width:340px;background:var(--white);' +
+        'border-radius:24px;padding:34px 24px 0;text-align:center;box-shadow:0 20px 56px rgba(0,0,0,.28);' +
+        'animation:annivPop .38s cubic-bezier(.2,.8,.3,1);cursor:pointer;overflow:hidden;}',
+        // 닫기 — 저장 없이 닫힌다(다음 진입 때 다시 뜸)
+        '#anniv-modal .anniv-x{position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;' +
+        'border:none;background:transparent;color:var(--gray-400);font-size:1.5rem;line-height:1;' +
+        'cursor:pointer;border-radius:50%;}',
+        '#anniv-modal .anniv-x:active{background:var(--gray-100);}',
         // 시그니처 — 숫자를 크게 새긴 원형 메달
         '#anniv-modal .anniv-medal{width:104px;height:104px;margin:0 auto 18px;border-radius:50%;' +
         'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;' +
@@ -525,14 +530,11 @@ window.addEventListener('pageshow', function () {
         '#anniv-modal .anniv-title{margin:0 0 7px;font-size:1.1rem;font-weight:700;line-height:1.45;' +
         'color:var(--gray-800);word-break:keep-all;}',
         '#anniv-modal .anniv-sub{margin:0 0 4px;font-size:0.82rem;color:var(--gray-500);}',
-        '#anniv-modal .anniv-hint{margin:0 0 20px;font-size:0.72rem;color:var(--gray-400);}',
-        '#anniv-modal .anniv-ok{width:100%;border:none;border-radius:14px;padding:14px;cursor:pointer;' +
-        'font-family:inherit;font-size:1rem;font-weight:700;background:var(--primary);color:#fff;' +
-        'transition:filter .15s,transform .1s;}',
-        '#anniv-modal .anniv-ok:active{transform:scale(.98);}',
-        '#anniv-modal .anniv-nomore{display:flex;align-items:center;justify-content:center;gap:7px;' +
-        'margin-top:14px;font-size:0.78rem;color:var(--gray-400);cursor:pointer;user-select:none;}',
-        '#anniv-modal .anniv-nomore input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;}',
+        // 카드 폭을 꽉 채우는 하단 바 — 누르면 저장하고 바로 닫힌다
+        '#anniv-modal .anniv-nomore{display:block;width:calc(100% + 48px);margin:24px -24px 0;' +
+        'padding:16px;border:none;border-top:1px solid var(--gray-200);background:transparent;' +
+        'font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--gray-400);cursor:pointer;}',
+        '#anniv-modal .anniv-nomore:active{background:var(--gray-100);color:var(--gray-500);}',
         '@keyframes annivFade{from{opacity:0}to{opacity:1}}',
         '@keyframes annivPop{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:none}}'
     ].join('');
@@ -6467,33 +6469,32 @@ function showAnnivModal(ms) {
     ov.id = 'anniv-modal';
     ov.innerHTML =
         '<div class="anniv-card" role="dialog" aria-modal="true" aria-label="' + escapeHtml(ms.label) + ' 축하">' +
+            '<button type="button" class="anniv-x" id="anniv-x" aria-label="닫기">&times;</button>' +
             '<div class="anniv-medal"><span class="anniv-big">' + escapeHtml(ms.big) + '</span>' +
                 '<span class="anniv-unit">' + escapeHtml(ms.unit) + '</span></div>' +
             '<h3 class="anniv-title">' + headline + '</h3>' +
             (sub ? '<p class="anniv-sub">' + escapeHtml(sub) + '</p>' : '') +
-            '<p class="anniv-hint">화면을 톡톡 두드리면 축포가 더 터져요</p>' +
-            '<button type="button" class="anniv-ok" id="anniv-ok">고마워요</button>' +
-            '<label class="anniv-nomore"><input type="checkbox" id="anniv-nomore-chk"> 이 축하 다시 보지 않기</label>' +
+            '<button type="button" class="anniv-nomore" id="anniv-nomore">이 축하 다시 보지 않기</button>' +
         '</div>';
     document.body.appendChild(ov);
 
-    // 탭할 때마다 축포가 겹쳐 터지도록 (디데이 폼과 동일한 방식)
+    // 탭할 때마다 축포가 겹쳐 터지도록 (디데이 폼과 동일한 방식).
+    //  닫기(×)와 '다시 보지 않기'는 제외 — 누르면 축포 대신 그 동작만 한다.
     var fireEv = ('onpointerdown' in window) ? 'pointerdown' : 'click';
     ov.querySelector('.anniv-card').addEventListener(fireEv, function (e) {
-        if (e.target && e.target.closest && e.target.closest('.anniv-ok, .anniv-nomore')) return;
+        if (e.target && e.target.closest && e.target.closest('.anniv-x, .anniv-nomore')) return;
         if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst();
     });
     setTimeout(function () { if (typeof fireWelcomeBurst === 'function') fireWelcomeBurst(); }, 200);
 
-    function done() {
-        var chk = document.getElementById('anniv-nomore-chk');
-        if (chk && chk.checked) {
-            try { localStorage.setItem(_annivSeenKey(ms), '1'); } catch (e) {}
-        }
+    // '이 축하 다시 보지 않기' → 저장하고 바로 닫는다
+    document.getElementById('anniv-nomore').addEventListener('click', function () {
+        try { localStorage.setItem(_annivSeenKey(ms), '1'); } catch (e) {}
         closeAnnivModal();
-    }
-    document.getElementById('anniv-ok').addEventListener('click', done);
-    ov.addEventListener('click', function (e) { if (e.target === ov) done(); });
+    });
+    // 닫기(×) / 바깥 탭 → 저장 없이 닫기 (다음에 이 방에 들어오면 다시 뜬다)
+    document.getElementById('anniv-x').addEventListener('click', closeAnnivModal);
+    ov.addEventListener('click', function (e) { if (e.target === ov) closeAnnivModal(); });
 }
 
 // 방에 들어올 때 호출 — 오늘이 기념일이고 아직 '그만 보기'를 누르지 않았다면 띄운다
