@@ -418,7 +418,9 @@ window.addEventListener('pageshow', function () {
           '{background:rgba(36,31,27,.64);color:#fdfbf7;}'),
 
         // ================= 무대(사진) =================
-        s(' .dtl-stage', '{height:46dvh;min-height:46dvh;background:#241f1b;}'),
+        //  height 는 첫 장의 비율에 맞춰 Daylog._fitDetailStage() 가 인라인으로 덮어쓴다.
+        //  아래 값은 이미지 로드 전 잠깐 쓰이는 기본값 (레이아웃 점프 방지용).
+        s(' .dtl-stage', '{height:52dvh;min-height:0;background:#241f1b;}'),
         s(' .dtl-stage.empty', '{height:23dvh;min-height:23dvh;background:var(--primary);}'),
         s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
         s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:cover;}'),
@@ -4940,6 +4942,7 @@ function openChecklistDetail(item, overModal) {
     }
 
     bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
+    Daylog._fitDetailStage(document.getElementById('cl-detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
     const av = document.getElementById('cl-author-avatar');
     if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
     const locEl = document.getElementById('cl-detail-loc');
@@ -5374,6 +5377,7 @@ function openDetailModal(memory, overModal) {
 
     // 이미지 캐러셀 바인딩 (좌우 스와이프 + 탭 확대)
     bindCarousel(document.getElementById('detail-view'), _memUrls);
+    Daylog._fitDetailStage(document.getElementById('detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
 
     // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
     const da = document.getElementById('detail-author-avatar');
@@ -6543,6 +6547,59 @@ function carouselHtml(urls) {
         '<div class="carousel-dots">' + dots + '</div>' +
         '</div>';
 }
+
+// [B] edit by smsong - #7 사진 무대 높이를 '첫 장의 실제 비율'에 맞춘다.
+//
+//  고정 높이(46dvh)로 두면 세로 사진이 위아래로 잘려 답답했다.
+//  이제 첫 사진의 naturalWidth/Height 로 필요한 높이를 계산해 인라인으로 넣는다.
+//   · 하한 MIN_VH — 파노라마처럼 납작한 사진도 이보다 얇아지지 않게(제목만 덩그러니 뜨는 것 방지)
+//   · 상한 MAX_VH — 세로 사진 상한. 그 아래 제목/본문 첫 줄이 최소한 보이도록 남겨 둔다.
+//  비율이 이 범위 안이면 object-fit:cover 여도 잘리는 부분이 전혀 없다.
+//  범위를 벗어나는 극단적인 사진만 가운데 기준으로 잘리고, 탭하면 라이트박스에서 원본 전체를 본다.
+//
+//  ★ 답답하면 MAX_VH 만 올리십시오 (0.82 ≈ 화면의 82%).
+(function () {
+    'use strict';
+    var MIN_VH = 0.38;
+    var MAX_VH = 0.78;
+
+    function vh() { return window.innerHeight || document.documentElement.clientHeight || 700; }
+
+    function sizeStage(stage, ratio) {
+        var w = stage.clientWidth || stage.offsetWidth;
+        if (!w || !ratio) return;
+        var v = vh();
+        var h = Math.round(Math.max(v * MIN_VH, Math.min(v * MAX_VH, w * ratio)));
+        stage.style.height = h + 'px';
+        stage.style.minHeight = h + 'px';
+    }
+
+    Daylog._fitDetailStage = function (root) {
+        if (!root) return;
+        var stage = root.querySelector('.dtl-stage');
+        if (!stage || stage.classList.contains('empty')) return;
+        var img = stage.querySelector('img');
+        if (!img) return;
+
+        function apply() {
+            if (!img.naturalWidth || !img.naturalHeight) return;
+            var ratio = img.naturalHeight / img.naturalWidth;
+            stage.setAttribute('data-ratio', ratio);
+            sizeStage(stage, ratio);
+        }
+        if (img.complete && img.naturalWidth) apply();
+        else img.addEventListener('load', apply, { once: true });
+    };
+
+    // 화면 회전/리사이즈 시 다시 계산 (리스너는 1개만)
+    window.addEventListener('resize', function () {
+        var list = document.querySelectorAll('.dtl-stage[data-ratio]');
+        for (var i = 0; i < list.length; i++) {
+            sizeStage(list[i], parseFloat(list[i].getAttribute('data-ratio')));
+        }
+    });
+})();
+// [E] edit by smsong
 
 // 첫 이미지 비율로 트랙 높이 설정 → 레이아웃 시프트(깜빡임) 방지 (REMS fitGalleryHeight 방식)
 Daylog._fitCarousel = function (cid, img) {
