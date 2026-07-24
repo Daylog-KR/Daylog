@@ -89,10 +89,13 @@ window.addEventListener('pageshow', function () {
     var DEF = {
         pageSize: 5,      // 한 번에 더 노출할 '항목' 수
         windowRows: 10,   // DOM 에 동시에 유지할 최소 '행' 수 (화면이 더 길면 필요한 만큼만 늘어남)
-        buffer: 200,      // 화면 위/아래 여유 px (스크롤 시 빈 칸이 보이지 않게)
+        buffer: 900,      // [B][E] edit by smsong - #33 화면 위/아래 여유 px.
+                          //  200px(=행 1.7개)면 사진이 화면에 들어오는 순간에야 로드가 시작돼
+                          //  회색 칸이 보였다 채워지는 '깜빡임'이 났다. 미리 마운트해 디코드를 끝낸다.
         estimate: 116,    // 아직 한 번도 그려보지 않은 행의 높이 추정치(px)
         loadDelay: 280,   // 로딩 폼이 최소한 이만큼은 보이도록 (깜빡임 방지)
         nearBottom: 240,  // 바닥에서 이만큼 남으면 다음 페이지 요청
+        poolMax: 60,      // [B][E] edit by smsong - #36 창 밖으로 나간 행을 보관할 최대 개수
         loadingText: '불러오는 중...',
         endText: '모두 확인했습니다'
     };
@@ -102,10 +105,10 @@ window.addEventListener('pageshow', function () {
         if (document.getElementById('vf-style')) return;
         var css =
             /* 화면 밖 행의 자리를 대신 차지하는 스페이서 — 아무 장식도 없어야 한다 */
-            '.vf-spacer{width:100%;pointer-events:none;}' +
+            '.vf-spacer{width:100%;pointer-events:none;overflow-anchor:none;}' +
             /* flow-root: 카드의 margin 이 밖으로 새지 않게 가둔다.
                행 높이를 offsetTop 차이로 재기 때문에 이 한 줄이 스크롤 정확도를 좌우한다 */
-            '.vf-rows{display:flow-root;}' +
+            '.vf-rows{display:flow-root;overflow-anchor:none;}' +
             /* 추가 조회 중 로딩 폼 — 전역 로딩 오버레이(.lo-spinner/.lo-text)와 같은 모양을 목록 안에 둔다 */
             '.vf-more{display:none;align-items:center;justify-content:center;gap:10px;padding:18px 0 22px;}' +
             '.vf-more.show{display:flex;}' +
@@ -151,6 +154,7 @@ window.addEventListener('pageshow', function () {
         // ---- 내부 상태 ----
         var items = [];        // 전체 항목(정렬된 원본)
         var rows = [];         // 현재 '노출된' 항목으로 만든 행 배열
+        var rowByKey = {};     // [B][E] edit by smsong - #36 key → row (높이 학습용)
         var loaded = 0;        // 노출된 항목 수 (5 → 10 → 15 …)
         var heights = {};      // row.key → 실제 측정 높이(px, margin 포함)
         var winStart = -1, winEnd = -1;
@@ -169,6 +173,7 @@ window.addEventListener('pageshow', function () {
 
         function mount() {
             feedEl.innerHTML = '';
+            dropMounted();      // [B][E] edit by smsong - #33 DOM 을 비웠으니 재사용 캐시도 함께 비운다
             feedEl.appendChild(spTop);
             feedEl.appendChild(rowsEl);
             feedEl.appendChild(spBot);
@@ -176,10 +181,22 @@ window.addEventListener('pageshow', function () {
             feedEl.appendChild(endEl);
         }
 
+        // [B] edit by smsong - #36 행 높이 추정치를 '실측 평균'으로 학습한다.
+        //  고정 추정치(118px)로 두면 실제 높이와 어긋난 만큼 매번 scrollTop 보정이 들어가
+        //  스크롤이 미세하게 튀었다(= 깜빡임으로 보이는 흔들림).
+        //  한 번이라도 측정된 타입은 그 평균을 쓰므로 두 번째 화면부터 보정이 거의 사라진다.
+        var estByType = {};
+        function noteHeight(key, h) {
+            var r = rowByKey[key];
+            if (!r || !(h > 0)) return;
+            var t = r.type || '_';
+            estByType[t] = estByType[t] ? Math.round(estByType[t] * 0.7 + h * 0.3) : h;
+        }
         function rowH(i) {
             var r = rows[i];
-            return heights[r.key] || r.est || o.estimate;
+            return heights[r.key] || estByType[r.type || '_'] || r.est || o.estimate;
         }
+        // [E] edit by smsong
 
         // 피드 상단이 스크롤 컨테이너 기준 몇 px 지점인지
         function feedTop() {
@@ -195,7 +212,51 @@ window.addEventListener('pageshow', function () {
 
         function buildRows() {
             rows = o.rowsOf(items.slice(0, loaded)) || [];
+            // [B] edit by smsong - #35 키 중복 제거.
+            //  같은 키가 두 번 나오면 재사용 맵(mounted)이 뒤엣것으로 덮여
+            //  앞의 엘리먼트가 추적 밖으로 새어 나가고, 행이 복제되어 쌓인다.
+            var seen = Object.create(null);
+            for (var i = 0; i < rows.length; i++) {
+                var k = String(rows[i].key);
+                if (seen[k] == null) seen[k] = 0;
+                else rows[i].key = k + '#' + (++seen[k]);
+            }
+            // [E] edit by smsong
+            // [B][E] edit by smsong - #36 key → row 색인(높이 학습용)
+            rowByKey = {};
+            for (var q = 0; q < rows.length; q++) rowByKey[rows[q].key] = rows[q];
+            prefetchRows();     // [B][E] edit by smsong - #33
         }
+
+        // [B] edit by smsong - #33 노출된 항목의 썸네일을 미리 받아 둔다.
+        //  가상 스크롤은 화면에 들어올 때 <img> 를 붙이는데, 그때 처음 네트워크를 타면
+        //  회색 칸 → 사진으로 튄다. 미리 캐시에 올려두면 붙는 즉시 그려진다.
+        //  (노출된 항목 수만큼만 — 5 → 10 → 15 … 이므로 부담이 없다)
+        var prefetched = {};
+        function prefetchOne(u) {
+            if (!u || prefetched[u]) return;
+            prefetched[u] = 1;
+            // [B][E] edit by smsong - #36 내려받기만 하지 말고 '디코드까지' 끝내 둔다.
+            //  행이 붙는 순간 이미 디코드된 상태라 회색 칸이 한 프레임도 보이지 않는다.
+            try {
+                var im = new Image();
+                im.decoding = 'async';
+                im.src = u;
+                if (im.decode) im.decode().catch(function () {});
+            } catch (e) {}
+        }
+        function prefetchRows() {
+            if (!o.prefetchOf) return;
+            for (var i = 0; i < rows.length; i++) {
+                var u;
+                try { u = o.prefetchOf(rows[i]); } catch (e) { u = null; }
+                if (!u) continue;
+                // [B][E] edit by smsong - #36 문자열 1개 / 배열 둘 다 허용(그리드는 한 행에 3장)
+                if (typeof u === 'string') prefetchOne(u);
+                else for (var v = 0; v < u.length; v++) prefetchOne(u[v]);
+            }
+        }
+        // [E] edit by smsong
 
         // 렌더된 행들의 실제 높이를 측정해 heights 에 반영.
         // offsetTop 차이로 재므로 margin(및 margin collapsing)이 자연스럽게 포함된다.
@@ -209,7 +270,7 @@ window.addEventListener('pageshow', function () {
                 if (!key) continue;
                 var next = (i + 1 < kids.length) ? kids[i + 1].offsetTop : bottom;
                 var h = next - kids[i].offsetTop;
-                if (h > 0 && heights[key] !== h) { heights[key] = h; changed = true; }
+                if (h > 0 && heights[key] !== h) { heights[key] = h; noteHeight(key, h); changed = true; }
             }
             return changed;
         }
@@ -225,6 +286,108 @@ window.addEventListener('pageshow', function () {
             spTop.style.height = pre[s] + 'px';
             spBot.style.height = Math.max(0, pre[rows.length] - pre[e]) + 'px';
         }
+
+        // ---- [B] edit by smsong - #33 키 기반 DOM 재사용(리사이클) ----
+        //  예전에는 창이 한 칸만 움직여도 rowsEl.innerHTML='' 로 전부 지우고 다시 만들었다.
+        //  → 그대로 남아 있어야 할 행의 <img> 까지 매번 새 엘리먼트가 되어
+        //     브라우저가 다시 디코드/페인트하면서 한 프레임 비는 '깜빡임'이 생겼다.
+        //  이제는 창에 계속 남는 행은 같은 엘리먼트를 그대로 쓰고,
+        //  새로 들어온 행만 만들고 나간 행만 지운다. (이미지는 재디코드되지 않는다)
+        var mounted = {};   // key → 현재 rowsEl 안에 있는 엘리먼트
+
+        // [B] edit by smsong - #36 창 밖으로 나간 행을 '버리지 않고' 보관하는 재활용 풀.
+        //
+        //  기존 코드는 창을 벗어난 행을 removeChild + delete 로 완전히 폐기했다.
+        //  다시 위로 스크롤하면 renderRow() 가 <img> 를 새로 만들고, 브라우저는
+        //  HTTP 캐시에 있어도 '디코딩된 비트맵'은 갖고 있지 않으므로 다시 디코드한다.
+        //  그 사이 한두 프레임 동안 .tl-thumb 의 회색 배경이 보이는 것 → 이게 남아 있던 깜빡임.
+        //
+        //  이제는 떼어낸 엘리먼트를 그대로 들고 있다가 재진입하면 그 노드를 다시 붙인다.
+        //  같은 <img> 노드이므로 디코드가 유지되어 회색 칸이 전혀 보이지 않는다.
+        //  (데이터가 실제로 바뀌면 dropMounted() 가 풀도 함께 비운다)
+        var POOL_MAX = o.poolMax || 60;   // [B][E] edit by smsong - #36 피드별로 조정 가능
+        var pool = {}, poolKeys = [];
+        function poolPut(key, el) {
+            if (!el) return;
+            if (pool[key]) { var i0 = poolKeys.indexOf(key); if (i0 >= 0) poolKeys.splice(i0, 1); }
+            pool[key] = el;
+            poolKeys.push(key);
+            while (poolKeys.length > POOL_MAX) { var k = poolKeys.shift(); delete pool[k]; }
+        }
+        function poolTake(key) {
+            var el = pool[key];
+            if (!el) return null;
+            delete pool[key];
+            var i1 = poolKeys.indexOf(key); if (i1 >= 0) poolKeys.splice(i1, 1);
+            return el;
+        }
+        // [E] edit by smsong
+
+        function dropMounted() {
+            mounted = {};
+            pool = {}; poolKeys = [];   // [B][E] edit by smsong - #36 재활용 풀도 함께 비운다
+            // [B] edit by smsong - #35 반드시 실제 DOM 도 함께 비운다.
+            //  mount() 의 feedEl.innerHTML='' 은 rowsEl 을 '떼어낼' 뿐, rowsEl 자신의 자식은 그대로 남는다.
+            //  재사용 맵만 비우면 그 자식들이 추적 불가능한 잔여 노드가 되어 계속 쌓이고,
+            //  목록이 반복해서 끝없이 이어지는 것처럼 보였다.
+            //  (예전 코드는 매번 rowsEl.innerHTML='' 을 했기 때문에 드러나지 않던 문제)
+            if (rowsEl) rowsEl.innerHTML = '';
+            // [E] edit by smsong
+        }
+
+        function renderWindow(s, e) {
+            var need = {}, order = [], made = [];
+            var j, key, el;
+
+            for (j = s; j < e; j++) {
+                key = rows[j].key;
+                need[key] = 1;
+                el = mounted[key];
+                if (!el || el.parentNode !== rowsEl) {
+                    // [B] edit by smsong - #36 보관해 둔 행이 있으면 그대로 재사용 → 이미지 재디코드 없음
+                    el = poolTake(key);
+                    if (!el) {
+                        el = o.renderRow(rows[j]);
+                        if (!el) continue;
+                        el.setAttribute('data-vf-key', key);
+                        made.push(el);      // 진짜 새로 만든 행만 onWindow 대상
+                    }
+                    // [E] edit by smsong
+                    mounted[key] = el;
+                }
+                order.push(el);
+            }
+
+            // 창 밖으로 나간 행만 제거
+            for (key in mounted) {
+                if (need[key]) continue;
+                el = mounted[key];
+                if (el && el.parentNode === rowsEl) rowsEl.removeChild(el);
+                poolPut(key, el);       // [B][E] edit by smsong - #36 폐기하지 않고 보관
+                delete mounted[key];
+            }
+
+            // [B] edit by smsong - #35 안전망: 재사용 맵이 추적하지 못하는 잔여 노드를 걷어낸다.
+            //  (키가 겹치거나 외부에서 DOM 을 건드린 경우에도 행이 중복 누적되지 않게 한다)
+            var keep = (typeof Set === 'function') ? new Set(order) : null;
+            for (var c = rowsEl.firstChild; c; ) {
+                var nxt = c.nextSibling;
+                var stale = keep ? !keep.has(c) : (order.indexOf(c) < 0);
+                if (stale) rowsEl.removeChild(c);
+                c = nxt;
+            }
+            // [E] edit by smsong
+
+            // 순서 맞추기 — 이미 제자리인 행은 DOM 을 건드리지 않는다
+            var cur = rowsEl.firstChild;
+            for (j = 0; j < order.length; j++) {
+                el = order[j];
+                if (cur === el) { cur = el.nextSibling; continue; }
+                rowsEl.insertBefore(el, cur);
+            }
+            return made;
+        }
+        // [E] edit by smsong
 
         // ---- 창(window) 계산 + 그리기 ----
         function layout(force) {
@@ -246,27 +409,25 @@ window.addEventListener('pageshow', function () {
                 var beforeTop = pre[s];
                 winStart = s; winEnd = e;
 
-                var frag = document.createDocumentFragment();
-                var made = [];
-                for (var j = s; j < e; j++) {
-                    var el = o.renderRow(rows[j]);
-                    if (!el) continue;
-                    el.setAttribute('data-vf-key', rows[j].key);
-                    frag.appendChild(el);
-                    made.push(el);
-                }
-                rowsEl.innerHTML = '';
-                rowsEl.appendChild(frag);
+                // [B][E] edit by smsong - #33 전체 재생성 → 키 기반 재사용
+                var made = renderWindow(s, e);
                 setSpacers(pre, s, e);
 
-                if (measure()) {
+                // [B] edit by smsong - #36 onWindow 를 '측정보다 먼저' 실행한다.
+                //  댓글 배지는 margin-top 8px + 높이 20px 짜리라 붙는 순간 카드가 28px 커진다.
+                //  측정 뒤에 붙이면 그 차이가 다음 프레임의 scrollTop 보정으로 나타나 목록이 튀었다.
+                if (o.onWindow) { try { o.onWindow(made); } catch (err) { console.warn('[Daylog] onWindow:', err); } }
+
+                //  DOM 이 실제로 바뀐 경우에만 측정한다. 재사용만 일어난 프레임에서는
+                //  offsetTop 읽기(= 강제 리플로우)를 건너뛰어 스크롤 중 레이아웃 스래싱을 줄인다.
+                if ((made.length || force) && measure()) {
                     pre = prefixOf(n);
                     // 창 위쪽 높이가 달라졌으면 스크롤이 튀지 않게 보정
                     var delta = pre[s] - beforeTop;
                     if (delta) scrollEl.scrollTop += delta;
                     setSpacers(pre, s, e);
                 }
-                if (o.onWindow) { try { o.onWindow(made); } catch (err) { console.warn('[Daylog] onWindow:', err); } }
+                // [E] edit by smsong
             } else {
                 setSpacers(pre, s, e);
             }
@@ -318,25 +479,38 @@ window.addEventListener('pageshow', function () {
             /** 전체 목록 교체. 내용이 같으면 지금까지 펼친 페이지/스크롤을 유지한다. */
             setItems: function (list) {
                 var arr = list || [];
+                // [B] edit by smsong - #33 목록 동일 여부에 '내용'까지 포함한다.
+                //  예전엔 id 나열만 비교해서, 같은 목록을 다시 받으면 same=true 인데도
+                //  아래에서 DOM 을 통째로 다시 만들었다(= 깜빡임). 반대로 id 는 같고 내용만 바뀐
+                //  경우를 못 잡는 문제도 있었다. updatedAt/정렬키까지 넣어 둘 다 해결한다.
                 var newSig = o.sigOf ? o.sigOf(arr)
-                                     : arr.map(function (x) { return x && x.id; }).join(',');
+                                     : arr.map(function (x) {
+                                           if (!x) return '';
+                                           return x.id + '@' + (x.updatedAt || x.createdAt || '') +
+                                                  '#' + (x.sortOrder == null ? '' : x.sortOrder);
+                                       }).join(',');
                 var same = (newSig === sig && feedEl.contains(rowsEl));
                 sig = newSig;
                 items = arr;
 
                 if (!items.length) {
                     rows = []; loaded = 0; winStart = winEnd = -1;
+                    dropMounted();      // [B][E] edit by smsong - #33
                     feedEl.innerHTML = o.emptyHtml || '';
                     return;
                 }
+                // [B] edit by smsong - #33 내용이 실제로 바뀐 경우에만 재사용 캐시를 버린다.
+                //  같은 목록을 다시 받은 것뿐이면 DOM 을 그대로 두어 이미지가 다시 그려지지 않게 한다.
                 if (same) {
                     loaded = Math.min(Math.max(loaded, o.pageSize), items.length);
                 } else {
+                    dropMounted();
                     loaded = Math.min(o.pageSize, items.length);
                     winStart = winEnd = -1;
                     mount();
                     if (o.onData) { try { o.onData(items); } catch (err) { console.warn('[Daylog] onData:', err); } }
                 }
+                // [E] edit by smsong
                 buildRows();
                 layout(true);
             },
@@ -446,6 +620,8 @@ window.addEventListener('pageshow', function () {
         s(' .dtl-stage .detail-carousel', '{height:100%;margin:0;}'),
         // _fitCarousel 이 인라인 height 를 넣으므로 !important 로 덮는다
         s(' .dtl-stage .carousel-track', '{height:100%!important;}'),
+        // [B][E] edit by smsong - #37 상세 시트 캐러셀도 한 번에 한 장만 (안드로이드 관성 과다 방지)
+        s(' .dtl-stage .carousel-slide', '{scroll-snap-stop:always;}'),
         s(' .dtl-stage .carousel-slide img', '{width:100%;height:100%;object-fit:cover;}'),
         g([' .dtl-stage .carousel-count', ' .dtl-stage .carousel-arrow'], '{display:none;}'),
         // 점 인디케이터 → 분절 바 (몇 장 중 몇 번째인지 한눈에)
@@ -498,7 +674,7 @@ window.addEventListener('pageshow', function () {
         '.lm-tile-art.empty{background:var(--primary-light);color:var(--primary-dark);}',
         // [B][E] edit by smsong - #19 기본 opacity:1 (onload 미발화 시 빈 칸 방지)
         '.lm-tile-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
-        '.lm-tile-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
+        '.lm-tile-img.no-fade{animation:none!important;}',   // [B][E] edit by smsong - #33 재등장 시 페이드 없음
         '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
         'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
         'background:rgba(36,31,27,.56);color:#fdfbf7;}',
@@ -851,6 +1027,12 @@ const Daylog = {
 // 하단 네비/헤더와 통일된 부드러운 라인 스타일.
 // ==========================================
 const ICON_PATHS = {
+    // [B] edit by smsong - #34 순서 조정 (목록 + 위/아래 화살표) / 드래그 핸들
+    reorder:  '<path d="M9 6h12"/><path d="M9 12h12"/><path d="M9 18h12"/><path d="M3 8.5L5 6l2 2.5"/><path d="M3 15.5L5 18l2-2.5"/>',
+    grip:     '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
+    chevronUp:   '<polyline points="6 15 12 9 18 15"/>',
+    chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+    // [E] edit by smsong
     search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
     pin:      '<path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     camera:   '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
@@ -911,9 +1093,22 @@ function isPrivilegedUser() { var p = _myPerm(); return !!(p && (p.admin || p.ca
 // [B] edit by smsong - #2 작성자(본인) 또는 관리자(방장)만 수정/휴지통/삭제 가능
 function _isAdminPerm() { var p = _myPerm(); return !!(p && p.admin); }
 function isOwnerOf(item) { return !!(item && item.ownerUid && Daylog.currentUid && item.ownerUid === Daylog.currentUid); }
-function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canEdit)); }   // 수정 버튼
-function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
-function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (isOwnerOf(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
+
+// [B] edit by smsong - #36 '커플' 방에서는 관리자/멤버가 남이 올린 것도 관리할 수 있다.
+//  둘이 함께 쓰는 공간이라 '내가 올린 것만 수정'이 오히려 불편하다는 요구.
+//  · 대상: 관리자(admin) 또는 멤버(canCreate). '일반'(canCreate=false)은 무조건 제외.
+//  · 이건 '작성자 제한'만 푸는 것이고, 실제 버튼 노출은 아래처럼 canEdit/canTrash/canDelete 를 그대로 본다.
+//  · 서버(PermissionService.canManageAny)도 같은 규칙으로 검사하므로 화면과 실제 권한이 어긋나지 않는다.
+function canManageAnyInRoom() {
+    var p = _myPerm();
+    return isCoupleRoom() && !!(p && (p.admin || p.canCreate));
+}
+function _asOwner(item) { return isOwnerOf(item) || canManageAnyInRoom(); }
+// [E] edit by smsong
+
+function canManageObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canEdit)); }   // 수정 버튼
+function canTrashObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canTrash)); }   // 휴지통 버튼
+function canDeleteObject(item) { var p = _myPerm(); return _isAdminPerm() || (_asOwner(item) && !!(p && p.canDelete)); } // 영구삭제 버튼
 // 생성 FAB 표시/차단 (권한 없으면 숨김)
 function applyPermButtons() {
     var show = canCreateObject();
@@ -1696,8 +1891,10 @@ function thumbHtml(mediaURL, cls) {
     const c = cls || 'tl-thumb';
     if (mediaURL) {
         const thumb = Daylog.thumbUrlOf(mediaURL);
+        // [B][E] edit by smsong - #36 decoding="sync" : 캐시된 썸네일이 '같은 프레임'에 그려지도록.
+        //  async 면 회색 배경 → 사진 순서로 두 프레임에 나뉘어 그려져 깜빡임이 보인다.
         return '<div class="' + c + ' has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+            '" decoding="sync" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="' + c + ' thumb-empty"><span class="thumb-empty-icon">' + icon('image',22) + '</span><span class="thumb-empty-text">이미지 없음</span></div>';
 }
@@ -1733,6 +1930,24 @@ Daylog._thumbFallback = function (img) {
     try { img.setAttribute('data-failed', '1'); } catch (e) {}
 };
 
+// [B] edit by smsong - #33 썸네일 로드 처리.
+//  기존에는 onload 마다 무조건 is-loaded 를 붙였고, CSS 가 여기에 imgFadeIn(0.25s, opacity 0→1)
+//  애니메이션을 걸어 뒀다. 목록을 다시 그릴 때마다 '이미 캐시에 있는' 이미지까지 페이드를 재생해서
+//  스크롤할 때 사진이 계속 깜빡이는 것처럼 보였다.
+//  → URL 단위로 '한 번이라도 화면에 그려진 적 있는지'를 기억해, 두 번째부터는 페이드 없이 바로 보여준다.
+Daylog._imgSeen = (typeof Set === 'function') ? new Set() : null;
+Daylog._thumbLoaded = function (img) {
+    if (!img) return;
+    var u = '';
+    try { u = img.currentSrc || img.src || ''; } catch (e) {}
+    if (Daylog._imgSeen && u) {
+        if (Daylog._imgSeen.has(u)) img.classList.add('no-fade');   // 재등장 → 애니메이션 없이
+        else Daylog._imgSeen.add(u);                                // 최초 1회만 부드럽게
+    }
+    img.classList.add('is-loaded');
+};
+// [E] edit by smsong
+
 // [B] edit by smsong - #19 썸네일 표시 안전망
 //
 //  증상: 이미지가 받아졌는데도 타일이 빈 채로 남는다.
@@ -1749,13 +1964,14 @@ Daylog._fixThumbs = function (root) {
     try { list = scope.querySelectorAll('img[data-full]:not(.is-loaded)'); } catch (e) { return; }
     for (var i = 0; i < list.length; i++) {
         var im = list[i];
-        if (im.complete && im.naturalWidth > 0) { im.classList.add('is-loaded'); continue; }
+        // [B][E] edit by smsong - #33 캐시로 이미 완료된 이미지는 페이드 없이 즉시 표시
+        if (im.complete && im.naturalWidth > 0) { Daylog._thumbLoaded(im); continue; }
         if (im.__dlBound) continue;
         im.__dlBound = true;
         // load 만 건다. error 는 인라인 onerror="Daylog._thumbFallback(this)" 가 이미 처리한다.
         //  여기서 error 를 또 걸면 썸네일 404 한 번에 폴백이 '두 번' 호출되어,
         //  원본으로 막 교체한 직후인데도 '원본까지 실패'로 오판한다.
-        im.addEventListener('load', function () { this.classList.add('is-loaded'); }, { once: true });
+        im.addEventListener('load', function () { Daylog._thumbLoaded(this); }, { once: true });
     }
 };
 
@@ -1765,7 +1981,10 @@ Daylog._fixThumbs = function (root) {
     var timer = null;
     function kick() {
         clearTimeout(timer);
-        timer = setTimeout(function () { Daylog._fixThumbs(); }, 120);
+        // [B][E] edit by smsong - #36 120ms → 300ms.
+        //  가상 스크롤은 스크롤 내내 DOM 을 바꾸므로 이 옵저버가 계속 깨어나
+        //  document 전체 querySelectorAll 을 반복했다(스크롤 중 프레임 유실 원인).
+        timer = setTimeout(function () { Daylog._fixThumbs(); }, 300);
     }
     function start() {
         try {
@@ -1785,7 +2004,7 @@ Daylog.lmThumbHtml = function (mediaURL, emptyInner) {
     if (mediaURL) {
         var thumb = Daylog.thumbUrlOf(mediaURL);
         return '<div class="lm-thumb has-img"><img src="' + thumb + '" data-full="' + mediaURL +
-            '" loading="lazy" decoding="async" alt="" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)"></div>';
+            '" decoding="sync" alt="" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     return '<div class="lm-thumb lm-thumb-empty">' + (emptyInner || '') + '</div>';
 };
@@ -1884,7 +2103,34 @@ function splitKoreanAddress(full) {
     };
 }
 
-function sortByDateDesc(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }
+// [B] edit by smsong - #34 추억 정렬 기준을 한 곳에서 관리한다.
+//  우선순위: ① 날짜 내림차순 → ② 같은 날짜 안에서는 사용자가 지정한 순서(sortOrder) → ③ 미지정이면 최신순
+//  추억이 나오는 모든 화면(타임라인 리스트/그리드, 지도 순회, 목록 모달, 멤버별 목록)이
+//  이 비교자 하나를 쓰므로, 여기만 바꾸면 지정한 순서가 전 화면에 그대로 적용된다.
+//  · 서버가 내려주는 memory.sortOrder 를 기본으로 쓰고,
+//  · 방금 조정해서 아직 서버에 반영되기 전이면 로컬 오버라이드(_orderMap)를 우선한다.
+//  · 체크리스트도 같은 비교자를 쓰는데, sortOrder 가 없으므로 기존과 동일하게 날짜순으로 동작한다.
+var MEMORY_ORDER_KEY = 'daylog_memory_order';
+Daylog._orderMap = (function () {
+    try { return JSON.parse(localStorage.getItem(MEMORY_ORDER_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+function memOrderOf(m) {
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    var local = Daylog._orderMap[String(m.id)];
+    if (local != null && local !== '') return Number(local);
+    if (m.sortOrder != null) return Number(m.sortOrder);
+    return Number.MAX_SAFE_INTEGER;   // 미지정 → 아래 최신순 규칙으로
+}
+function dayKeyOf(x) { return String((x && x.createdAt) || '').substring(0, 10); }
+function sortByDateDesc(a, b) {
+    var da = dayKeyOf(a), db = dayKeyOf(b);
+    if (da !== db) return da < db ? 1 : -1;            // 날짜 내림차순
+    var oa = memOrderOf(a), ob = memOrderOf(b);
+    if (oa !== ob) return oa - ob;                     // 같은 날: 지정 순서 오름차순
+    return new Date(b.createdAt) - new Date(a.createdAt);
+}
+// [E] edit by smsong
 
 // ==========================================
 // 2. 메인 앱 로직
@@ -3444,6 +3690,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 },
                 renderRow: function (row) { return _clCardEl(row.item); },
+                // [B][E] edit by smsong - #33 썸네일 선행 로드
+                prefetchOf: function (row) {
+                    return (row.item && coverUrlOf(row.item)) ? Daylog.thumbUrlOf(coverUrlOf(row.item)) : null;
+                },
                 onWindow: function () {
                     applyCommentBadges('checklist');
                     if (Daylog._fixThumbs) Daylog._fixThumbs();   // [B][E] #19 썸네일 안전망
@@ -3765,9 +4015,10 @@ document.addEventListener('DOMContentLoaded', () => {
         var many = (mediaUrlsOf(m) || []).length > 1;
         if (cover) {
             t.innerHTML =
+                // [B][E] edit by smsong - #36 sync : 캐시된 타일이 같은 프레임에 그려지도록
                 '<img class="tg-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
-                '" loading="lazy" decoding="async" alt=""' +
-                ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">' +
+                '" decoding="sync" alt=""' +
+                ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">' +
                 (many ? '<span class="tg-multi" aria-label="사진 여러 장">' +
                     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
                     'stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="13" height="13" rx="2"/>' +
@@ -3816,6 +4067,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     for (var k = row.items.length; k < 3; k++) line.appendChild(document.createElement('span'));
                     return line;
                 },
+                // [B] edit by smsong - #36 타일 썸네일도 미리 받아 디코드해 둔다(한 행 = 사진 3장)
+                prefetchOf: function (row) {
+                    var out = [];
+                    (row.items || []).forEach(function (m) {
+                        var c = coverUrlOf(m);
+                        if (c) out.push(Daylog.thumbUrlOf(c));
+                    });
+                    return out;
+                },
+                poolMax: 24,   // 타일은 한 행에 3장이므로 보관 행 수를 줄여 메모리를 아낀다
+                // [E] edit by smsong
                 onWindow: function () { if (Daylog._fixThumbs) Daylog._fixThumbs(); }   // [B][E] #19
             });
             Daylog._tlGridPager = _tlGridPager;
@@ -3958,7 +4220,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (items.length) {
                 var cover = coverUrlOf(items[0]);
                 var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
-                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" loading="lazy" decoding="async" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+                if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" decoding="sync" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
                 else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
                 if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
             }
@@ -4148,7 +4410,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (_cover) {
                 // 지도 마커는 소형 썸네일(<img>)로 그림. 썸네일이 없으면(구버전/HEIC) onerror 로 원본 폴백.
                 const _thumb = Daylog.thumbUrlOf(_cover);
-                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
+                markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
                 // [E] edit by smsong
             } else {
                 markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
@@ -4194,7 +4456,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const head = document.createElement('div');
         head.className = 'tl-date-head';
         head.innerHTML = '<span class="tl-date-dot"></span>' +
-            '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>';
+            '<span class="tl-date-label">' + escapeHtml(dateKey.replace(/-/g, '.')) + '</span>' +
+            // [B] edit by smsong - #34 이 날짜의 추억 순서 조정 (아이콘만)
+            '<button type="button" class="tl-date-sort" title="이 날짜 추억 순서 조정" aria-label="이 날짜 추억 순서 조정">' +
+                icon('reorder', 16) + '</button>';
+        // [B] edit by smsong - #34 클릭 → 그 날짜의 추억만 모아 순서 조정 시트
+        const sortBtn = head.querySelector('.tl-date-sort');
+        if (sortBtn) sortBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const items = [...memoryList]
+                .filter(function (m) { return ((m.createdAt || '').substring(0, 10) || '날짜미상') === dateKey; })
+                .sort(sortByDateDesc);
+            Daylog.openMemoryOrder(dateKey, items, function (serverOk) {
+                if (serverOk) {
+                    // 서버에 저장됐으면 sortOrder 를 포함해 다시 받아온다 (다른 기기와 동일한 순서 보장)
+                    loadMemoriesFromServer();
+                } else {
+                    // 로컬에만 저장된 경우 — 현재 목록을 그대로 다시 정렬해 보여준다
+                    renderTimeline([...memoryList].sort(sortByDateDesc));
+                    try { refreshMapMarkers(); } catch (err) {}
+                }
+            });
+        });
+        // [E] edit by smsong
         return head;
     }
 
@@ -4264,6 +4548,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 renderRow: function (row) {
                     return (row.type === 'head') ? _tlDateHeadEl(row.date) : _tlCardEl(row.item);
+                },
+                // [B][E] edit by smsong - #33 썸네일 선행 로드
+                prefetchOf: function (row) {
+                    return (row.item && coverUrlOf(row.item)) ? Daylog.thumbUrlOf(coverUrlOf(row.item)) : null;
                 },
                 onWindow: function () {
                     applyCommentBadges('memory');
@@ -5001,12 +5289,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape') dismissTopLayer();
     });
 
-    // ===== 이미지 라이트박스 (인스타식 슬라이드 + 핀치 줌) =====
-    // [B] edit by smsong - 좌우 화살표 제거(스와이프 전용) + 제스처 로직은 파일 하단 _lbBindGestures 로 이관
-    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
-    _lbBindGestures();
+    // [B] edit by smsong - #37 라이트박스 제스처는 아래 LB 모듈이 전담한다.
+    //  (기존의 '탭하면 확대 + 한 장씩 페이드 전환' 코드는 제거 — 핀치 줌 + 슬라이드 전환으로 대체)
+    var _lbCloseBtn = document.getElementById('lightbox-close');
+    if (_lbCloseBtn) _lbCloseBtn.addEventListener('click', closeLightbox);
+    var _lbPrev = document.getElementById('lightbox-prev');
+    var _lbNext = document.getElementById('lightbox-next');
+    if (_lbPrev) _lbPrev.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx - 1); });
+    if (_lbNext) _lbNext.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx + 1); });
     // [E] edit by smsong
-
 
     // 미리보기(작성 폼) 클릭 → 자르기/회전 편집기 / 상세 이미지 클릭 → 라이트박스
     const previewImg = document.getElementById('image-preview');
@@ -5283,6 +5574,9 @@ function openChecklistDetail(item, overModal) {
     const cdmScroll = cdm.querySelector('.sheet-body');
     if (cdmScroll) cdmScroll.scrollTop = 0;
     _getChecklistSheet().open('full');       // [smsong] 바텀시트로 열기(완전히 위)
+    // [B][E] edit by smsong - #32 시트가 실제로 표시된 뒤 한 번 더 맞춘다.
+    //  (위쪽 호출은 시트가 hidden 이라 폭이 0 일 수 있다 — 재진입 시 절반으로 잘리던 원인)
+    Daylog._fitDetailStage(document.getElementById('cl-detail-view'));
 }
 
 function enterChecklistEdit(item) {
@@ -5541,35 +5835,71 @@ function dismissDetailModal() {
     closeDetailModal();
 }
 
-function dismissTopLayer() {
-    // 위 → 아래 순서. 한 겹만 처리하고 즉시 끝낸다.
-    const lb = document.getElementById('lightbox');
-    if (lb && !lb.classList.contains('hidden')) { closeLightbox(); return; }
+// [B] edit by smsong - #36 현재 열려 있는 레이어를 '위 → 아래' 순서로 돌려준다.
+//  ESC(dismissTopLayer)와 안드로이드 뒤로가기(nav.js)가 같은 목록을 본다 → 동작이 항상 일치한다.
+function openLayerStack() {
+    var L = [];
+    var add = function (name, el, cond, close) { if (el && cond) L.push({ name: name, close: close }); };
 
-    const ep = document.getElementById('edit-page');
-    if (ep && ep.classList.contains('open')) { ep.classList.remove('open'); return; }
+    var lb = document.getElementById('lightbox');
+    add('lightbox', lb, lb && !lb.classList.contains('hidden'), closeLightbox);
 
-    // 달력 모듈(일정 폼 → 년월 선택 → 일정 상세 → 보관함)은 모듈 내부에서 순서대로 처리
-    if (typeof Daylog._dismissCalendarLayer === 'function' && Daylog._dismissCalendarLayer()) return;
+    var ep = document.getElementById('edit-page');
+    add('edit-page', ep, ep && ep.classList.contains('open'), function () { ep.classList.remove('open'); });
 
-    const clModal = document.getElementById('checklist-modal');
-    if (clModal && !clModal.classList.contains('hidden')) { closeChecklistModal(); return; }
+    // 추억 순서 조정 시트
+    var mo = document.getElementById('mo-overlay');
+    add('mo-overlay', mo, !!mo, function () { if (mo.parentNode) mo.parentNode.removeChild(mo); });
 
-    const memModal = document.getElementById('memory-modal');
-    if (memModal && !memModal.classList.contains('hidden')) { closeMemoryModal(); return; }
+    // 달력 모듈(일정 폼 → 년월 선택 → 일정 상세 → 보관함)
+    if (typeof Daylog._calendarLayers === 'function') {
+        try { L = L.concat(Daylog._calendarLayers() || []); } catch (e) {}
+    }
 
-    const clDetail = document.getElementById('checklist-detail-modal');
-    if (clDetail && !clDetail.classList.contains('hidden')) { dismissChecklistDetail(); return; }
+    var clModal = document.getElementById('checklist-modal');
+    add('checklist-modal', clModal, clModal && !clModal.classList.contains('hidden'), closeChecklistModal);
 
-    const memDetail = document.getElementById('detail-modal');
-    if (memDetail && !memDetail.classList.contains('hidden')) { dismissDetailModal(); return; }
+    var memModal = document.getElementById('memory-modal');
+    add('memory-modal', memModal, memModal && !memModal.classList.contains('hidden'), closeMemoryModal);
 
-    const trashModal = document.getElementById('trash-modal');
-    if (trashModal && !trashModal.classList.contains('hidden')) { closeTrashModal(); return; }
+    // 체크리스트 상세 — 수정 중이면 '상세' 위에 '수정' 레이어가 하나 더 있는 것으로 본다.
+    //  덕분에 뒤로가기가 수정 → 상세 → 목록 순서로 정확히 한 단계씩 물러난다.
+    var clDetail = document.getElementById('checklist-detail-modal');
+    if (clDetail && !clDetail.classList.contains('hidden')) {
+        var clEdit = document.getElementById('cl-edit-form');
+        if (clEdit && !clEdit.classList.contains('hidden')) {
+            L.push({ name: 'checklist-edit', close: exitChecklistEdit });
+        }
+        L.push({ name: 'checklist-detail', close: closeChecklistDetail });
+    }
 
-    const listModal = document.getElementById('list-modal');
-    if (listModal && !listModal.classList.contains('hidden')) { closeListModal(); return; }
+    var memDetail = document.getElementById('detail-modal');
+    if (memDetail && !memDetail.classList.contains('hidden')) {
+        var memEdit = document.getElementById('detail-edit-form');
+        if (memEdit && !memEdit.classList.contains('hidden')) {
+            L.push({ name: 'memory-edit', close: exitDetailEdit });
+        }
+        L.push({ name: 'memory-detail', close: closeDetailModal });
+    }
+
+    var trashModal = document.getElementById('trash-modal');
+    add('trash-modal', trashModal, trashModal && !trashModal.classList.contains('hidden'), closeTrashModal);
+
+    var listModal = document.getElementById('list-modal');
+    add('list-modal', listModal, listModal && !listModal.classList.contains('hidden'), closeListModal);
+
+    return L;
 }
+
+//  상세 시트가 '수정 모드'면 시트를 닫지 않고 상세 보기로만 되돌린다.
+//  → 수정 폼에서 뒤로가기를 누르면 상세로, 한 번 더 누르면 목록으로 나간다.
+function dismissTopLayer() {
+    var L = openLayerStack();
+    if (!L.length) return false;
+    try { L[0].close(); } catch (e) {}
+    return true;
+}
+// [E] edit by smsong
 
 // main.html 의 인라인 onclick 에서 쓰도록 전역 노출
 window.dismissChecklistDetail = dismissChecklistDetail;
@@ -5844,6 +6174,8 @@ function openDetailModal(memory, overModal) {
     const dmScroll = dm.querySelector('.sheet-body');
     if (dmScroll) dmScroll.scrollTop = 0;   // 항상 맨 위에서 시작
     _getMemorySheet().open('full');         // [smsong] 바텀시트로 열기(완전히 위)
+    // [B][E] edit by smsong - #32 시트가 실제로 표시된 뒤 한 번 더 맞춘다 (체크리스트와 동일)
+    Daylog._fitDetailStage(document.getElementById('detail-view'));
 }
 
 // 상세/수정 모달의 위치 표기 (장소명 + 상세주소) — 없으면 좌표로 역지오코딩
@@ -6508,8 +6840,8 @@ function _lmTileEl(item, kind) {
     if (cover) {
         // 타임라인/가볼곳 카드와 동일한 방식: 소형 썸네일 + lazy + onerror 원본 폴백
         art = '<img class="lm-tile-img" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover +
-              '" loading="lazy" decoding="async" alt=""' +
-              ' onload="this.classList.add(\'is-loaded\')" onerror="Daylog._thumbFallback(this)">';
+              '" decoding="sync" alt=""' +
+              ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
     } else {
         art = '<span class="lm-tile-ic">' + icon(kind === 'checklist' ? 'bookmark' : 'book', 26) + '</span>';
     }
@@ -7273,14 +7605,46 @@ function carouselHtml(urls) {
 
     function vh() { return window.innerHeight || document.documentElement.clientHeight || 700; }
 
-    function sizeStage(stage, ratio) {
-        var w = stage.clientWidth || stage.offsetWidth;
-        if (!w || !ratio) return;
+    // [B] edit by smsong - #32 무대 폭 측정.
+    //  시트가 아직 .hidden(display:none) 이면 clientWidth 가 0 이라 계산이 불가능하다.
+    //  이 경우 부모(시트 본문/모달)에서라도 실제 폭을 찾아본다.
+    function measureWidth(stage) {
+        var w = stage.clientWidth || stage.offsetWidth || 0;
+        if (w) return w;
+        var p = stage.parentElement;
+        for (var i = 0; p && i < 5; i++, p = p.parentElement) {
+            w = p.clientWidth || p.offsetWidth || 0;
+            if (w) return w;
+        }
+        return 0;
+    }
+
+    function applyHeight(stage, ratio, w) {
         var v = vh();
         var h = Math.round(Math.max(v * MIN_VH, Math.min(v * MAX_VH, w * ratio)));
         stage.style.height = h + 'px';
         stage.style.minHeight = h + 'px';
     }
+
+    function sizeStage(stage, ratio) {
+        var w = measureWidth(stage);
+        if (!w || !ratio) return false;
+        applyHeight(stage, ratio, w);
+        return true;
+    }
+
+    // [B] edit by smsong - #32 폭이 아직 0 이면 레이아웃이 잡힐 때까지 프레임 단위로 재시도.
+    //  (시트 열림 애니메이션 동안 여러 프레임이 걸린다)
+    function sizeWhenReady(stage, ratio, tries) {
+        if (sizeStage(stage, ratio)) return;
+        if (!stage.isConnected) return;                 // 이미 닫혀 사라진 상세
+        if ((tries || 0) < 40) {                        // 약 0.6초까지 대기
+            requestAnimationFrame(function () { sizeWhenReady(stage, ratio, (tries || 0) + 1); });
+            return;
+        }
+        applyHeight(stage, ratio, window.innerWidth || 390);  // 최후 폴백
+    }
+    // [E] edit by smsong
 
     Daylog._fitDetailStage = function (root) {
         if (!root) return;
@@ -7293,7 +7657,10 @@ function carouselHtml(urls) {
             if (!img.naturalWidth || !img.naturalHeight) return;
             var ratio = img.naturalHeight / img.naturalWidth;
             stage.setAttribute('data-ratio', ratio);
-            sizeStage(stage, ratio);
+            // [B][E] edit by smsong - #32 예전에는 여기서 clientWidth 가 0 이면 그냥 return 이었다.
+            //  → 이미지가 캐시된 '두 번째 진입'에서는 시트가 뜨기 전에 동기 실행되어 폭이 0 이고,
+            //     높이가 영영 설정되지 않아 CSS 기본값(52dvh, 화면 절반)으로 잘려 보였다.
+            sizeWhenReady(stage, ratio, 0);
         }
         if (img.complete && img.naturalWidth) apply();
         else img.addEventListener('load', apply, { once: true });
@@ -7325,7 +7692,7 @@ Daylog._fitCarousel = function (cid, img) {
 function bindCarousel(rootEl, urls) {
     if (!rootEl) return;
     const single = rootEl.querySelector('.detail-single-img');
-    if (single) { single.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, single, 0); }); return; }
+    if (single) { single.addEventListener('click', () => openLightbox(urls, single, 0)); return; }
     const car = rootEl.querySelector('.detail-carousel');
     if (!car) return;
     const track = car.querySelector('.carousel-track');
@@ -7367,518 +7734,347 @@ function bindCarousel(rootEl, urls) {
     // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
     slides.forEach((s, si) => {
         const img = s.querySelector('img');
-        if (img) img.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, img, si); });
+        if (img) img.addEventListener('click', () => openLightbox(urls, img, si));
     });
     update();
 }
 
-// ===== 상세 이미지: 인스타 게시물식 '들어올려서' 핀치 줌 =====
-// [B] edit by smsong - 추억/체크리스트 상세의 캐러셀·단일 이미지에서
-//   두 손가락으로 벌리면 그 자리에서 이미지가 떠올라 확대되고, 손을 떼면 원래 자리로 복귀한다.
-//   (인스타그램 피드 게시물 확대와 동일한 동작. 라이트박스를 열지 않고 미리보기만 함)
+// ==========================================================================
+// [B] edit by smsong - #37 라이트박스 (인스타그램식)
 //
-//  구현 요점
-//   · 원본 이미지는 레이아웃에 그대로 두고 opacity 만 0 → 클론(position:fixed)을 띄워 변형
-//     → 캐러셀은 native scroll-snap 컨테이너라 원본을 직접 변형하면 overflow 로 잘림
-//   · touchmove 에서 preventDefault → 트랙의 가로 스크롤/브라우저 페이지 줌을 모두 차단
-//   · 손가락 사이 중심점을 고정한 채 확대 (인스타와 동일한 앵커 방식)
-//   · 손가락을 하나라도 떼면 원래 rect 로 스프링백 후 클론 제거
-const PZ_MAX = 4;          // 최대 확대 배율
-const PZ_BACK_MS = 280;    // 원복 애니메이션 시간(ms)
-let _pz = null;            // 진행 중인 핀치 상태
-let _pzEndAt = 0;          // 핀치 종료 시각 (직후 click 억제용)
-
-function _pzJustEnded() { return (Date.now() - _pzEndAt) < 500; }
-
-function _pzPickImg(e) {
-    // 두 손가락 중심점 아래에 있는 상세 이미지를 찾는다
-    const t0 = e.touches[0], t1 = e.touches[1];
-    const mx = (t0.clientX + t1.clientX) / 2, my = (t0.clientY + t1.clientY) / 2;
-    let el = document.elementFromPoint(mx, my);
-    if (!el) el = e.target;
-    if (!el || !el.closest) return null;
-    const img = (el.tagName === 'IMG') ? el : el.querySelector && el.querySelector('img');
-    if (!img || img.tagName !== 'IMG') return null;
-    // 대상: 상세 캐러셀 슬라이드 / 단일 상세 이미지
-    if (!img.closest('.carousel-slide') && !img.classList.contains('detail-single-img')
-        && !img.classList.contains('detail-img') && img.id !== 'detail-image') return null;
-    return img;
-}
-
-function _pzDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
-
-function _pzStart(e) {
-    if (_pz) return;
-    if (e.touches.length !== 2) return;
-    // 라이트박스가 열려 있으면 그쪽 제스처가 우선
-    const lb = document.getElementById('lightbox');
-    if (lb && !lb.classList.contains('hidden')) return;
-
-    const img = _pzPickImg(e);
-    if (!img || !img.naturalWidth) return;
-
-    const r = img.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-
-    const cs = window.getComputedStyle(img);
-    const backdrop = document.createElement('div');
-    backdrop.className = 'pz-backdrop';
-
-    const clone = document.createElement('img');
-    clone.className = 'pz-clone';
-    clone.src = img.currentSrc || img.src;
-    clone.style.left = r.left + 'px';
-    clone.style.top = r.top + 'px';
-    clone.style.width = r.width + 'px';
-    clone.style.height = r.height + 'px';
-    clone.style.objectFit = cs.objectFit || 'contain';
-    clone.style.borderRadius = cs.borderRadius || '0';
-
-    document.body.appendChild(backdrop);
-    document.body.appendChild(clone);
-    img.style.opacity = '0';
-
-    const t0 = e.touches[0], t1 = e.touches[1];
-    const cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
-    const rcx = r.left + r.width / 2, rcy = r.top + r.height / 2;
-
-    // 캐러셀 트랙이 스크롤로 밀리지 않게 위치를 기억해뒀다가 끝날 때 복원
-    const track = img.closest('.carousel-track');
-
-    _pz = {
-        img: img, clone: clone, backdrop: backdrop,
-        d0: _pzDist(t0, t1) || 1,
-        ox: cx - rcx, oy: cy - rcy,     // 이미지 중심 기준 핀치 앵커
-        rcx: rcx, rcy: rcy,
-        scale: 1,
-        track: track, sl: track ? track.scrollLeft : 0
-    };
-}
-
-function _pzMove(e) {
-    if (!_pz) return;
-    if (e.touches.length < 2) return;
-    e.preventDefault();   // 트랙 가로 스크롤 / 페이지 확대 차단
-
-    const t0 = e.touches[0], t1 = e.touches[1];
-    let s = _pzDist(t0, t1) / _pz.d0;
-    if (s < 1) s = 1 + (s - 1) * 0.4;                 // 축소 저항 (원본보다 작아지지 않게)
-    if (s > PZ_MAX) s = PZ_MAX + (s - PZ_MAX) * 0.2;  // 최대 배율 초과 저항
-    _pz.scale = s;
-
-    const cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
-    const tx = (cx - _pz.rcx) - _pz.ox * s;
-    const ty = (cy - _pz.rcy) - _pz.oy * s;
-
-    _pz.clone.style.transition = 'none';
-    _pz.clone.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + s + ')';
-    _pz.backdrop.style.opacity = String(Math.min(0.72, Math.max(0, (s - 1) * 0.55)));
-
-    if (_pz.track) _pz.track.scrollLeft = _pz.sl;     // 혹시 밀렸으면 되돌림
-}
-
-function _pzEnd(e) {
-    if (!_pz) return;
-    if (e.touches && e.touches.length >= 2) return;   // 아직 두 손가락
-
-    const pz = _pz;
-    _pz = null;
-    _pzEndAt = Date.now();
-
-    pz.clone.style.transition = 'transform ' + PZ_BACK_MS + 'ms cubic-bezier(.22,.61,.36,1)';
-    pz.clone.style.transform = 'translate3d(0,0,0) scale(1)';
-    pz.backdrop.style.transition = 'opacity ' + PZ_BACK_MS + 'ms ease';
-    pz.backdrop.style.opacity = '0';
-
-    setTimeout(function () {
-        if (pz.clone.parentNode) pz.clone.parentNode.removeChild(pz.clone);
-        if (pz.backdrop.parentNode) pz.backdrop.parentNode.removeChild(pz.backdrop);
-        pz.img.style.opacity = '';
-        if (pz.track) pz.track.scrollLeft = pz.sl;
-        _pzEndAt = Date.now();                        // 복귀 완료 시점 기준으로 다시 갱신
-    }, PZ_BACK_MS);
-}
-
-document.addEventListener('touchstart', _pzStart, { passive: true });
-document.addEventListener('touchmove', _pzMove, { passive: false });
-document.addEventListener('touchend', _pzEnd);
-document.addEventListener('touchcancel', _pzEnd);
-// iOS Safari 의 페이지 핀치 줌 차단
-document.addEventListener('gesturestart', function (e) { if (_pz) e.preventDefault(); });
-document.addEventListener('gesturechange', function (e) { if (_pz) e.preventDefault(); });
-// [E] edit by smsong
-
-// ===== 라이트박스: 인스타그램식 이미지 뷰어 =====
-// [B] edit by smsong - 단일 <img> 페이드 전환 → 트랙 transform 슬라이드로 전면 교체
-//  · 좌우 화살표 없음. 이동은 오직 가로 스와이프
-//  · 한 번의 스와이프 = 정확히 1장. 거리(20%) 또는 플릭 속도로 판정하되 결과는 항상 ±1 로 클램프
-//    → 관성으로 두세 장이 연달아 넘어가는 현상 원천 차단 (Android 포함)
-//  · 양 끝에서는 고무줄 저항(0.35)만 주고 넘어가지 않음
-//  · translate3d + will-change 로 합성 레이어 유지 → 프레임 드랍 없음
-//  · 두 손가락 핀치 줌: 손가락 간 거리 비율로 확대, 핀치 중심 기준 이동
-//  · 손을 떼면 원래 크기로 스프링백 (확대 상태 유지 안 함)
-//  · 확대(핀치) 중에는 좌우 넘김 제스처를 완전히 차단 → 제스처 충돌 없음
-//  · 아래로 끌어내리면 배경이 페이드되며 닫힘
-const LB_GAP = 20;        // 슬라이드 간격(px) — main.css 의 .lb-track { gap } 과 반드시 동일
-const LB_DIST = 0.20;     // 넘김 판정 거리(스테이지 폭 대비)
-const LB_VEL = 0.45;      // 넘김 판정 플릭 속도(px/ms)
-const LB_RESIST = 0.35;   // 양 끝 고무줄 저항
-const LB_MAX_SCALE = 4;   // 최대 확대 배율
-const LB_CLOSE_DY = 120;  // 아래로 끌어 닫기 임계값(px)
-
-const _lb = {
-    list: [], idx: 0, openIdx: 0,
-    originRect: null, targetRect: null,
-    dragging: false, axis: null, moved: false,
-    sx: 0, sy: 0, dx: 0, dy: 0, lastX: 0, lastT: 0, vx: 0,
-    pinching: false, scale: 1, tx: 0, ty: 0,
-    pDist: 0, pScale: 1, pcx: 0, pcy: 0, ptx: 0, pty: 0,
-    lastTouch: 0
-};
-
-function _lbStageEl() { return document.getElementById('lightbox-stage'); }
-function _lbTrackEl() { return document.getElementById('lightbox-track'); }
-function _lbW() { const s = _lbStageEl(); return (s && s.clientWidth) || window.innerWidth || 1; }
-function _lbStep() { return _lbW() + LB_GAP; }
-function _lbBaseX() { return -_lb.idx * _lbStep(); }
-function _lbCurImg() {
-    const t = _lbTrackEl();
-    if (!t || !t.children[_lb.idx]) return null;
-    return t.children[_lb.idx].querySelector('img');
-}
-function _lbSetX(x, animate, y, k) {
-    const t = _lbTrackEl();
-    if (!t) return;
-    t.style.transition = animate ? 'transform 0.32s cubic-bezier(.22,.61,.36,1)' : 'none';
-    t.style.transform = 'translate3d(' + x + 'px,' + (y || 0) + 'px,0)'
-        + (k && k !== 1 ? ' scale(' + k + ')' : '');
-}
-function _lbApplyZoom(animate) {
-    const img = _lbCurImg();
-    if (!img) return;
-    img.style.transition = animate ? 'transform 0.3s cubic-bezier(.22,.61,.36,1)' : 'none';
-    img.style.transform = 'translate3d(' + _lb.tx + 'px,' + _lb.ty + 'px,0) scale(' + _lb.scale + ')';
-}
-function _lbResetZoom(animate) {
-    _lb.scale = 1; _lb.tx = 0; _lb.ty = 0;
-    _lbApplyZoom(animate);
-}
-function _lbBuild() {
-    const t = _lbTrackEl();
-    if (!t) return;
-    let html = '';
-    for (let i = 0; i < _lb.list.length; i++) {
-        html += '<div class="lb-slide"><img alt="확대 이미지" draggable="false" decoding="async"></div>';
-    }
-    t.innerHTML = html;
-    _lbLoadAround();
-}
-// 앞뒤 1장만 미리 로드 → 장수가 많아도 즉시 열리고, 넘길 때 끊김 없음
-function _lbLoadAround() {
-    const t = _lbTrackEl();
-    if (!t) return;
-    for (let i = 0; i < t.children.length; i++) {
-        if (Math.abs(i - _lb.idx) > 1) continue;
-        const img = t.children[i].querySelector('img');
-        if (img && !img.getAttribute('src')) img.src = _lb.list[i];
-    }
-}
-// 카운터만 갱신 (좌우 화살표는 제거됨)
-function _lbUpdateNav() {
-    const counter = document.getElementById('lightbox-counter');
-    const many = _lb.list && _lb.list.length > 1;
-    if (!counter) return;
-    counter.classList.toggle('hidden', !many);
-    if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
-}
-function _lbShow(idx, animate) {
-    if (!_lb.list || !_lb.list.length) return;
-    const n = Math.max(0, Math.min(_lb.list.length - 1, idx));
-    if (n !== _lb.idx) _lbResetZoom(false);   // 떠나는 장의 줌 해제
-    _lb.idx = n;
-    _lbLoadAround();
-    _lbSetX(_lbBaseX(), animate !== false);
-    _lbUpdateNav();
-}
-
-// ── 제스처 (터치 전용 경로 + 데스크톱 키보드/마우스 드래그) ──
-function _lbBindGestures() {
-    const stage = _lbStageEl();
-    const track = _lbTrackEl();
-    if (!stage || !track || stage.dataset.lbBound) return;
-    stage.dataset.lbBound = '1';
-
-    function dist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
-    function center(a, b) {
-        const r = stage.getBoundingClientRect();
-        return {
-            x: (a.clientX + b.clientX) / 2 - (r.left + r.width / 2),
-            y: (a.clientY + b.clientY) / 2 - (r.top + r.height / 2)
-        };
-    }
-    function fade(p) {
-        const lb = document.getElementById('lightbox');
-        if (lb) lb.style.backgroundColor = 'rgba(15,13,11,' + (0.94 - Math.min(0.7, p * 0.7)) + ')';
-    }
-    function fadeReset(animate) {
-        const lb = document.getElementById('lightbox');
-        if (!lb) return;
-        if (animate) {
-            lb.style.transition = 'background-color 0.3s ease';
-            setTimeout(function () { lb.style.transition = ''; }, 320);
-        }
-        lb.style.backgroundColor = '';
-    }
-
-    stage.addEventListener('touchstart', function (e) {
-        // ── 두 손가락 = 핀치 시작. 이 순간부터 넘김 로직은 완전히 정지 ──
-        if (e.touches.length >= 2) {
-            _lb.pinching = true; _lb.dragging = false; _lb.axis = null; _lb.moved = true;
-            _lb.pDist = dist(e.touches[0], e.touches[1]) || 1;
-            _lb.pScale = _lb.scale;
-            const c = center(e.touches[0], e.touches[1]);
-            _lb.pcx = c.x; _lb.pcy = c.y; _lb.ptx = _lb.tx; _lb.pty = _lb.ty;
-            _lbSetX(_lbBaseX(), false);      // 넘김 애니메이션 중이었다면 그 자리에 고정
-            return;
-        }
-        if (_lb.pinching) return;
-        _lb.lastTouch = Date.now();          // 에뮬레이트 마우스 이벤트 무시용
-        const t = e.touches[0];
-        _lb.dragging = true; _lb.axis = null; _lb.moved = false;
-        _lb.sx = t.clientX; _lb.sy = t.clientY; _lb.dx = 0; _lb.dy = 0;
-        _lb.lastX = t.clientX; _lb.lastT = e.timeStamp || Date.now(); _lb.vx = 0;
-        _lbSetX(_lbBaseX(), false);          // 진행 중 애니메이션을 잡아 즉시 손가락 추종
-    }, { passive: true });
-
-    stage.addEventListener('touchmove', function (e) {
-        // ── 핀치 줌 ──
-        if (_lb.pinching) {
-            if (e.touches.length < 2) return;
-            e.preventDefault();
-            const d = dist(e.touches[0], e.touches[1]);
-            let s = _lb.pScale * (d / _lb.pDist);
-            if (s < 1) s = 1 + (s - 1) * 0.55;                                    // 축소 저항
-            if (s > LB_MAX_SCALE) s = LB_MAX_SCALE + (s - LB_MAX_SCALE) * 0.25;   // 확대 저항
-            const c = center(e.touches[0], e.touches[1]);
-            const k = s / (_lb.pScale || 1);
-            _lb.scale = s;
-            _lb.tx = c.x - (_lb.pcx - _lb.ptx) * k;   // 핀치 중심 고정 + 두 손가락 이동만큼 팬
-            _lb.ty = c.y - (_lb.pcy - _lb.pty) * k;
-            _lbApplyZoom(false);
-            return;
-        }
-        if (!_lb.dragging) return;
-
-        const t = e.touches[0];
-        const dx = t.clientX - _lb.sx, dy = t.clientY - _lb.sy;
-
-        // 축 잠금: 8px 이상 움직인 시점에 가로/세로를 한 번만 확정 → 대각선 흔들림 방지
-        if (!_lb.axis) {
-            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-            _lb.axis = (Math.abs(dx) > Math.abs(dy) * 1.2) ? 'x' : 'y';
-            _lb.moved = true;
-        }
-        e.preventDefault();
-
-        const now = e.timeStamp || Date.now(), dt = now - _lb.lastT;
-        if (dt > 0) { _lb.vx = (t.clientX - _lb.lastX) / dt; _lb.lastX = t.clientX; _lb.lastT = now; }
-
-        if (_lb.axis === 'x') {
-            let m = dx;
-            const atEdge = (_lb.idx === 0 && dx > 0) || (_lb.idx === _lb.list.length - 1 && dx < 0);
-            if (atEdge) m = dx * LB_RESIST;                 // 고무줄
-            _lb.dx = m;
-            _lbSetX(_lbBaseX() + m, false);
-        } else {
-            _lb.dy = dy;
-            const p = Math.min(1, Math.abs(dy) / 320);
-            _lbSetX(_lbBaseX(), false, dy, 1 - p * 0.14);   // 살짝 축소되며 따라옴
-            fade(p);
-        }
-    }, { passive: false });
-
-    function endTouch(e) {
-        if (_lb.pinching) {
-            if (e.touches && e.touches.length > 0) return;  // 아직 손가락이 남음
-            _lb.pinching = false;
-            _lbResetZoom(true);                             // ★ 떼면 원래 크기로 부드럽게 복귀
-            return;
-        }
-        if (!_lb.dragging) return;
-        _lb.dragging = false;
-        const axis = _lb.axis; _lb.axis = null;
-
-        if (axis === 'y') {
-            if (Math.abs(_lb.dy) > LB_CLOSE_DY) { fadeReset(false); closeLightbox(); }
-            else { _lbSetX(_lbBaseX(), true); fadeReset(true); }
-            _lb.dy = 0;
-            return;
-        }
-        if (axis === 'x') {
-            const w = _lbW();
-            const far = Math.abs(_lb.dx) > w * LB_DIST;
-            const fast = Math.abs(_lb.vx) > LB_VEL;
-            let target = _lb.idx;
-            if ((far || fast) && _lb.dx < 0) target = _lb.idx + 1;
-            else if ((far || fast) && _lb.dx > 0) target = _lb.idx - 1;
-            // ★ 결과는 항상 ±1 — 속도가 아무리 빨라도 두 장 이상 넘어가지 않음
-            _lb.dx = 0; _lb.vx = 0;
-            _lbShow(target, true);
-            return;
-        }
-        _lb.moved = false;   // 축이 안 잡힘 = 단순 탭
-    }
-    stage.addEventListener('touchend', function (e) { _lb.lastTouch = Date.now(); endTouch(e); });
-    stage.addEventListener('touchcancel', function (e) { _lb.lastTouch = Date.now(); endTouch(e); });
-
-    // 탭 → 닫기 (드래그 직후의 click 은 무시)
-    stage.addEventListener('click', function () {
-        if (_lb.moved) { _lb.moved = false; return; }
-        closeLightbox();
-    });
-
-    // ── 데스크톱: 마우스 드래그로도 동일하게 넘김 ──
-    let mDown = false, mSx = 0, mLastX = 0, mLastT = 0, mVx = 0, mDx = 0;
-    stage.addEventListener('mousedown', function (e) {
-        if (e.button !== 0) return;
-        // 터치 직후 브라우저가 만들어내는 가짜 마우스 이벤트는 무시 (탭이 닫기로 오인되는 것 방지)
-        if (Date.now() - (_lb.lastTouch || 0) < 700) return;
-        mDown = true; _lb.moved = false;
-        mSx = e.clientX; mLastX = e.clientX; mLastT = Date.now(); mVx = 0; mDx = 0;
-        _lbSetX(_lbBaseX(), false);
-        e.preventDefault();
-    });
-    window.addEventListener('mousemove', function (e) {
-        if (!mDown) return;
-        const dx = e.clientX - mSx;
-        if (Math.abs(dx) > 6) _lb.moved = true;
-        const now = Date.now(), dt = now - mLastT;
-        if (dt > 0) { mVx = (e.clientX - mLastX) / dt; mLastX = e.clientX; mLastT = now; }
-        let m = dx;
-        if ((_lb.idx === 0 && dx > 0) || (_lb.idx === _lb.list.length - 1 && dx < 0)) m = dx * LB_RESIST;
-        mDx = m;
-        _lbSetX(_lbBaseX() + m, false);
-    });
-    window.addEventListener('mouseup', function () {
-        if (!mDown) return;
-        mDown = false;
-        const lbEl = document.getElementById('lightbox');
-        if (!lbEl || lbEl.classList.contains('hidden')) { mDx = 0; mVx = 0; return; }
-        const w = _lbW();
-        const far = Math.abs(mDx) > w * LB_DIST, fast = Math.abs(mVx) > LB_VEL;
-        let target = _lb.idx;
-        if ((far || fast) && mDx < 0) target = _lb.idx + 1;
-        else if ((far || fast) && mDx > 0) target = _lb.idx - 1;
-        mDx = 0; mVx = 0;
-        _lbShow(target, true);
-    });
-
-    // 데스크톱: 좌우 방향키
-    document.addEventListener('keydown', function (e) {
-        const lb = document.getElementById('lightbox');
-        if (!lb || lb.classList.contains('hidden')) return;
-        if (e.key === 'ArrowRight') _lbShow(_lb.idx + 1, true);
-        else if (e.key === 'ArrowLeft') _lbShow(_lb.idx - 1, true);
-    });
-
-    // 회전/리사이즈 시 트랙 위치 재계산
-    window.addEventListener('resize', function () {
-        const lb = document.getElementById('lightbox');
-        if (lb && !lb.classList.contains('hidden')) _lbSetX(_lbBaseX(), false);
-    });
-}
+//  바뀐 점
+//   1) 좌우 전환이 '페이드 아웃 → 교체 → 페이드 인'(툭 끊김)에서
+//      트랙을 실제로 밀어 주는 슬라이드로 바뀌었다. 손가락을 따라 다음 사진이 함께 따라온다.
+//   2) 확대는 '탭'이 아니라 '두 손가락 핀치'로 한다. 손가락을 떼면 원래 크기로 되돌아간다.
+//   3) 한 번의 스와이프로 한 장만 넘어간다. 끝에서는 고무줄처럼 저항이 걸린다.
+//
+//  DOM 은 #lightbox-stage 안에 트랙(.lb-track) + 슬라이드(.lb-slide)를 그때그때 만든다.
+//  (main.html 의 #lightbox-img 는 더 이상 쓰지 않지만, 남아 있어도 무해하도록 숨긴다)
+// ==========================================================================
+var _lb = { list: [], idx: 0, originRect: null, targetRect: null };
 
 function _rectOf(el) {
     const r = el.getBoundingClientRect();
     return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
 }
 
-// 메타(스레드/인스타)식: 원본 위치에서 확대되어 나타나고, 닫을 때 제자리로 축소
-function openLightbox(srcOrList, originEl, index) {
-    const list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
-    if (!list.length) return;
-    const lb = document.getElementById('lightbox');
-    const track = _lbTrackEl();
-    if (!lb || !track) return;
+(function () {
+    'use strict';
 
-    _lb.list = list;
-    _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
-    _lb.openIdx = _lb.idx;
-    _lb.scale = 1; _lb.tx = 0; _lb.ty = 0;
-    _lb.moved = false; _lb.pinching = false; _lb.dragging = false; _lb.axis = null;
-    _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+    var MAX_SCALE = 4;
+    var SWIPE_RATIO = 0.22;   // 화면 폭의 이만큼 끌면 다음 장으로
+    var SWIPE_VELOCITY = 0.45; // px/ms — 짧고 빠르게 튕겨도 넘어가게
 
-    _lbBuild();
-    lb.classList.remove('hidden');
-    lb.style.opacity = '';
-    lb.style.backgroundColor = '';
-    _lbSetX(_lbBaseX(), false);
-    _lbUpdateNav();
-    _lbBindGestures();
-
-    const hint = document.getElementById('lightbox-hint');
-    if (hint) hint.style.opacity = '1';
-
-    const img = _lbCurImg();
-    if (!img) return;
-    const runAnim = () => {
-        img.style.transition = 'none';
-        img.style.transform = 'none';
-        img.style.borderRadius = '0';
-        const target = _rectOf(img);
-        _lb.targetRect = target;
-        const o = _lb.originRect;
-        if (!o || !target.w || !target.h) return;
-        const scale = Math.max(o.w / target.w, o.h / target.h);
-        const tx = o.cx - target.cx, ty = o.cy - target.cy;
-        img.style.transformOrigin = 'center center';
-        img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
-        img.style.borderRadius = '50%';
-        void img.offsetWidth; // reflow
-        img.style.transition = 'transform 0.34s cubic-bezier(.22,.61,.36,1), border-radius 0.34s ease';
-        requestAnimationFrame(() => {
-            img.style.transform = 'translate3d(0,0,0) scale(1)';
-            img.style.borderRadius = '0';
-        });
-    };
-    if (img.complete && img.naturalWidth) runAnim();
-    else img.addEventListener('load', runAnim, { once: true });
-}
-
-function closeLightbox() {
-    const lb = document.getElementById('lightbox');
-    if (!lb || lb.classList.contains('hidden')) return;
-    const img = _lbCurImg();
-
-    _lb.scale = 1; _lb.tx = 0; _lb.ty = 0;
-
-    const done = () => {
-        lb.classList.add('hidden');
-        lb.style.opacity = ''; lb.style.transition = ''; lb.style.backgroundColor = '';
-        const t = _lbTrackEl();
-        if (t) { t.innerHTML = ''; t.style.transform = ''; t.style.transition = ''; }
-        _lb.originRect = null; _lb.targetRect = null; _lb.list = []; _lb.idx = 0;
-    };
-
-    // 연 그 장에서 닫을 때만 '제자리로 축소' — 넘긴 뒤라면 원본 썸네일이 달라지므로 페이드
-    const sameSlide = (_lb.idx === _lb.openIdx);
-    const o = _lb.originRect, target = _lb.targetRect;
-    if (img && sameSlide && o && target && target.w && target.h) {
-        const scale = Math.max(o.w / target.w, o.h / target.h);
-        const tx = o.cx - target.cx, ty = o.cy - target.cy;
-        img.style.transition = 'transform 0.3s cubic-bezier(.4,0,.2,1), border-radius 0.3s ease';
-        img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
-        img.style.borderRadius = '50%';
-        lb.style.transition = 'opacity 0.3s ease';
-        lb.style.opacity = '0';
-        setTimeout(done, 300);
-    } else {
-        lb.style.transition = 'opacity 0.22s ease';
-        lb.style.opacity = '0';
-        setTimeout(done, 220);
+    function injectStyle() {
+        if (document.getElementById('lb-style')) return;
+        var css =
+            '#lightbox-img{display:none!important;}' +
+            '.lightbox-stage{width:100%;height:100%;overflow:hidden;display:block;' +
+                'touch-action:none;cursor:default;}' +
+            '.lb-track{display:flex;height:100%;will-change:transform;}' +
+            '.lb-slide{flex:0 0 100%;height:100%;display:flex;align-items:center;justify-content:center;' +
+                'overflow:hidden;}' +
+            '.lb-slide img{max-width:100%;max-height:100%;object-fit:contain;display:block;' +
+                'user-select:none;-webkit-user-drag:none;transform-origin:center center;' +
+                'image-orientation:from-image;will-change:transform;}';
+        var st = document.createElement('style');
+        st.id = 'lb-style';
+        st.textContent = css;
+        document.head.appendChild(st);
     }
-}
+
+    var stage = null, track = null;
+    var W = 0;                 // 슬라이드 한 장 폭
+    var dragX = 0;             // 페이징 드래그 offset
+    var paging = false, axisLocked = false, horizontal = false;
+    var startX = 0, startY = 0, startT = 0;
+    var pointers = {};         // pointerId → {x, y}
+    var pinch = null;          // { startDist, startScale, img }
+    var zoom = { s: 1, x: 0, y: 0, img: null };
+
+    function slides() { return track ? track.children : []; }
+    function activeImg() {
+        var el = track && track.children[_lb.idx];
+        return el ? el.querySelector('img') : null;
+    }
+
+    function layout(animate) {
+        if (!track) return;
+        W = stage ? stage.clientWidth : 0;
+        track.style.transition = animate ? 'transform 0.32s cubic-bezier(.22,.61,.36,1)' : 'none';
+        track.style.transform = 'translate3d(' + (-_lb.idx * W + dragX) + 'px,0,0)';
+    }
+
+    function applyZoom(animate) {
+        var img = zoom.img;
+        if (!img) return;
+        img.style.transition = animate ? 'transform 0.28s cubic-bezier(.22,.61,.36,1)' : 'none';
+        img.style.transform = 'translate3d(' + zoom.x + 'px,' + zoom.y + 'px,0) scale(' + zoom.s + ')';
+    }
+
+    function resetZoom(animate) {
+        if (!zoom.img) return;
+        zoom.s = 1; zoom.x = 0; zoom.y = 0;
+        applyZoom(animate !== false);
+        var hint = document.getElementById('lightbox-hint');
+        if (hint) hint.style.opacity = '1';
+    }
+
+    function build(list) {
+        injectStyle();
+        stage = document.getElementById('lightbox-stage');
+        if (!stage) return false;
+        stage.innerHTML = '';
+        track = document.createElement('div');
+        track.className = 'lb-track';
+        for (var i = 0; i < list.length; i++) {
+            var sl = document.createElement('div');
+            sl.className = 'lb-slide';
+            var im = document.createElement('img');
+            im.alt = '확대 이미지';
+            im.draggable = false;
+            im.decoding = 'async';
+            im.src = list[i];
+            sl.appendChild(im);
+            track.appendChild(sl);
+        }
+        stage.appendChild(track);
+        bind();
+        return true;
+    }
+
+    // ---- 제스처 ----
+    var bound = false;
+    function bind() {
+        if (bound) return;
+        bound = true;
+
+        stage.addEventListener('pointerdown', function (e) {
+            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            var ids = Object.keys(pointers);
+
+            if (ids.length === 2) {
+                // 두 손가락 → 핀치 시작
+                paging = false;
+                var a = pointers[ids[0]], b = pointers[ids[1]];
+                zoom.img = activeImg();
+                pinch = {
+                    startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+                    startScale: zoom.s,
+                    cx: (a.x + b.x) / 2,
+                    cy: (a.y + b.y) / 2,
+                    baseX: zoom.x, baseY: zoom.y
+                };
+                var hint = document.getElementById('lightbox-hint');
+                if (hint) hint.style.opacity = '0';
+                return;
+            }
+            if (ids.length > 2) return;
+
+            // 한 손가락 → 페이징 준비 (확대 중이면 이동)
+            paging = true; axisLocked = false; horizontal = false;
+            startX = e.clientX; startY = e.clientY; startT = Date.now();
+            pointers._lastX = e.clientX; pointers._lastY = e.clientY;   // 확대 상태 이동 기준
+            if (!zoom.img) zoom.img = activeImg();
+            dragX = 0;
+            try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+
+        stage.addEventListener('pointermove', function (e) {
+            if (!pointers[e.pointerId]) return;
+            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            var ids = Object.keys(pointers);
+
+            if (pinch && ids.length >= 2) {
+                var a = pointers[ids[0]], b = pointers[ids[1]];
+                var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+                zoom.s = Math.max(1, Math.min(MAX_SCALE, pinch.startScale * (d / pinch.startDist)));
+                // 두 손가락 중심이 움직인 만큼 같이 이동 (확대한 지점을 붙잡고 보는 느낌)
+                var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+                zoom.x = pinch.baseX + (mx - pinch.cx);
+                zoom.y = pinch.baseY + (my - pinch.cy);
+                applyZoom(false);
+                if (e.cancelable) e.preventDefault();
+                return;
+            }
+
+            if (!paging) return;
+            var dx = e.clientX - startX, dy = e.clientY - startY;
+
+            if (zoom.s > 1) {   // 확대 중 → 사진 이동
+                zoom.x += (e.clientX - (pointers._lastX || e.clientX));
+                zoom.y += (e.clientY - (pointers._lastY || e.clientY));
+                pointers._lastX = e.clientX; pointers._lastY = e.clientY;
+                applyZoom(false);
+                if (e.cancelable) e.preventDefault();
+                return;
+            }
+
+            if (!axisLocked) {
+                if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                    axisLocked = true;
+                    horizontal = Math.abs(dx) > Math.abs(dy);
+                } else return;
+            }
+            if (!horizontal) return;
+
+            // 끝에서는 고무줄 저항
+            var atEdge = (_lb.idx === 0 && dx > 0) || (_lb.idx === _lb.list.length - 1 && dx < 0);
+            dragX = atEdge ? dx * 0.32 : dx;
+            layout(false);
+            if (e.cancelable) e.preventDefault();
+        }, { passive: false });
+
+        function end(e) {
+            delete pointers[e.pointerId];
+            delete pointers._lastX; delete pointers._lastY;
+            var ids = Object.keys(pointers).filter(function (k) { return k !== '_lastX' && k !== '_lastY'; });
+
+            if (pinch) {
+                if (ids.length < 2) {
+                    pinch = null;
+                    resetZoom(true);   // 손가락을 떼면 원래 크기로
+                }
+                return;
+            }
+            if (!paging) return;
+            paging = false;
+
+            var dt = Math.max(1, Date.now() - startT);
+            var v = dragX / dt;
+            var moved = Math.abs(dragX);
+
+            if (horizontal && (moved > W * SWIPE_RATIO || Math.abs(v) > SWIPE_VELOCITY)) {
+                // 한 번에 한 장만
+                _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, _lb.idx + (dragX < 0 ? 1 : -1)));
+            } else if (!axisLocked && moved < 6) {
+                // 움직임 없는 탭 → 닫기
+                dragX = 0; layout(true);
+                closeLightbox();
+                return;
+            }
+            dragX = 0;
+            layout(true);
+            zoom = { s: 1, x: 0, y: 0, img: activeImg() };   // 넘어간 사진을 확대 대상으로
+            _lbUpdateNav();
+        }
+        stage.addEventListener('pointerup', end);
+        stage.addEventListener('pointercancel', end);
+        stage.addEventListener('dblclick', function (e) { e.preventDefault(); });
+        window.addEventListener('resize', function () { if (track) layout(false); });
+    }
+
+    // 외부에서 쓰는 API
+    window._lbUpdateNav = function () {
+        var prev = document.getElementById('lightbox-prev');
+        var next = document.getElementById('lightbox-next');
+        var counter = document.getElementById('lightbox-counter');
+        var many = _lb.list && _lb.list.length > 1;
+        if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
+        if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
+        if (counter) {
+            counter.classList.toggle('hidden', !many);
+            if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;
+        }
+    };
+
+    window._lbShow = function (idx) {
+        if (!_lb.list || !_lb.list.length) return;
+        resetZoom(false);                       // 이전 사진의 확대 상태 정리
+        _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, idx));
+        zoom = { s: 1, x: 0, y: 0, img: activeImg() };   // 새 사진을 확대 대상으로
+        dragX = 0;
+        layout(true);
+        _lbUpdateNav();
+    };
+
+    // 원본 썸네일 자리에서 확대되어 나타나고, 닫을 때 제자리로 축소 (기존 연출 유지)
+    window.openLightbox = function (srcOrList, originEl, index) {
+        var list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
+        if (!list.length) return;
+        var lb = document.getElementById('lightbox');
+        if (!lb) return;
+
+        _lb.list = list;
+        _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
+        _lb.openedIdx = _lb.idx;   // 닫을 때 '연 사진과 같은지' 판정용
+        _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+
+        if (!build(list)) return;
+        lb.classList.remove('hidden');
+        lb.style.opacity = '';
+
+        var hint = document.getElementById('lightbox-hint');
+        if (hint) { hint.textContent = '두 손가락으로 확대 · 좌우로 넘기기'; hint.style.opacity = '1'; }
+
+        zoom = { s: 1, x: 0, y: 0, img: null };
+        dragX = 0;
+        layout(false);
+        _lbUpdateNav();
+
+        var img = activeImg();
+        zoom.img = img;
+        if (!img) return;
+
+        var run = function () {
+            var target = _rectOf(img);
+            _lb.targetRect = target;
+            var o = _lb.originRect;
+            if (o && target.w && target.h) {
+                var sc = Math.max(o.w / target.w, o.h / target.h);
+                var tx = o.cx - target.cx, ty = o.cy - target.cy;
+                img.style.transition = 'none';
+                img.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + sc + ')';
+                img.style.borderRadius = '14px';
+                void img.offsetWidth;
+                img.style.transition = 'transform 0.32s cubic-bezier(.22,.61,.36,1), border-radius 0.32s ease';
+                requestAnimationFrame(function () {
+                    img.style.transform = 'translate3d(0,0,0) scale(1)';
+                    img.style.borderRadius = '0';
+                });
+            }
+        };
+        if (img.complete && img.naturalWidth) run();
+        else img.addEventListener('load', run, { once: true });
+    };
+
+    window.closeLightbox = function () {
+        var lb = document.getElementById('lightbox');
+        if (!lb || lb.classList.contains('hidden')) return;
+        var img = activeImg();
+        var o = _lb.originRect, target = _lb.targetRect;
+
+        // 열 때와 다른 사진을 보고 있으면 제자리 축소가 어색하므로 그냥 페이드로 닫는다
+        var sameAsOpened = !!(o && target && img && _lb.idx === (_lb.openedIdx == null ? _lb.idx : _lb.openedIdx));
+
+        var finish = function () {
+            lb.classList.add('hidden');
+            lb.style.opacity = '';
+            lb.style.transition = '';
+            if (stage) stage.innerHTML = '';
+            track = null;
+            _lb.originRect = null; _lb.targetRect = null;
+            zoom = { s: 1, x: 0, y: 0, img: null };
+        };
+
+        if (img && sameAsOpened && target.w && target.h) {
+            var sc = Math.max(o.w / target.w, o.h / target.h);
+            var tx = o.cx - target.cx, ty = o.cy - target.cy;
+            img.style.transition = 'transform 0.28s cubic-bezier(.4,0,.2,1), border-radius 0.28s ease';
+            img.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + sc + ')';
+            img.style.borderRadius = '14px';
+            lb.style.transition = 'opacity 0.28s ease';
+            lb.style.opacity = '0';
+            setTimeout(finish, 280);
+        } else {
+            lb.style.transition = 'opacity 0.2s ease';
+            lb.style.opacity = '0';
+            setTimeout(finish, 200);
+        }
+    };
+})();
 // [E] edit by smsong
+
 
 
 let _toastTimer = null;
@@ -8604,7 +8800,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var when = c.visitedDate ? String(c.visitedDate).substring(0, 10).replace(/-/g, '.') : '';
             var cover = coverUrlOf(c);
             var thumb = cover
-                ? '<img class="cw-th" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover + '" loading="lazy" decoding="async" alt="" onerror="Daylog._thumbFallback(this)">'
+                ? '<img class="cw-th" src="' + Daylog.thumbUrlOf(cover) + '" data-full="' + cover + '" decoding="sync" alt="" onerror="Daylog._thumbFallback(this)">'
                 : '<span class="cw-th empty">' + icon('bookmark', 18) + '</span>';
             return '<div class="cw-arow" data-id="' + c.id + '">' +
                 '<span class="cw-sel" aria-hidden="true"></span>' + thumb +
@@ -8878,8 +9074,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // [B] edit by smsong - #19 기본 opacity:1.
             //  onload 가 안 불려도(캐시된 이미지 등) 절대 안 보이는 일이 없게 한다.
             //  페이드는 '로드된 순간'에만 애니메이션으로 얹는다 — main.css 의 .tl-thumb 과 같은 전략.
-            '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;}',
-            '.tg-img.is-loaded{animation:imgFadeIn .25s ease-out;}',
+            // [B] edit by smsong - #36 페이드 제거.
+            //  가상 스크롤은 같은 타일을 반복해서 붙였다 떼므로 onload 가 계속 다시 발생한다.
+            //  그때마다 opacity 0→1 이 재생되는 것이 그리드에서 보이던 깜빡임의 정체였다.
+            //  기본 opacity:1 이라 애니메이션이 없어도 사진은 항상 보인다(사라질 위험 없음).
+            '.tg-img{width:100%;height:100%;object-fit:cover;display:block;opacity:1;animation:none!important;}',
+            // [E] edit by smsong
             // data-failed 는 진단용 표시일 뿐, 이미지를 숨기지 않는다.
             //  (잘못 붙는 순간 사진이 통째로 사라져 버리는 위험을 없앤다)
             '.tg-multi{position:absolute;top:6px;right:6px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));' +
@@ -9052,16 +9252,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // [E] edit by smsong
 
-    // [B] edit by smsong - 겹쳐 뜬 레이어를 '가장 위 하나'만 닫는다.
-    //  ESC / 뒤로가기 성격의 공용 핸들러(dismissTopLayer)가 호출한다.
-    //  닫을 게 있었으면 true, 없으면 false 를 돌려준다.
-    Daylog._dismissCalendarLayer = function () {
-        if (document.getElementById('cw-form')) { closeScheduleForm(); return true; }
+    // [B] edit by smsong - #36 이 모듈이 띄운 레이어를 '위 → 아래' 순서로 알려준다.
+    //  ESC(dismissTopLayer)와 안드로이드 뒤로가기(nav.js)가 이 목록을 함께 쓴다.
+    Daylog._calendarLayers = function () {
+        var L = [];
+        if (document.getElementById('cw-form')) L.push({ name: 'cw-form', close: closeScheduleForm });
         var mp = document.getElementById('cw-mp');
-        if (mp) { if (mp.parentNode) mp.parentNode.removeChild(mp); return true; }
-        if (document.getElementById('cw-detail')) { closeScheduleDetail(); return true; }
-        if (document.getElementById('cw-archive')) { closeArchive(); return true; }
-        return false;
+        if (mp) L.push({ name: 'cw-mp', close: function () { if (mp.parentNode) mp.parentNode.removeChild(mp); } });
+        if (document.getElementById('cw-detail')) L.push({ name: 'cw-detail', close: closeScheduleDetail });
+        if (document.getElementById('cw-archive')) L.push({ name: 'cw-archive', close: closeArchive });
+        return L;
+    };
+
+    // 겹쳐 뜬 레이어를 '가장 위 하나'만 닫는다. 닫을 게 있었으면 true.
+    Daylog._dismissCalendarLayer = function () {
+        var L = Daylog._calendarLayers();
+        if (!L.length) return false;
+        try { L[0].close(); } catch (e) {}
+        return true;
     };
     // [E] edit by smsong
 
@@ -9079,5 +9287,306 @@ document.addEventListener('DOMContentLoaded', () => {
 
     Daylog._reloadCalendar = function () { return withLoading(loadCalendarData(true).then(render), '달력을 불러오는 중...'); };
     Daylog._calendarView = function () { return _clView; };
+})();
+// [E] edit by smsong
+
+// ==========================================================================
+// [B] edit by smsong - #34 추억 순서 조정
+//
+//  타임라인 '리스트로 보기'의 각 날짜 줄 맨 오른쪽 [순서] 버튼 → 그 날짜의 추억만 모아
+//  드래그(또는 ↑/↓)로 순서를 바꾸고 저장한다.
+//  저장한 순서는 sortByDateDesc 를 통해 추억이 나오는 모든 화면에 그대로 적용된다.
+//
+//  저장 경로
+//   1) 서버: PUT /api/memories/order   body: { items:[{id, sortOrder}, ...] }
+//   2) 로컬: localStorage(daylog_memory_order) — 서버 저장이 실패해도 화면 순서는 유지된다.
+//      (서버 엔드포인트가 아직 없으면 로컬만으로도 동작한다)
+// ==========================================================================
+(function () {
+    'use strict';
+
+    function injectStyle() {
+        if (document.getElementById('mo-style')) return;
+        var css =
+            '#mo-overlay{position:fixed;inset:0;z-index:2800;background:rgba(45,38,32,.52);' +
+                'display:flex;align-items:flex-end;justify-content:center;animation:moFade .18s ease;}' +
+            '@media (min-width:600px){#mo-overlay{align-items:center;}}' +
+            '#mo-card{width:100%;max-width:520px;max-height:86dvh;display:flex;flex-direction:column;' +
+                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
+                'animation:moUp .26s cubic-bezier(.2,.8,.3,1);}' +
+            '@media (min-width:600px){#mo-card{border-radius:22px;}}' +
+            '.mo-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
+                'border-bottom:1px solid var(--gray-100,#f1ece4);}' +
+            '.mo-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#3a3128);}' +
+            '.mo-head .mo-date{font-size:0.8rem;color:var(--gray-500,#9a8f82);font-weight:600;}' +
+            '.mo-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
+                'color:var(--gray-400,#a99e90);cursor:pointer;padding:0 4px;}' +
+            '.mo-hint{padding:10px 18px 0;font-size:0.78rem;color:var(--gray-500,#9a8f82);line-height:1.5;}' +
+            '#mo-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 14px 6px;' +
+                'list-style:none;margin:0;}' +
+            '.mo-row{display:flex;align-items:center;gap:11px;padding:9px 10px;margin-bottom:8px;' +
+                'background:var(--white,#fff);border:1px solid var(--gray-200,#e8e0d6);border-radius:14px;' +
+                'touch-action:none;user-select:none;-webkit-user-select:none;}' +
+            '.mo-row.dragging{opacity:.9;border-color:var(--primary,#b08968);' +
+                'box-shadow:0 10px 24px rgba(0,0,0,.16);transform:scale(1.01);}' +
+            '.mo-no{flex:none;width:20px;text-align:center;font-size:0.76rem;font-weight:800;' +
+                'color:var(--primary-dark,#7f5539);}' +
+            '.mo-thumb{flex:none;width:44px;height:44px;border-radius:10px;overflow:hidden;' +
+                'background:var(--gray-100,#f1ece4);position:relative;}' +
+            '.mo-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
+            '.mo-body{flex:1;min-width:0;}' +
+            '.mo-title{font-size:0.9rem;font-weight:700;color:var(--gray-800,#3a3128);' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.mo-sub{font-size:0.76rem;color:var(--gray-500,#9a8f82);margin-top:2px;' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.mo-moves{display:flex;flex-direction:column;gap:2px;flex:none;}' +
+            '.mo-mv{border:none;background:transparent;color:var(--gray-400,#a99e90);cursor:pointer;' +
+                'padding:1px 4px;line-height:1;}' +
+            '.mo-mv:disabled{opacity:.28;cursor:default;}' +
+            '.mo-grip{flex:none;color:var(--gray-400,#a99e90);cursor:grab;padding:6px 2px;touch-action:none;}' +
+            '.mo-grip:active{cursor:grabbing;}' +
+            '.mo-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
+                'border-top:1px solid var(--gray-100,#f1ece4);}' +
+            '.mo-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
+                'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
+            '.mo-btn.ghost{background:var(--gray-100,#f1ece4);color:var(--gray-600,#6f645a);}' +
+            '.mo-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
+            '.mo-btn:disabled{opacity:.6;cursor:default;}' +
+            '@keyframes moFade{from{opacity:0}to{opacity:1}}' +
+            '@keyframes moUp{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}';
+        var st = document.createElement('style');
+        st.id = 'mo-style';
+        st.textContent = css;
+        document.head.appendChild(st);
+    }
+
+    function esc(s) {
+        return (s == null ? '' : String(s))
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function close() {
+        var ov = document.getElementById('mo-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+
+    // [B] edit by smsong - #34 번호는 '아래에서 위로' 매긴다.
+    //  맨 아래가 1, 위로 갈수록 커진다. (표시 순서 자체는 그대로 — 맨 위가 먼저 보이는 추억)
+    function renumber(listEl) {
+        var kids = listEl.children;
+        var n = kids.length;
+        for (var i = 0; i < n; i++) {
+            var no = kids[i].querySelector('.mo-no');
+            if (no) no.textContent = String(n - i);   // 위 → n … 아래 → 1
+            var up = kids[i].querySelector('.mo-up');
+            var dn = kids[i].querySelector('.mo-down');
+            if (up) up.disabled = (i === 0);
+            if (dn) dn.disabled = (i === n - 1);
+        }
+    }
+    // [E] edit by smsong
+
+    // 드래그 정렬 (포인터 이벤트 — 마우스/터치 공용)
+    function bindDrag(listEl) {
+        var dragEl = null;
+
+        function onMove(e) {
+            if (!dragEl) return;
+            if (e.cancelable) e.preventDefault();
+            var kids = Array.prototype.slice.call(listEl.children);
+            var di = kids.indexOf(dragEl);
+            var y = e.clientY;
+            for (var i = 0; i < kids.length; i++) {
+                if (i === di) continue;
+                var box = kids[i].getBoundingClientRect();
+                var mid = box.top + box.height / 2;
+                if (i < di && y < mid) { listEl.insertBefore(dragEl, kids[i]); renumber(listEl); return; }
+                if (i > di && y > mid) { listEl.insertBefore(dragEl, kids[i].nextSibling); renumber(listEl); return; }
+            }
+        }
+        function onUp() {
+            if (dragEl) dragEl.classList.remove('dragging');
+            dragEl = null;
+            document.removeEventListener('pointermove', onMove);
+        }
+
+        listEl.addEventListener('pointerdown', function (e) {
+            var grip = e.target.closest ? e.target.closest('.mo-grip') : null;
+            if (!grip) return;
+            var row = grip.closest('.mo-row');
+            if (!row) return;
+            if (e.cancelable) e.preventDefault();
+            dragEl = row;
+            row.classList.add('dragging');
+            document.addEventListener('pointermove', onMove, { passive: false });
+            document.addEventListener('pointerup', onUp, { once: true });
+            document.addEventListener('pointercancel', onUp, { once: true });
+        });
+    }
+
+    // 저장: 로컬 즉시 반영 + 서버 시도
+    //  · 서버가 성공하면 로컬 오버라이드를 지운다. 남겨두면 다른 기기에서 바꾼 순서를
+    //    이 기기의 옛 값이 계속 덮어써서 기기마다 다른 순서로 보이게 된다.
+    //  · 서버가 실패하면(엔드포인트 미배포/네트워크) 로컬 값이 남아 화면 순서는 유지된다.
+    function persist(ids) {
+        var payload = ids.map(function (id, i) { return { id: id, sortOrder: i }; });
+        payload.forEach(function (p) { Daylog._orderMap[String(p.id)] = p.sortOrder; });
+        save();
+
+        function save() {
+            try { localStorage.setItem('daylog_memory_order', JSON.stringify(Daylog._orderMap)); } catch (e) {}
+        }
+
+        if (!(Daylog && Daylog.api)) return Promise.resolve(false);
+        return fetch(Daylog.api + '/api/memories/order', {
+            method: 'PUT',
+            headers: Daylog.authHeaders(true),
+            body: JSON.stringify({ items: payload })
+        }).then(function (r) {
+            var ok = !!(r && r.ok);
+            if (ok) {
+                payload.forEach(function (p) { delete Daylog._orderMap[String(p.id)]; });
+                save();     // 서버가 진실 → 로컬 오버라이드 제거
+            }
+            return ok;
+        }).catch(function () { return false; });
+    }
+
+    /**
+     * 순서 조정 시트 열기
+     * @param {string} dateKey  'YYYY-MM-DD'
+     * @param {Array}  items    그 날짜의 추억 배열(현재 화면 순서대로)
+     * @param {Function} onSaved 저장 후 콜백(목록 다시 그리기)
+     */
+    Daylog.openMemoryOrder = function (dateKey, items, onSaved) {
+        if (!items || items.length < 2) {
+            if (typeof showToast === 'function') showToast('이 날짜에는 조정할 추억이 2개 이상 필요해요');
+            return;
+        }
+        injectStyle();
+        close();
+
+        var rowsHtml = items.map(function (m, i) {
+            var cover = (typeof coverUrlOf === 'function') ? coverUrlOf(m) : (m.mediaURL || '');
+            var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
+            var sub = [m.placeName, m.address].filter(Boolean).join(' ');
+            return '<li class="mo-row" data-id="' + esc(m.id) + '">' +
+                '<span class="mo-no">' + (items.length - i) + '</span>' +   // [B][E] #34 맨 아래가 1
+                '<div class="mo-thumb">' + (thumb
+                    ? '<img src="' + esc(thumb) + '" data-full="' + esc(cover) + '" alt="" decoding="sync" ' +
+                      'onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">'
+                    : '') + '</div>' +
+                '<div class="mo-body">' +
+                    '<div class="mo-title">' + esc(m.title || '(제목 없음)') + '</div>' +
+                    (sub ? '<div class="mo-sub">' + esc(sub) + '</div>' : '') +
+                '</div>' +
+                '<div class="mo-moves">' +
+                    '<button type="button" class="mo-mv mo-up" aria-label="위로">' + icon('chevronUp', 15) + '</button>' +
+                    '<button type="button" class="mo-mv mo-down" aria-label="아래로">' + icon('chevronDown', 15) + '</button>' +
+                '</div>' +
+                '<span class="mo-grip" aria-hidden="true">' + icon('grip', 18) + '</span>' +
+            '</li>';
+        }).join('');
+
+        var ov = document.createElement('div');
+        ov.id = 'mo-overlay';
+        ov.innerHTML =
+            '<div id="mo-card" role="dialog" aria-modal="true" aria-label="추억 순서 조정">' +
+                '<div class="mo-head">' +
+                    icon('reorder', 18) +
+                    '<h3>순서 조정</h3>' +
+                    '<span class="mo-date">' + esc(String(dateKey).replace(/-/g, '.')) + '</span>' +
+                    '<button type="button" class="mo-x" aria-label="닫기">&times;</button>' +
+                '</div>' +
+                '<p class="mo-hint">손잡이를 끌거나 ↑ ↓ 버튼으로 순서를 바꾸세요. ' +
+                    '저장하면 이 순서가 지도·목록 등 추억이 보이는 모든 화면에 적용됩니다.</p>' +
+                '<ul id="mo-list">' + rowsHtml + '</ul>' +
+                '<div class="mo-foot">' +
+                    '<button type="button" class="mo-btn ghost" id="mo-cancel">취소</button>' +
+                    '<button type="button" class="mo-btn primary" id="mo-save">저장</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        var listEl = document.getElementById('mo-list');
+        renumber(listEl);
+        bindDrag(listEl);
+
+        // ↑ / ↓ 버튼
+        listEl.addEventListener('click', function (e) {
+            var btn = e.target.closest ? e.target.closest('.mo-mv') : null;
+            if (!btn) return;
+            var row = btn.closest('.mo-row');
+            if (!row) return;
+            if (btn.classList.contains('mo-up')) {
+                var prev = row.previousElementSibling;
+                if (prev) listEl.insertBefore(row, prev);
+            } else {
+                var next = row.nextElementSibling;
+                if (next) listEl.insertBefore(next, row);
+            }
+            renumber(listEl);
+        });
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        ov.querySelector('.mo-x').addEventListener('click', close);
+        document.getElementById('mo-cancel').addEventListener('click', close);
+
+        document.getElementById('mo-save').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = '저장 중…';
+            var ids = Array.prototype.map.call(listEl.children, function (li) {
+                return li.getAttribute('data-id');
+            });
+            persist(ids).then(function (serverOk) {
+                close();
+                if (typeof showToast === 'function') {
+                    showToast(serverOk ? '순서를 저장했어요' : '순서를 이 기기에 저장했어요 (서버 반영 실패)');
+                }
+                if (typeof onSaved === 'function') onSaved(serverOk);
+            });
+        });
+    };
+})();
+// [E] edit by smsong
+
+// ==========================================================================
+// [B] edit by smsong - #36 안드로이드 뒤로가기 연결 (nav.js)
+//
+//  · 레이어 목록은 openLayerStack() 하나로 통일 → ESC 와 뒤로가기가 항상 같게 동작한다.
+//  · 레이어가 하나도 없을 때는 '기본 탭'으로 돌아가고, 이미 기본 탭이면
+//    "한 번 더 누르면 종료" 안내 후 다음 뒤로가기에 앱을 나간다.
+// ==========================================================================
+(function () {
+    'use strict';
+    if (!window.DaylogNav) return;   // nav.js 미로딩 시 조용히 무시
+
+    var DEFAULT_TAB = 'tab-map';
+
+    window.DaylogNav.registerProvider(function () {
+        try { return openLayerStack(); } catch (e) { return []; }
+    });
+
+    window.DaylogNav.onEmpty = function () {
+        // 지도 몰입 모드면 먼저 해제
+        if (document.body.classList.contains('map-immersive')) {
+            document.body.classList.remove('map-immersive');
+            return true;
+        }
+        // 선택 모드(보관함/휴지통 일괄 처리)가 켜져 있으면 먼저 해제
+        var bar = document.querySelector('.cw-bar.show, .sel-bar.show');
+        if (bar) {
+            var cancel = bar.querySelector('[data-act="cancel"], .cw-bar-cancel, .sel-cancel');
+            if (cancel) { cancel.click(); return true; }
+        }
+        // 기본 탭이 아니면 기본 탭으로
+        var active = document.body.getAttribute('data-active-tab');
+        if (active && active !== DEFAULT_TAB) {
+            var nav = document.querySelector('.nav-item[data-tab="' + DEFAULT_TAB + '"]');
+            if (nav) { nav.click(); return true; }
+        }
+        return false;   // 처리할 게 없다 → nav.js 가 '한 번 더 누르면 종료' 안내
+    };
 })();
 // [E] edit by smsong
