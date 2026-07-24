@@ -857,6 +857,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     display: flex; align-items: center; justify-content: center;
     animation: backdropIn 0.25s ease;
 }
+/* [B] edit by smsong - 상세 이미지 핀치 줌: 원본 자리에 띄우는 클론 + 배경 딤 */
+.pz-backdrop {
+    position: fixed; inset: 0; z-index: 3900;
+    background: #000; opacity: 0;
+    pointer-events: none; will-change: opacity;
+}
+.pz-clone {
+    position: fixed; z-index: 3901;
+    pointer-events: none;
+    transform-origin: center center;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-user-drag: none; user-select: none;
+}
+/* [E] edit by smsong */
+
 /* [B] edit by smsong - 인스타식 트랙 슬라이드 + 핀치 줌 */
 .lightbox-stage {
     width: 100%; height: 100%; overflow: hidden;

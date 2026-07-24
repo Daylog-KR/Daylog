@@ -7325,7 +7325,7 @@ Daylog._fitCarousel = function (cid, img) {
 function bindCarousel(rootEl, urls) {
     if (!rootEl) return;
     const single = rootEl.querySelector('.detail-single-img');
-    if (single) { single.addEventListener('click', () => openLightbox(urls, single, 0)); return; }
+    if (single) { single.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, single, 0); }); return; }
     const car = rootEl.querySelector('.detail-carousel');
     if (!car) return;
     const track = car.querySelector('.carousel-track');
@@ -7367,10 +7367,146 @@ function bindCarousel(rootEl, urls) {
     // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
     slides.forEach((s, si) => {
         const img = s.querySelector('img');
-        if (img) img.addEventListener('click', () => openLightbox(urls, img, si));
+        if (img) img.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, img, si); });
     });
     update();
 }
+
+// ===== 상세 이미지: 인스타 게시물식 '들어올려서' 핀치 줌 =====
+// [B] edit by smsong - 추억/체크리스트 상세의 캐러셀·단일 이미지에서
+//   두 손가락으로 벌리면 그 자리에서 이미지가 떠올라 확대되고, 손을 떼면 원래 자리로 복귀한다.
+//   (인스타그램 피드 게시물 확대와 동일한 동작. 라이트박스를 열지 않고 미리보기만 함)
+//
+//  구현 요점
+//   · 원본 이미지는 레이아웃에 그대로 두고 opacity 만 0 → 클론(position:fixed)을 띄워 변형
+//     → 캐러셀은 native scroll-snap 컨테이너라 원본을 직접 변형하면 overflow 로 잘림
+//   · touchmove 에서 preventDefault → 트랙의 가로 스크롤/브라우저 페이지 줌을 모두 차단
+//   · 손가락 사이 중심점을 고정한 채 확대 (인스타와 동일한 앵커 방식)
+//   · 손가락을 하나라도 떼면 원래 rect 로 스프링백 후 클론 제거
+const PZ_MAX = 4;          // 최대 확대 배율
+const PZ_BACK_MS = 280;    // 원복 애니메이션 시간(ms)
+let _pz = null;            // 진행 중인 핀치 상태
+let _pzEndAt = 0;          // 핀치 종료 시각 (직후 click 억제용)
+
+function _pzJustEnded() { return (Date.now() - _pzEndAt) < 500; }
+
+function _pzPickImg(e) {
+    // 두 손가락 중심점 아래에 있는 상세 이미지를 찾는다
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const mx = (t0.clientX + t1.clientX) / 2, my = (t0.clientY + t1.clientY) / 2;
+    let el = document.elementFromPoint(mx, my);
+    if (!el) el = e.target;
+    if (!el || !el.closest) return null;
+    const img = (el.tagName === 'IMG') ? el : el.querySelector && el.querySelector('img');
+    if (!img || img.tagName !== 'IMG') return null;
+    // 대상: 상세 캐러셀 슬라이드 / 단일 상세 이미지
+    if (!img.closest('.carousel-slide') && !img.classList.contains('detail-single-img')
+        && !img.classList.contains('detail-img') && img.id !== 'detail-image') return null;
+    return img;
+}
+
+function _pzDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+function _pzStart(e) {
+    if (_pz) return;
+    if (e.touches.length !== 2) return;
+    // 라이트박스가 열려 있으면 그쪽 제스처가 우선
+    const lb = document.getElementById('lightbox');
+    if (lb && !lb.classList.contains('hidden')) return;
+
+    const img = _pzPickImg(e);
+    if (!img || !img.naturalWidth) return;
+
+    const r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+
+    const cs = window.getComputedStyle(img);
+    const backdrop = document.createElement('div');
+    backdrop.className = 'pz-backdrop';
+
+    const clone = document.createElement('img');
+    clone.className = 'pz-clone';
+    clone.src = img.currentSrc || img.src;
+    clone.style.left = r.left + 'px';
+    clone.style.top = r.top + 'px';
+    clone.style.width = r.width + 'px';
+    clone.style.height = r.height + 'px';
+    clone.style.objectFit = cs.objectFit || 'contain';
+    clone.style.borderRadius = cs.borderRadius || '0';
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(clone);
+    img.style.opacity = '0';
+
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
+    const rcx = r.left + r.width / 2, rcy = r.top + r.height / 2;
+
+    // 캐러셀 트랙이 스크롤로 밀리지 않게 위치를 기억해뒀다가 끝날 때 복원
+    const track = img.closest('.carousel-track');
+
+    _pz = {
+        img: img, clone: clone, backdrop: backdrop,
+        d0: _pzDist(t0, t1) || 1,
+        ox: cx - rcx, oy: cy - rcy,     // 이미지 중심 기준 핀치 앵커
+        rcx: rcx, rcy: rcy,
+        scale: 1,
+        track: track, sl: track ? track.scrollLeft : 0
+    };
+}
+
+function _pzMove(e) {
+    if (!_pz) return;
+    if (e.touches.length < 2) return;
+    e.preventDefault();   // 트랙 가로 스크롤 / 페이지 확대 차단
+
+    const t0 = e.touches[0], t1 = e.touches[1];
+    let s = _pzDist(t0, t1) / _pz.d0;
+    if (s < 1) s = 1 + (s - 1) * 0.4;                 // 축소 저항 (원본보다 작아지지 않게)
+    if (s > PZ_MAX) s = PZ_MAX + (s - PZ_MAX) * 0.2;  // 최대 배율 초과 저항
+    _pz.scale = s;
+
+    const cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
+    const tx = (cx - _pz.rcx) - _pz.ox * s;
+    const ty = (cy - _pz.rcy) - _pz.oy * s;
+
+    _pz.clone.style.transition = 'none';
+    _pz.clone.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + s + ')';
+    _pz.backdrop.style.opacity = String(Math.min(0.72, Math.max(0, (s - 1) * 0.55)));
+
+    if (_pz.track) _pz.track.scrollLeft = _pz.sl;     // 혹시 밀렸으면 되돌림
+}
+
+function _pzEnd(e) {
+    if (!_pz) return;
+    if (e.touches && e.touches.length >= 2) return;   // 아직 두 손가락
+
+    const pz = _pz;
+    _pz = null;
+    _pzEndAt = Date.now();
+
+    pz.clone.style.transition = 'transform ' + PZ_BACK_MS + 'ms cubic-bezier(.22,.61,.36,1)';
+    pz.clone.style.transform = 'translate3d(0,0,0) scale(1)';
+    pz.backdrop.style.transition = 'opacity ' + PZ_BACK_MS + 'ms ease';
+    pz.backdrop.style.opacity = '0';
+
+    setTimeout(function () {
+        if (pz.clone.parentNode) pz.clone.parentNode.removeChild(pz.clone);
+        if (pz.backdrop.parentNode) pz.backdrop.parentNode.removeChild(pz.backdrop);
+        pz.img.style.opacity = '';
+        if (pz.track) pz.track.scrollLeft = pz.sl;
+        _pzEndAt = Date.now();                        // 복귀 완료 시점 기준으로 다시 갱신
+    }, PZ_BACK_MS);
+}
+
+document.addEventListener('touchstart', _pzStart, { passive: true });
+document.addEventListener('touchmove', _pzMove, { passive: false });
+document.addEventListener('touchend', _pzEnd);
+document.addEventListener('touchcancel', _pzEnd);
+// iOS Safari 의 페이지 핀치 줌 차단
+document.addEventListener('gesturestart', function (e) { if (_pz) e.preventDefault(); });
+document.addEventListener('gesturechange', function (e) { if (_pz) e.preventDefault(); });
+// [E] edit by smsong
 
 // ===== 라이트박스: 인스타그램식 이미지 뷰어 =====
 // [B] edit by smsong - 단일 <img> 페이드 전환 → 트랙 transform 슬라이드로 전면 교체
