@@ -5293,10 +5293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //  (기존의 '탭하면 확대 + 한 장씩 페이드 전환' 코드는 제거 — 핀치 줌 + 슬라이드 전환으로 대체)
     var _lbCloseBtn = document.getElementById('lightbox-close');
     if (_lbCloseBtn) _lbCloseBtn.addEventListener('click', closeLightbox);
-    var _lbPrev = document.getElementById('lightbox-prev');
-    var _lbNext = document.getElementById('lightbox-next');
-    if (_lbPrev) _lbPrev.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx - 1); });
-    if (_lbNext) _lbNext.addEventListener('click', function (e) { e.stopPropagation(); _lbShow(_lb.idx + 1); });
+    // [B][E] edit by smsong - #39 좌우 화살표 제거: 이동은 스와이프로만 (버튼 바인딩 삭제)
     // [E] edit by smsong
 
     // 미리보기(작성 폼) 클릭 → 자르기/회전 편집기 / 상세 이미지 클릭 → 라이트박스
@@ -7692,7 +7689,7 @@ Daylog._fitCarousel = function (cid, img) {
 function bindCarousel(rootEl, urls) {
     if (!rootEl) return;
     const single = rootEl.querySelector('.detail-single-img');
-    if (single) { single.addEventListener('click', () => openLightbox(urls, single, 0)); return; }
+    if (single) { single.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, single, 0); }); return; }
     const car = rootEl.querySelector('.detail-carousel');
     if (!car) return;
     const track = car.querySelector('.carousel-track');
@@ -7734,10 +7731,142 @@ function bindCarousel(rootEl, urls) {
     // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
     slides.forEach((s, si) => {
         const img = s.querySelector('img');
-        if (img) img.addEventListener('click', () => openLightbox(urls, img, si));
+        if (img) img.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, img, si); });
     });
     update();
 }
+
+// ==========================================================================
+// [B] edit by smsong - #39 상세 이미지 '들어올려서' 핀치 줌 (인스타 게시물 확대)
+//
+//  추억/체크리스트 상세의 캐러셀·단일 이미지를 두 손가락으로 벌리면
+//  그 자리에서 이미지가 떠올라 확대되고, 손을 떼면 원래 자리로 되돌아간다.
+//  라이트박스를 열지 않고 잠깐 크게 보는 용도(= 인스타 피드와 동일).
+//
+//  구현 요점
+//   · 원본은 레이아웃에 그대로 두고 opacity 만 0 → position:fixed 클론을 띄워 변형한다.
+//     캐러셀은 overflow-x:auto 인 scroll-snap 컨테이너라 원본을 직접 확대하면 잘린다.
+//   · touchmove 비패시브 리스너는 '핀치 중에만' 등록한다.
+//     document 에 상시 등록하면 브라우저가 스레드 스크롤 최적화를 못 써서
+//     목록 전체가 버벅인다(#36 에서 잡은 깜빡임이 되살아난다). 반드시 동적 등록/해제.
+//   · 손가락 사이 중심점을 앵커로 고정 → 잡은 지점이 손가락을 따라온다.
+// ==========================================================================
+var PZ_MAX = 4;          // 최대 확대 배율
+var PZ_BACK_MS = 280;    // 원복 애니메이션(ms)
+var _pz = null;
+var _pzEndAt = 0;
+
+function _pzJustEnded() { return (Date.now() - _pzEndAt) < 500; }
+
+function _pzDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+function _pzPickImg(e) {
+    var t0 = e.touches[0], t1 = e.touches[1];
+    var mx = (t0.clientX + t1.clientX) / 2, my = (t0.clientY + t1.clientY) / 2;
+    var el = document.elementFromPoint(mx, my) || e.target;
+    if (!el || !el.closest) return null;
+    var img = (el.tagName === 'IMG') ? el : (el.querySelector ? el.querySelector('img') : null);
+    if (!img || img.tagName !== 'IMG') return null;
+    if (!img.closest('.carousel-slide')
+        && !img.classList.contains('detail-single-img')
+        && !img.classList.contains('detail-img')
+        && img.id !== 'detail-image') return null;
+    return img;
+}
+
+function _pzStart(e) {
+    if (_pz || e.touches.length !== 2) return;
+    var lb = document.getElementById('lightbox');
+    if (lb && !lb.classList.contains('hidden')) return;   // 라이트박스가 우선
+
+    var img = _pzPickImg(e);
+    if (!img || !img.naturalWidth) return;
+    var r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+
+    var cs = window.getComputedStyle(img);
+    var backdrop = document.createElement('div');
+    backdrop.className = 'pz-backdrop';
+
+    var clone = document.createElement('img');
+    clone.className = 'pz-clone';
+    clone.src = img.currentSrc || img.src;
+    clone.style.left = r.left + 'px';
+    clone.style.top = r.top + 'px';
+    clone.style.width = r.width + 'px';
+    clone.style.height = r.height + 'px';
+    clone.style.objectFit = cs.objectFit || 'contain';
+    clone.style.borderRadius = cs.borderRadius || '0';
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(clone);
+    img.style.opacity = '0';
+
+    var t0 = e.touches[0], t1 = e.touches[1];
+    var cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
+    var track = img.closest('.carousel-track');
+
+    _pz = {
+        img: img, clone: clone, backdrop: backdrop,
+        d0: _pzDist(t0, t1) || 1,
+        rcx: r.left + r.width / 2, rcy: r.top + r.height / 2,
+        ox: cx - (r.left + r.width / 2), oy: cy - (r.top + r.height / 2),
+        track: track, sl: track ? track.scrollLeft : 0
+    };
+
+    // 핀치 중에만 비패시브 등록 → 평소 스크롤 성능에 영향 없음
+    document.addEventListener('touchmove', _pzMove, { passive: false });
+}
+
+function _pzMove(e) {
+    if (!_pz || e.touches.length < 2) return;
+    if (e.cancelable) e.preventDefault();   // 캐러셀 가로 스크롤 / 페이지 확대 차단
+
+    var t0 = e.touches[0], t1 = e.touches[1];
+    var s = _pzDist(t0, t1) / _pz.d0;
+    if (s < 1) s = 1 + (s - 1) * 0.4;                     // 원본보다 작아지지 않게 저항
+    if (s > PZ_MAX) s = PZ_MAX + (s - PZ_MAX) * 0.2;
+
+    var cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
+    _pz.clone.style.transition = 'none';
+    _pz.clone.style.transform = 'translate3d('
+        + ((cx - _pz.rcx) - _pz.ox * s) + 'px,'
+        + ((cy - _pz.rcy) - _pz.oy * s) + 'px,0) scale(' + s + ')';
+    _pz.backdrop.style.opacity = String(Math.min(0.72, Math.max(0, (s - 1) * 0.55)));
+
+    if (_pz.track) _pz.track.scrollLeft = _pz.sl;         // 혹시 밀렸으면 되돌림
+}
+
+function _pzEnd(e) {
+    if (!_pz) return;
+    if (e.touches && e.touches.length >= 2) return;       // 아직 두 손가락
+
+    var pz = _pz;
+    _pz = null;
+    _pzEndAt = Date.now();
+    document.removeEventListener('touchmove', _pzMove);
+
+    pz.clone.style.transition = 'transform ' + PZ_BACK_MS + 'ms cubic-bezier(.22,.61,.36,1)';
+    pz.clone.style.transform = 'translate3d(0,0,0) scale(1)';
+    pz.backdrop.style.transition = 'opacity ' + PZ_BACK_MS + 'ms ease';
+    pz.backdrop.style.opacity = '0';
+
+    setTimeout(function () {
+        if (pz.clone.parentNode) pz.clone.parentNode.removeChild(pz.clone);
+        if (pz.backdrop.parentNode) pz.backdrop.parentNode.removeChild(pz.backdrop);
+        pz.img.style.opacity = '';
+        if (pz.track) pz.track.scrollLeft = pz.sl;
+        _pzEndAt = Date.now();                            // 복귀 완료 시점으로 갱신
+    }, PZ_BACK_MS);
+}
+
+document.addEventListener('touchstart', _pzStart, { passive: true });
+document.addEventListener('touchend', _pzEnd);
+document.addEventListener('touchcancel', _pzEnd);
+// iOS Safari 의 페이지 핀치 줌 차단
+document.addEventListener('gesturestart', function (e) { if (_pz) e.preventDefault(); });
+document.addEventListener('gesturechange', function (e) { if (_pz) e.preventDefault(); });
+// [E] edit by smsong
 
 // ==========================================================================
 // [B] edit by smsong - #37 라이트박스 (인스타그램식)
@@ -7769,6 +7898,8 @@ function _rectOf(el) {
         if (document.getElementById('lb-style')) return;
         var css =
             '#lightbox-img{display:none!important;}' +
+            // [B][E] edit by smsong - #39 좌우 화살표 숨김(마크업이 남아 있어도 안 보이게)
+            '.lightbox-nav{display:none!important;}' +
             '.lightbox-stage{width:100%;height:100%;overflow:hidden;display:block;' +
                 'touch-action:none;cursor:default;}' +
             '.lb-track{display:flex;height:100%;will-change:transform;}' +
@@ -7966,12 +8097,9 @@ function _rectOf(el) {
 
     // 외부에서 쓰는 API
     window._lbUpdateNav = function () {
-        var prev = document.getElementById('lightbox-prev');
-        var next = document.getElementById('lightbox-next');
+        // [B][E] edit by smsong - #39 화살표 제거 → 카운터(1 / 5)만 갱신
         var counter = document.getElementById('lightbox-counter');
         var many = _lb.list && _lb.list.length > 1;
-        if (prev) prev.classList.toggle('hidden', !many || _lb.idx <= 0);
-        if (next) next.classList.toggle('hidden', !many || _lb.idx >= _lb.list.length - 1);
         if (counter) {
             counter.classList.toggle('hidden', !many);
             if (many) counter.textContent = (_lb.idx + 1) + ' / ' + _lb.list.length;

@@ -94,9 +94,14 @@ button { font-family: inherit; }
 
 /* ================= 헤더 ================= */
 .navbar {
-    height: var(--header-height);
+    /* [B] edit by smsong - #39 --safe-t 가 선언만 되고 어디에도 쓰이지 않고 있었다.
+       viewport-fit=cover 상태에서 헤더가 상태바 밑으로 깔려 로고/버튼이 가려진다. */
+    height: calc(var(--header-height) + var(--safe-t));
+    padding-top: var(--safe-t);
+    padding-bottom: 0;
+    /* [E] edit by smsong */
     display: flex; justify-content: flex-start; align-items: center; gap: 12px;
-    padding: 0 20px; background-color: var(--white);
+    padding-left: 20px; padding-right: 20px; background-color: var(--white);
     border-bottom: 1px solid var(--gray-100);
     position: relative; z-index: 100;
 }
@@ -192,11 +197,17 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: 0; }
 
 /* ================= 바텀 네비 ================= */
 .bottom-nav {
-    height: var(--bottom-nav-height); background-color: var(--white);
+    /* [B] edit by smsong - #39 border-box 라 padding-bottom 만으로는 총 높이가 늘지 않는다.
+       아이콘만 위로 눌릴 뿐 바 자체는 시스템 바에 그대로 깔렸고,
+       --nav-total(= 바 높이 + safe-b) 과도 어긋나 플로팅 버튼 위치까지 틀어졌다.
+       height 에도 더해 실제 바 높이와 --nav-total 을 일치시킨다. */
+    height: var(--nav-total);
+    padding-bottom: var(--safe-b);
+    /* [E] edit by smsong */
+    background-color: var(--white);
     display: flex; justify-content: space-around; align-items: center;
     position: fixed; bottom: 0; width: 100%;
     box-shadow: var(--shadow-up); z-index: 100;
-    padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-item {
     display: flex; flex-direction: column; align-items: center; text-decoration: none;
@@ -216,8 +227,9 @@ body[data-active-tab="tab-profile"] #btn-logout { margin-left: 0; }
 
 /* ================= 메인 영역 ================= */
 .container {
-    height: calc(100vh - var(--header-height) - var(--nav-total));
-    height: calc(100dvh - var(--header-height) - var(--nav-total));
+    /* [B][E] edit by smsong - #39 헤더가 --safe-t 만큼 커졌으므로 본문에서도 함께 차감 */
+    height: calc(100vh - var(--header-height) - var(--safe-t) - var(--nav-total));
+    height: calc(100dvh - var(--header-height) - var(--safe-t) - var(--nav-total));
     overflow-y: auto; overflow-x: hidden; background-color: var(--bg-color);
     touch-action: pan-y; overscroll-behavior-x: none; /* [smsong] 세로 스크롤만 */
     /* [B][E] edit by smsong - #36 브라우저 자동 스크롤 앵커링 해제.
@@ -332,7 +344,7 @@ body[data-active-tab="tab-map"] .map-wrapper {
 
 /* 위치 선택 하단 영역 — (위) 현재 위치 라벨 · (아래) 액션 버튼 */
 .lm-bottom {
-    position: absolute; bottom: calc(20px + env(safe-area-inset-bottom));
+    position: absolute; bottom: calc(20px + var(--safe-b));
     left: 50%; transform: translateX(-50%);
     width: min(94%, 420px); display: flex; flex-direction: column; align-items: stretch;
     gap: 10px; pointer-events: none; z-index: 3;
@@ -842,6 +854,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     cursor: zoom-in;
 }
 
+/* [B] edit by smsong - #39 상세 이미지 핀치 줌: 원본 자리에 띄우는 클론 + 배경 딤
+   (인스타 게시물 확대와 동일 — 라이트박스를 열지 않고 그 자리에서 크게 본다) */
+.pz-backdrop {
+    position: fixed; inset: 0; z-index: 3900;
+    background: #000; opacity: 0;
+    pointer-events: none; will-change: opacity;
+}
+.pz-clone {
+    position: fixed; z-index: 3901;
+    pointer-events: none;
+    transform-origin: center center;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-user-drag: none; user-select: none;
+}
+/* [E] edit by smsong */
+
 /* ================= 이미지 라이트박스 ================= */
 .lightbox {
     position: fixed; inset: 0; z-index: 4000;
@@ -862,7 +891,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 .lightbox-img.dragging { transition: none; }
 .lightbox-close {
-    position: absolute; top: 16px; right: 18px; z-index: 2;
+    position: absolute; top: calc(16px + var(--safe-t)); right: 18px; z-index: 2; /* [B][E] edit by smsong - #39 */
     width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
     background: rgba(255,255,255,0.14); color: var(--white); font-size: 1.6rem; line-height: 1;
     transition: background 0.2s;
@@ -1666,7 +1695,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .camera-bottombar {
     position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
     display: flex; align-items: center; justify-content: center;
-    padding: 0 0 calc(34px + env(safe-area-inset-bottom));
+    padding: 0 0 calc(34px + var(--safe-b));
     background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
     padding-top: 40px;
 }
@@ -2341,13 +2370,9 @@ body.picking .bottom-nav {
 .carousel-count { position: absolute; top: 8px; right: 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.72rem; padding: 2px 9px; border-radius: 11px; z-index: 2; }
 
 /* ================= 라이트박스: 좌우 이동 ================= */
-.lightbox-nav {
-    position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px;
-    border-radius: 50%; border: none; background: rgba(255,255,255,0.16); color: #fff; font-size: 22px;
-    cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center;
-}
-.lightbox-nav.prev { left: 14px; } .lightbox-nav.next { right: 14px; }
-.lightbox-nav.hidden { display: none; }
+/* [B] edit by smsong - #39 좌우 화살표 제거. 이동은 스와이프로만 한다.
+   (예전 마크업이 남아 있는 페이지에서도 안 보이도록 확실히 숨긴다) */
+.lightbox-nav { display: none !important; }
 .lightbox-counter { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 0.9rem; z-index: 30; opacity: 0.85; }
 
 /* ===== 라인 아이콘(기본 이모지 대체) 정렬 보정 ===== */
@@ -2529,7 +2554,7 @@ body.picking .bottom-nav {
     touch-action: pan-y;                 /* [smsong] 세로 스크롤만 허용(가로 드래그 차단) */
     overscroll-behavior: contain; overscroll-behavior-x: none;
     /* [smsong] 하단 네비가 시트 위에 겹쳐 보이므로, 마지막 내용이 네비에 가리지 않도록 여백 확보 */
-    padding: 16px 20px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 28px);
+    padding: 16px 20px calc(var(--nav-total) + 28px);
 }
 
 /* [smsong] 내 정보 목록에서 오브젝트 클릭 시: 목록을 닫지 않고 상세시트를 그 위로 올림 */
@@ -2559,5 +2584,5 @@ body.picking .bottom-nav {
 .list-fullscreen #list-modal-title { font-size: 1.18rem; }
 .list-fullscreen .list-modal-body {
     flex: 1 1 auto; margin-top: 0;
-    padding: 14px 18px calc(env(safe-area-inset-bottom) + 28px);
+    padding: 14px 18px calc(var(--safe-b) + 28px);
 }

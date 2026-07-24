@@ -38,8 +38,16 @@
                 p.style.height = 'env(safe-area-inset-top,0px)';
                 var t = p.getBoundingClientRect().height;
                 p.parentNode.removeChild(p);
-                de.style.setProperty('--safe-bottom', (b > 0 ? b : FALLBACK_BOTTOM) + 'px');
-                de.style.setProperty('--safe-top', t + 'px');
+                // [B] edit by smsong - #39 변수명 통일.
+                //  main.css 는 --safe-b / --safe-t 를, rooms.css 는 --safe-bottom / --safe-top 을 쓴다.
+                //  한쪽만 세팅하면 반대편에서 폴백이 먹지 않으므로 두 이름 모두에 넣는다.
+                var bv = (b > 0 ? b : FALLBACK_BOTTOM) + 'px';
+                var tv = t + 'px';
+                de.style.setProperty('--safe-bottom', bv);
+                de.style.setProperty('--safe-top', tv);
+                de.style.setProperty('--safe-b', bv);
+                de.style.setProperty('--safe-t', tv);
+                // [E] edit by smsong
             }
             function boot() {
                 measure();
@@ -64,7 +72,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.31">
+    <link rel="stylesheet" href="main.css?v=1.0.32">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -781,9 +789,12 @@
 <!-- [B] edit by smsong - #4 축포 레이어 (body 레벨, 모달과 독립 → 폼 닫아도 다 떨어질 때까지 유지) -->
 <div class="welcome-fx" id="welcome-fx" aria-hidden="true"></div>
 <script src="config.js?v=1.0.8"></script>
+<!-- [B][E] edit by smsong - #39 nav.js 누락 보완: 안드로이드 하드웨어 뒤로가기(#36)가 로드되지 않고 있었다.
+     main.js 보다 먼저 올려 window.DaylogNav 를 준비시킨다. -->
+<script src="nav.js?v=1.0.0"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<script src="main.js?v=1.0.29"></script>
+<script src="main.js?v=1.0.30"></script>
 <script src="push.js?v=1.0.24"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
 <script>(function(){try{window.__NOTIF_ROOM_ID__=localStorage.getItem('selectedRoomId')||new URLSearchParams(location.search).get('room')||null;}catch(e){}})();</script>
