@@ -7728,10 +7728,23 @@ function bindCarousel(rootEl, urls) {
     if (prev) prev.addEventListener('click', () => goTo(curIdx() - 1));
     if (next) next.addEventListener('click', () => goTo(curIdx() + 1));
     dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.i)));
+    // [B] edit by smsong - #42 라이트박스를 닫을 때 그쪽에서 보던 사진으로 캐러셀을 맞춘다.
+    //  라이트박스에서 3번째까지 넘겼으면 상세로 돌아왔을 때도 3번째가 보이도록.
+    //  돌려주는 <img> 는 라이트박스의 '제자리 축소' 연출 대상이 된다.
+    function syncBack(idx) {
+        const i = Math.max(0, Math.min(total - 1, idx));
+        const w = track.clientWidth || 1;
+        track.scrollLeft = i * w;      // 연출은 라이트박스가 하므로 여기선 즉시 이동
+        update();
+        const sl = slides[i];
+        return sl ? sl.querySelector('img') : null;
+    }
+    // [E] edit by smsong
+
     // 탭 → 라이트박스 (네이티브 스크롤은 드래그 시 click 을 발생시키지 않으므로 moved 추적 불필요)
     slides.forEach((s, si) => {
         const img = s.querySelector('img');
-        if (img) img.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, img, si); });
+        if (img) img.addEventListener('click', () => { if (_pzJustEnded()) return; openLightbox(urls, img, si, syncBack); });
     });
     update();
 }
@@ -8178,12 +8191,10 @@ function _rectOf(el) {
             if (horizontal && (moved > W * SWIPE_RATIO || Math.abs(v) > SWIPE_VELOCITY)) {
                 // 한 번에 한 장만
                 _lb.idx = Math.max(0, Math.min(_lb.list.length - 1, _lb.idx + (dragX < 0 ? 1 : -1)));
-            } else if (!axisLocked && moved < 6) {
-                // 움직임 없는 탭 → 닫기
-                dragX = 0; layout(true);
-                closeLightbox();
-                return;
             }
+            // [B][E] edit by smsong - #42 '탭 한 번 = 닫기' 제거.
+            //  사진을 보려고 무심코 건드렸을 때 화면이 닫혀 버리는 게 불편했다.
+            //  닫기는 X 버튼 / 안드로이드 뒤로가기 / ESC 로만 (openLayerStack 에 등록되어 있음).
             dragX = 0;
             layout(true);
             zoom = { s: 1, x: 0, y: 0, img: activeImg() };   // 넘어간 사진을 확대 대상으로
@@ -8217,7 +8228,7 @@ function _rectOf(el) {
     };
 
     // 원본 썸네일 자리에서 확대되어 나타나고, 닫을 때 제자리로 축소 (기존 연출 유지)
-    window.openLightbox = function (srcOrList, originEl, index) {
+    window.openLightbox = function (srcOrList, originEl, index, syncBack) {
         var list = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : (srcOrList ? [srcOrList] : []);
         if (!list.length) return;
         var lb = document.getElementById('lightbox');
@@ -8227,6 +8238,9 @@ function _rectOf(el) {
         _lb.idx = Math.max(0, Math.min(list.length - 1, index || 0));
         _lb.openedIdx = _lb.idx;   // 닫을 때 '연 사진과 같은지' 판정용
         _lb.originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+        // [B][E] edit by smsong - #42 닫을 때 호출된다. (보던 index) → 되돌아갈 엘리먼트 를 돌려주면
+        //  그 자리로 축소되는 연출까지 맞춰 준다. 캐러셀이 없으면 null.
+        _lb.syncBack = (typeof syncBack === 'function') ? syncBack : null;
 
         if (!build(list)) return;
         lb.classList.remove('hidden');
@@ -8270,10 +8284,25 @@ function _rectOf(el) {
         var lb = document.getElementById('lightbox');
         if (!lb || lb.classList.contains('hidden')) return;
         var img = activeImg();
-        var o = _lb.originRect, target = _lb.targetRect;
 
-        // 열 때와 다른 사진을 보고 있으면 제자리 축소가 어색하므로 그냥 페이드로 닫는다
-        var sameAsOpened = !!(o && target && img && _lb.idx === (_lb.openedIdx == null ? _lb.idx : _lb.openedIdx));
+        // [B] edit by smsong - #42 라이트박스에서 넘긴 위치를 원래 캐러셀에도 그대로 반영한다.
+        //  콜백이 그 자리의 <img> 를 돌려주므로, 축소 연출도 '지금 보고 있는 사진' 의 썸네일로 향한다.
+        //  (예전에는 3번째 사진을 보다 닫아도 상세는 1번째 그대로였다)
+        var backEl = null;
+        if (typeof _lb.syncBack === 'function') {
+            try { backEl = _lb.syncBack(_lb.idx); } catch (e) {}
+        }
+        var o = (backEl && backEl.getBoundingClientRect) ? _rectOf(backEl)
+              : ((_lb.openedIdx == null || _lb.idx === _lb.openedIdx) ? _lb.originRect : null);
+
+        // 돌아갈 자리가 화면 밖이면(상세를 스크롤해 캐러셀이 안 보이는 경우) 그냥 페이드로 닫는다
+        if (o) {
+            var vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+            if (o.cx < -40 || o.cx > vw + 40 || o.cy < -40 || o.cy > vh + 40) o = null;
+        }
+        // 지금 화면에 보이는 사진 기준으로 다시 측정 (넘긴 뒤라도 정확하게)
+        var target = img ? _rectOf(img) : _lb.targetRect;
+        // [E] edit by smsong
 
         var finish = function () {
             lb.classList.add('hidden');
@@ -8282,10 +8311,11 @@ function _rectOf(el) {
             if (stage) stage.innerHTML = '';
             track = null;
             _lb.originRect = null; _lb.targetRect = null;
+            _lb.syncBack = null;   // [B][E] edit by smsong - #42
             zoom = { s: 1, x: 0, y: 0, img: null };
         };
 
-        if (img && sameAsOpened && target.w && target.h) {
+        if (img && o && target && target.w && target.h) {
             var sc = Math.max(o.w / target.w, o.h / target.h);
             var tx = o.cx - target.cx, ty = o.cy - target.cy;
             img.style.transition = 'transform 0.28s cubic-bezier(.4,0,.2,1), border-radius 0.28s ease';
