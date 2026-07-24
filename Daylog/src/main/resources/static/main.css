@@ -2301,9 +2301,32 @@ body.picking .bottom-nav {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
     margin: 4px 0 6px;
 }
+/* [B] edit by smsong - #43 타일 이미지를 <img> 로 바꾸면서 추가.
+   pointer-events:none → 드래그 정렬/삭제 버튼 히트 판정은 예전처럼 .media-tile 이 받는다. */
+.media-tile .mt-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; display: block; border-radius: inherit;
+    opacity: 1; pointer-events: none;
+    image-orientation: from-image;
+}
+/* 끝내 못 불러온 이미지: 깨진 아이콘 대신 조용한 자리표시자 (절대 숨기지는 않는다) */
+img[data-failed="1"] { opacity: 0 !important; }
+.img-failed {
+    position: relative;
+    background: repeating-linear-gradient(45deg, var(--gray-50), var(--gray-50) 8px, var(--gray-100) 8px, var(--gray-100) 16px);
+}
+.img-failed::after {
+    content: '사진을 불러오지 못했어요';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px; text-align: center;
+    font-size: 0.72rem; line-height: 1.4; color: var(--gray-400);
+    pointer-events: none;
+}
+/* [E] edit by smsong */
+
 .media-tile {
     position: relative; aspect-ratio: 1/1; border-radius: 12px;
-    background-size: cover; background-position: center;
     background-color: var(--gray-100); box-shadow: var(--shadow-sm);
     touch-action: none; cursor: grab; user-select: none;
     transition: transform 0.12s ease, box-shadow 0.15s ease;

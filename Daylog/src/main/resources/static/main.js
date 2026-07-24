@@ -1924,10 +1924,30 @@ Daylog._thumbFallback = function (img) {
     //  complete 가 false 다. 이때는 아직 결과를 모르므로 '실패'로 단정하지 않는다.
     if (!img.complete) return;
     // [E] edit by smsong
-    img.onerror = null;                   // 원본까지 실패 → 중단(더 이상 재시도 안 함)
+
+    // [B] edit by smsong - #43 원본까지 실패했을 때 '한 번만' 다시 시도한다.
+    //  네트워크가 잠깐 끊기거나 서버가 순간적으로 응답을 못 주면 그 사진만 영영 공백으로 남았다.
+    //  (사용자가 '가끔 공백으로 보인다'고 한 케이스가 대부분 이것)
+    try {
+        if (img.getAttribute('data-retry') !== '1') {
+            img.setAttribute('data-retry', '1');
+            var src0 = img.getAttribute('data-full') || img.src;
+            setTimeout(function () {
+                img.src = src0 + (src0.indexOf('?') < 0 ? '?' : '&') + '_r=' + Date.now();
+            }, 600);
+            return;
+        }
+    } catch (e) {}
+    // [E] edit by smsong
+
+    img.onerror = null;                   // 재시도까지 실패 → 중단
     img.classList.add('is-loaded');       // fade 클래스 보장(투명 잔상 방지)
-    // 진단용 표시만 남긴다(화면을 가리지는 않는다 — 잘못 붙어도 사진이 사라지면 안 되므로)
     try { img.setAttribute('data-failed', '1'); } catch (e) {}
+    // [B] edit by smsong - #43 '조용한 공백' 대신 실패를 드러낸다.
+    //  예전에는 실패한 <img> 를 display:none 으로 숨겨 버려서, 사용자 눈에는
+    //  그냥 빈 칸으로만 보이고 원인을 알 수 없었다. 자리표시자를 띄운다.
+    try { if (img.parentElement) img.parentElement.classList.add('img-failed'); } catch (e) {}
+    // [E] edit by smsong
 };
 
 // [B] edit by smsong - #33 썸네일 로드 처리.
@@ -1938,6 +1958,11 @@ Daylog._thumbFallback = function (img) {
 Daylog._imgSeen = (typeof Set === 'function') ? new Set() : null;
 Daylog._thumbLoaded = function (img) {
     if (!img) return;
+    // [B][E] edit by smsong - #43 재시도로 늦게 성공한 경우 실패 표시 해제
+    try {
+        img.removeAttribute('data-failed');
+        if (img.parentElement) img.parentElement.classList.remove('img-failed');
+    } catch (e) {}
     var u = '';
     try { u = img.currentSrc || img.src || ''; } catch (e) {}
     if (Daylog._imgSeen && u) {
@@ -7490,7 +7515,26 @@ function createMediaManager(opts) {
             tile.className = 'media-tile';
             tile.dataset.idx = i;
             tile._item = it;
-            tile.style.backgroundImage = "url('" + objURL(it) + "')";
+            // [B] edit by smsong - #43 background-image → <img> 로 교체.
+            //  background-image 는 onerror/onload 가 존재하지 않아
+            //   · 로드 실패를 감지할 방법이 아예 없고(= 회색 칸으로 조용히 남음)
+            //   · URL 에 따옴표/괄호가 있으면 url('...') 자체가 깨져 역시 조용히 공백이 된다.
+            //  타임라인 목록에서 이미 검증된 <img> + data-full + 공용 폴백 방식으로 통일한다.
+            //  (DOM API 로 만들어 URL 이스케이프 문제를 원천 차단)
+            const mi = document.createElement('img');
+            mi.className = 'mt-img';
+            mi.alt = '';
+            mi.decoding = 'sync';
+            if (it.kind === 'url' && it.url) {
+                mi.setAttribute('data-full', it.url);
+                mi.src = Daylog.thumbUrlOf(it.url);          // 소형 썸네일 우선, 실패하면 원본
+                mi.onload = function () { Daylog._thumbLoaded(this); };
+                mi.onerror = function () { Daylog._thumbFallback(this); };
+            } else {
+                mi.src = objURL(it);                          // 방금 고른 파일(blob) — 폴백 대상 아님
+            }
+            tile.appendChild(mi);
+            // [E] edit by smsong
             if (i === 0) { const b = document.createElement('span'); b.className = 'media-cover'; b.textContent = '대표'; tile.appendChild(b); }
             const rm = document.createElement('button');
             rm.type = 'button'; rm.className = 'media-remove'; rm.innerHTML = '&times;';
@@ -7563,16 +7607,27 @@ function createMediaManager(opts) {
 function carouselHtml(urls) {
     if (!urls || !urls.length) return '';
     if (urls.length === 1) {
-        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" alt="사진" class="detail-single-img" decoding="async"></div>';
+        // [B][E] edit by smsong - #43 data-full + 공용 onload/onerror 연결
+        //  (data-full 이 붙으면 _fixThumbs 의 MutationObserver 안전망이 자동으로 이 이미지도 훑는다)
+        return '<div class="detail-image-wrap"><img src="' + urls[0] + '" data-full="' + urls[0] +
+            '" alt="사진" class="detail-single-img" decoding="async"' +
+            ' onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)"></div>';
     }
     const cid = 'car-' + Math.random().toString(36).slice(2);
     let slides = '';
     urls.forEach((u, i) => {
-        // [B] edit by smsong - 첫 장만 즉시 로드, 나머지는 loading="lazy" → 이미지 개수와 무관하게 상세가 즉시 열림.
-        //  (네이티브 scroll-snap 이라 넘길 때 해당 슬라이드만 로드됨)
-        slides += '<div class="carousel-slide"><img src="' + u + '" alt="사진" decoding="async"' +
-            (i === 0 ? ' onload="Daylog._fitCarousel(\'' + cid + '\', this)"' : ' loading="lazy"') +
-            ' onerror="this.parentElement.style.display=\'none\'"></div>';
+        // [B] edit by smsong - #43 실패해도 슬라이드를 숨기지 않는다.
+        //  예전 onerror 는 parentElement.style.display='none' 이었다. 그러면
+        //   (1) 화면이 그냥 빈 칸이 되고  (2) scroll-snap 슬라이드 수가 줄어 점/카운터 index 가 어긋난다.
+        //  → 공용 폴백(_thumbFallback: thumb_→원본→재시도→자리표시자)에 연결한다.
+        //  loading="lazy" 도 뺀다. 상세는 많아야 10장이고, 가로 스크롤 안의 lazy 는
+        //  넘기는 순간에야 받기 시작해 '회색 → 사진' 으로 튀는 원인이 된다.
+        var _ld = (i === 0)
+            ? 'Daylog._fitCarousel(\'' + cid + '\', this); Daylog._thumbLoaded(this)'
+            : 'Daylog._thumbLoaded(this)';
+        slides += '<div class="carousel-slide"><img src="' + u + '" data-full="' + u +
+            '" alt="사진" decoding="async" onload="' + _ld + '"' +
+            ' onerror="Daylog._thumbFallback(this)"></div>';
     });
     let dots = '';
     urls.forEach((u, i) => { dots += '<span class="carousel-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '"></span>'; });
@@ -8046,6 +8101,11 @@ function _rectOf(el) {
             im.alt = '확대 이미지';
             im.draggable = false;
             im.decoding = 'async';
+            // [B][E] edit by smsong - #43 로드 실패 시 아무 처리도 없어 그대로 공백이었다.
+            //  data-full 을 달아 공용 안전망(_fixThumbs / _thumbFallback)에 편입시킨다.
+            im.setAttribute('data-full', list[i]);
+            im.onload = function () { Daylog._thumbLoaded(this); };
+            im.onerror = function () { Daylog._thumbFallback(this); };
             im.src = list[i];
             sl.appendChild(im);
             track.appendChild(sl);

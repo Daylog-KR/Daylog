@@ -264,6 +264,73 @@ function updateTypeChips() {
 }
 
 // ===== 유틸 =====
+// [B] edit by smsong - #43 방 썸네일 안전망 (main.js 의 Daylog._thumbFallback 과 같은 전략).
+//
+//  예전 onerror 는 `this.style.display='none'` 이었다. 한 번 실패하면 그 방 사진은
+//  새로고침 전까지 영영 안 보였다(= 사용자가 말한 '가끔 공백').
+//  이제는  소형 썸네일 → 원본 → 캐시버스트 1회 재시도 → 그래도 안 되면 타입별 자리표시자.
+//  또 브라우저 캐시에 이미 있어 load 이벤트가 안 뜨는 경우를 대비해 주기적으로 훑는다.
+function _roomThumbUrl(url) {
+    if (!url) return url;
+    var i = url.lastIndexOf('/');
+    return (i < 0) ? ('thumb_' + url) : (url.substring(0, i + 1) + 'thumb_' + url.substring(i + 1));
+}
+window.DaylogRoomImg = {
+    ok: function (img) {
+        if (!img) return;
+        img.style.display = '';
+        if (img.parentNode) img.parentNode.classList.remove('room-thumb-empty');
+    },
+    fail: function (img, cls) {
+        if (!img) return;
+        var full = img.getAttribute('data-full') || '';
+        // 1) 썸네일 실패 → 원본
+        if (full && img.getAttribute('data-fb') !== '1' && img.src !== full) {
+            img.setAttribute('data-fb', '1');
+            img.src = full;
+            return;
+        }
+        if (!img.complete) return;                 // 방금 src 를 바꾼 직후의 중복 호출
+        // 2) 원본도 실패 → 600ms 뒤 1회만 재시도 (일시적인 네트워크 오류 구제)
+        if (img.getAttribute('data-retry') !== '1') {
+            img.setAttribute('data-retry', '1');
+            var base = full || img.src;
+            setTimeout(function () {
+                img.src = base + (base.indexOf('?') < 0 ? '?' : '&') + '_r=' + Date.now();
+            }, 600);
+            return;
+        }
+        // 3) 끝내 실패 → 타입별 자리표시자
+        img.onerror = null;
+        img.style.display = 'none';
+        if (img.parentNode) img.parentNode.classList.add('room-thumb-empty', cls || '');
+    },
+    // 캐시된 이미지는 load 가 안 뜨는 경우가 있어, 이미 완료된 것들을 주기적으로 확인
+    sweep: function () {
+        var list;
+        try { list = document.querySelectorAll('.room-thumb img[data-full]'); } catch (e) { return; }
+        for (var i = 0; i < list.length; i++) {
+            var im = list[i];
+            if (im.complete && im.naturalWidth > 0) window.DaylogRoomImg.ok(im);
+        }
+    }
+};
+(function () {
+    var kick = function () { try { window.DaylogRoomImg.sweep(); } catch (e) {} };
+    if (window.MutationObserver) {
+        var timer = null;
+        try {
+            new MutationObserver(function () {
+                clearTimeout(timer); timer = setTimeout(kick, 200);
+            }).observe(document.documentElement, { childList: true, subtree: true });
+        } catch (e) {}
+    }
+    setTimeout(kick, 300);
+    setTimeout(kick, 1200);
+    window.addEventListener('focus', kick);
+})();
+// [E] edit by smsong
+
 function esc(s) {
     return String(s == null ? '' : s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -442,7 +509,7 @@ function renderRooms(rooms) {
         // [B] edit by smsong - 방 썸네일 (이미지 있으면 표시, 없으면 타입별 자리표시자)
         const imgUrl = r.imageUrl || r.thumbnailUrl || '';
         const thumbHtml = imgUrl
-            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('room-thumb-empty','${t.cls}')"></div>`
+            ? `<div class="room-thumb"><img src="${esc(_roomThumbUrl(imgUrl))}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
             : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
         // [E] edit by smsong
         card.innerHTML = `
@@ -526,7 +593,7 @@ function renderPendingRooms(rooms) {
         const t = typeLabel(r.type);
         const imgUrl = r.imageUrl || r.thumbnailUrl || '';
         const thumbHtml = imgUrl
-            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" alt="" onerror="this.style.display='none';this.parentNode.classList.add('room-thumb-empty','${t.cls}')"></div>`
+            ? `<div class="room-thumb"><img src="${esc(_roomThumbUrl(imgUrl))}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
             : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
         const statusBadge = rejected
             ? (kicked
