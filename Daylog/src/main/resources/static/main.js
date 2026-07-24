@@ -8094,8 +8094,10 @@ function _rectOf(el) {
             if (pinch && k.length >= 2) {
                 var a = pointers[k[0]], b = pointers[k[1]];
                 var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+                // [B][E] edit by smsong - #41 상세 peek 줌과 같은 저항 곡선
                 var s = pinch.s0 * (d / pinch.d0);
-                if (s < 1) s = 1; else if (s > MAX_SCALE) s = MAX_SCALE;
+                if (s < 1) s = 1 + (s - 1) * 0.4;
+                else if (s > MAX_SCALE) s = MAX_SCALE + (s - MAX_SCALE) * 0.2;
                 var r = stage.getBoundingClientRect();
                 var mx = (a.x + b.x) / 2 - (r.left + r.width / 2);
                 var my = (a.y + b.y) / 2 - (r.top + r.height / 2);
@@ -8143,38 +8145,31 @@ function _rectOf(el) {
             delete pointers[e.pointerId];
             var k = pids();
 
+            // [B] edit by smsong - #41 추억/체크리스트 상세의 peek 줌과 동일한 규칙.
+            //   · 손가락이 하나라도 남아 있으면 확대 상태를 유지하고 이동을 이어 간다
+            //   · 전부 떼면 항상 원래 크기로 부드럽게 복귀 (확대 상태가 남지 않는다)
             if (pinch) {
-                if (k.length < 2) {
-                    pinch = null;
-                    // [B] edit by smsong - #40 확대 상태를 '유지'한다.
-                    //  예전에는 손을 떼는 즉시 원위치라 확대한 채로 둘러볼 수가 없었다.
-                    //  이제 배율이 남아 있으면 그대로 두고, 한 손가락으로 이동할 수 있게 한다.
-                    //  (거의 원본 크기면 깔끔하게 원위치)
-                    if (zoom.s <= 1.02) resetZoom(true);
-                    else { clampPan(); applyZoom(true); }
-                    // [E] edit by smsong
-                }
+                if (k.length >= 2) return;          // 아직 두 손가락
+                pinch = null;
                 if (k.length === 1) {
-                    // 손가락 하나가 남았으면 그 손가락으로 이어서 이동
+                    // 한 손가락이 남았다 → 확대 유지 + 그 손가락으로 이어서 이동
                     var pt = pointers[k[0]];
                     paging = true; axisLocked = true; horizontal = false;
                     startX = pt.x; startY = pt.y; startT = Date.now();
                     panLastX = pt.x; panLastY = pt.y;
                     dragX = 0;
+                    return;
                 }
+                paging = false;
+                resetZoom(true);                    // 전부 뗐다 → 원위치
                 return;
             }
             if (!paging) return;
             paging = false;
 
-            // ── 확대 상태에서 손을 뗀 경우 ──
-            if (zoom.s > 1) {
-                var movedPx = Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY);
-                // 움직임 없는 탭 → 원래 크기로 (닫지 않는다)
-                if (!axisLocked && movedPx < 6) resetZoom(true);
-                else { clampPan(); applyZoom(true); }
-                return;
-            }
+            // 확대 상태에서 마지막 손가락을 뗀 경우 → 원위치 (넘김 판정은 하지 않는다)
+            if (zoom.s > 1) { resetZoom(true); return; }
+            // [E] edit by smsong
 
             var dt = Math.max(1, Date.now() - startT);
             var v = dragX / dt;
