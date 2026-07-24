@@ -7809,8 +7809,10 @@ function _pzStart(e) {
     _pz = {
         img: img, clone: clone, backdrop: backdrop,
         d0: _pzDist(t0, t1) || 1,
+        s0: 1, s: 1, tx: 0, ty: 0,
         rcx: r.left + r.width / 2, rcy: r.top + r.height / 2,
         ox: cx - (r.left + r.width / 2), oy: cy - (r.top + r.height / 2),
+        panX: null, panY: null,          // [B][E] edit by smsong - #40 한 손가락 이동 기준
         track: track, sl: track ? track.scrollLeft : 0
     };
 
@@ -7818,28 +7820,59 @@ function _pzStart(e) {
     document.addEventListener('touchmove', _pzMove, { passive: false });
 }
 
+function _pzApply() {
+    if (!_pz) return;
+    _pz.clone.style.transition = 'none';
+    _pz.clone.style.transform = 'translate3d(' + _pz.tx + 'px,' + _pz.ty + 'px,0) scale(' + _pz.s + ')';
+    _pz.backdrop.style.opacity = String(Math.min(0.72, Math.max(0, (_pz.s - 1) * 0.55)));
+    if (_pz.track) _pz.track.scrollLeft = _pz.sl;         // 혹시 밀렸으면 되돌림
+}
+
 function _pzMove(e) {
-    if (!_pz || e.touches.length < 2) return;
+    if (!_pz) return;
     if (e.cancelable) e.preventDefault();   // 캐러셀 가로 스크롤 / 페이지 확대 차단
 
+    // [B] edit by smsong - #40 손가락이 하나만 남아도 확대 상태를 유지한 채 '이동'을 이어 간다.
+    //  (인스타처럼 크게 본 상태로 사진 구석구석을 둘러볼 수 있게)
+    if (e.touches.length === 1) {
+        var t = e.touches[0];
+        if (_pz.panX == null) { _pz.panX = t.clientX; _pz.panY = t.clientY; }
+        _pz.tx += t.clientX - _pz.panX;
+        _pz.ty += t.clientY - _pz.panY;
+        _pz.panX = t.clientX; _pz.panY = t.clientY;
+        _pzApply();
+        return;
+    }
+    if (e.touches.length < 2) return;
+
     var t0 = e.touches[0], t1 = e.touches[1];
-    var s = _pzDist(t0, t1) / _pz.d0;
+    var cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
+
+    // 한 손가락 이동 뒤 두 번째 손가락이 다시 올라오면 앵커를 새로 잡는다(튀는 것 방지)
+    if (_pz.panX != null) {
+        _pz.d0 = _pzDist(t0, t1) || 1;
+        _pz.s0 = _pz.s;
+        _pz.ox = ((cx - _pz.rcx) - _pz.tx) / _pz.s;
+        _pz.oy = ((cy - _pz.rcy) - _pz.ty) / _pz.s;
+        _pz.panX = null; _pz.panY = null;
+    }
+    // [E] edit by smsong
+
+    var s = _pz.s0 * (_pzDist(t0, t1) / _pz.d0);
     if (s < 1) s = 1 + (s - 1) * 0.4;                     // 원본보다 작아지지 않게 저항
     if (s > PZ_MAX) s = PZ_MAX + (s - PZ_MAX) * 0.2;
 
-    var cx = (t0.clientX + t1.clientX) / 2, cy = (t0.clientY + t1.clientY) / 2;
-    _pz.clone.style.transition = 'none';
-    _pz.clone.style.transform = 'translate3d('
-        + ((cx - _pz.rcx) - _pz.ox * s) + 'px,'
-        + ((cy - _pz.rcy) - _pz.oy * s) + 'px,0) scale(' + s + ')';
-    _pz.backdrop.style.opacity = String(Math.min(0.72, Math.max(0, (s - 1) * 0.55)));
-
-    if (_pz.track) _pz.track.scrollLeft = _pz.sl;         // 혹시 밀렸으면 되돌림
+    _pz.s = s;
+    _pz.tx = (cx - _pz.rcx) - _pz.ox * s;                 // 집은 지점을 손가락 밑에 고정
+    _pz.ty = (cy - _pz.rcy) - _pz.oy * s;
+    _pzApply();
 }
 
 function _pzEnd(e) {
     if (!_pz) return;
-    if (e.touches && e.touches.length >= 2) return;       // 아직 두 손가락
+    // [B][E] edit by smsong - #40 손가락이 하나라도 남아 있으면 계속 볼 수 있게 유지.
+    //  전부 뗐을 때만 원래 자리로 되돌린다.
+    if (e.touches && e.touches.length > 0) return;
 
     var pz = _pz;
     _pz = null;
@@ -7919,10 +7952,18 @@ function _rectOf(el) {
     var dragX = 0;             // 페이징 드래그 offset
     var paging = false, axisLocked = false, horizontal = false;
     var startX = 0, startY = 0, startT = 0;
-    var pointers = {};         // pointerId → {x, y}
-    var pinch = null;          // { startDist, startScale, img }
+    // [B] edit by smsong - #40 확대 상태 한 손가락 이동 기준.
+    //  예전에는 이 값을 pointers 객체 안에( pointers._lastX ) 넣어 두었는데,
+    //  그러면 Object.keys(pointers).length 가 손가락 1개일 때 이미 3 이 되어
+    //  pointerdown 의 `if (ids.length === 2)` 가 절대 참이 되지 않았다.
+    //  → 라이트박스에서 핀치 줌이 아예 시작되지 않던 원인. 별도 변수로 분리한다.
+    var panLastX = 0, panLastY = 0;
+    // [E] edit by smsong
+    var pointers = {};         // pointerId → {x, y}   ※ 포인터 외의 값은 절대 넣지 말 것
+    var pinch = null;          // { d0, s0, px, py }
     var zoom = { s: 1, x: 0, y: 0, img: null };
 
+    function pids() { return Object.keys(pointers); }
     function slides() { return track ? track.children : []; }
     function activeImg() {
         var el = track && track.children[_lb.idx];
@@ -7951,6 +7992,33 @@ function _rectOf(el) {
         if (hint) hint.style.opacity = '1';
     }
 
+    // [B] edit by smsong - #40 사진이 '실제로 그려지는' 크기.
+    //  object-fit:contain 이라 <img> 박스 안에 레터박스(빈 여백)가 생긴다.
+    //  이동 한계를 박스 기준으로 잡으면 빈 여백까지 끌려 나와 어색하므로 실제 그림 크기로 계산한다.
+    function paintedSize(img) {
+        if (!img) return null;
+        var w = img.clientWidth, h = img.clientHeight;
+        if (!w || !h) return null;
+        var nw = img.naturalWidth, nh = img.naturalHeight;
+        if (!nw || !nh) return { w: w, h: h };
+        return (nw / nh > w / h) ? { w: w, h: w * nh / nw } : { w: h * nw / nh, h: h };
+    }
+
+    // 확대된 사진이 화면 밖으로 빠져나가지 않도록 이동량을 가둔다 (인스타 동일)
+    function clampPan() {
+        var img = zoom.img;
+        if (!img || !stage) return;
+        var p = paintedSize(img);
+        if (!p) return;
+        var maxX = Math.max(0, (p.w * zoom.s - stage.clientWidth) / 2);
+        var maxY = Math.max(0, (p.h * zoom.s - stage.clientHeight) / 2);
+        if (zoom.x > maxX) zoom.x = maxX;
+        if (zoom.x < -maxX) zoom.x = -maxX;
+        if (zoom.y > maxY) zoom.y = maxY;
+        if (zoom.y < -maxY) zoom.y = -maxY;
+    }
+    // [E] edit by smsong
+
     function build(list) {
         injectStyle();
         stage = document.getElementById('lightbox-stage');
@@ -7970,6 +8038,7 @@ function _rectOf(el) {
             track.appendChild(sl);
         }
         stage.appendChild(track);
+        pointers = {}; pinch = null;   // [B][E] #40 이전 세션의 포인터 잔재 정리
         bind();
         return true;
     }
@@ -7982,30 +8051,35 @@ function _rectOf(el) {
 
         stage.addEventListener('pointerdown', function (e) {
             pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-            var ids = Object.keys(pointers);
+            var k = pids();
 
-            if (ids.length === 2) {
+            if (k.length === 2) {
                 // 두 손가락 → 핀치 시작
-                paging = false;
-                var a = pointers[ids[0]], b = pointers[ids[1]];
-                zoom.img = activeImg();
+                paging = false; axisLocked = false;
+                var a = pointers[k[0]], b = pointers[k[1]];
+                if (!zoom.img) zoom.img = activeImg();
+                var r = stage.getBoundingClientRect();
+                var mx = (a.x + b.x) / 2 - (r.left + r.width / 2);
+                var my = (a.y + b.y) / 2 - (r.top + r.height / 2);
+                var s0 = zoom.s || 1;
                 pinch = {
-                    startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
-                    startScale: zoom.s,
-                    cx: (a.x + b.x) / 2,
-                    cy: (a.y + b.y) / 2,
-                    baseX: zoom.x, baseY: zoom.y
+                    d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+                    s0: s0,
+                    // 손가락 사이에 '집힌' 이미지 좌표(배율 1 기준). 이 점을 계속 손가락 밑에 붙여 둔다.
+                    px: (mx - zoom.x) / s0,
+                    py: (my - zoom.y) / s0
                 };
+                if (dragX) { dragX = 0; layout(true); }   // 넘기던 중이었으면 제자리로
                 var hint = document.getElementById('lightbox-hint');
                 if (hint) hint.style.opacity = '0';
                 return;
             }
-            if (ids.length > 2) return;
+            if (k.length > 2) return;
 
             // 한 손가락 → 페이징 준비 (확대 중이면 이동)
             paging = true; axisLocked = false; horizontal = false;
             startX = e.clientX; startY = e.clientY; startT = Date.now();
-            pointers._lastX = e.clientX; pointers._lastY = e.clientY;   // 확대 상태 이동 기준
+            panLastX = e.clientX; panLastY = e.clientY;
             if (!zoom.img) zoom.img = activeImg();
             dragX = 0;
             try { stage.setPointerCapture(e.pointerId); } catch (err) {}
@@ -8014,32 +8088,41 @@ function _rectOf(el) {
         stage.addEventListener('pointermove', function (e) {
             if (!pointers[e.pointerId]) return;
             pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-            var ids = Object.keys(pointers);
+            var k = pids();
 
-            if (pinch && ids.length >= 2) {
-                var a = pointers[ids[0]], b = pointers[ids[1]];
+            // ── 핀치 줌 ──
+            if (pinch && k.length >= 2) {
+                var a = pointers[k[0]], b = pointers[k[1]];
                 var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-                zoom.s = Math.max(1, Math.min(MAX_SCALE, pinch.startScale * (d / pinch.startDist)));
-                // 두 손가락 중심이 움직인 만큼 같이 이동 (확대한 지점을 붙잡고 보는 느낌)
-                var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-                zoom.x = pinch.baseX + (mx - pinch.cx);
-                zoom.y = pinch.baseY + (my - pinch.cy);
+                var s = pinch.s0 * (d / pinch.d0);
+                if (s < 1) s = 1; else if (s > MAX_SCALE) s = MAX_SCALE;
+                var r = stage.getBoundingClientRect();
+                var mx = (a.x + b.x) / 2 - (r.left + r.width / 2);
+                var my = (a.y + b.y) / 2 - (r.top + r.height / 2);
+                zoom.s = s;
+                // 집은 지점을 손가락 밑에 고정 → 두 손가락을 함께 옮기면 사진도 같이 따라온다
+                zoom.x = mx - pinch.px * s;
+                zoom.y = my - pinch.py * s;
+                clampPan();
                 applyZoom(false);
                 if (e.cancelable) e.preventDefault();
                 return;
             }
 
             if (!paging) return;
-            var dx = e.clientX - startX, dy = e.clientY - startY;
 
-            if (zoom.s > 1) {   // 확대 중 → 사진 이동
-                zoom.x += (e.clientX - (pointers._lastX || e.clientX));
-                zoom.y += (e.clientY - (pointers._lastY || e.clientY));
-                pointers._lastX = e.clientX; pointers._lastY = e.clientY;
+            // ── 확대 중 → 한 손가락으로 사진 이동 (인스타 동일). 이때 좌우 넘김은 잠근다 ──
+            if (zoom.s > 1) {
+                zoom.x += e.clientX - panLastX;
+                zoom.y += e.clientY - panLastY;
+                panLastX = e.clientX; panLastY = e.clientY;
+                clampPan();
                 applyZoom(false);
                 if (e.cancelable) e.preventDefault();
                 return;
             }
+
+            var dx = e.clientX - startX, dy = e.clientY - startY;
 
             if (!axisLocked) {
                 if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
@@ -8058,18 +8141,40 @@ function _rectOf(el) {
 
         function end(e) {
             delete pointers[e.pointerId];
-            delete pointers._lastX; delete pointers._lastY;
-            var ids = Object.keys(pointers).filter(function (k) { return k !== '_lastX' && k !== '_lastY'; });
+            var k = pids();
 
             if (pinch) {
-                if (ids.length < 2) {
+                if (k.length < 2) {
                     pinch = null;
-                    resetZoom(true);   // 손가락을 떼면 원래 크기로
+                    // [B] edit by smsong - #40 확대 상태를 '유지'한다.
+                    //  예전에는 손을 떼는 즉시 원위치라 확대한 채로 둘러볼 수가 없었다.
+                    //  이제 배율이 남아 있으면 그대로 두고, 한 손가락으로 이동할 수 있게 한다.
+                    //  (거의 원본 크기면 깔끔하게 원위치)
+                    if (zoom.s <= 1.02) resetZoom(true);
+                    else { clampPan(); applyZoom(true); }
+                    // [E] edit by smsong
+                }
+                if (k.length === 1) {
+                    // 손가락 하나가 남았으면 그 손가락으로 이어서 이동
+                    var pt = pointers[k[0]];
+                    paging = true; axisLocked = true; horizontal = false;
+                    startX = pt.x; startY = pt.y; startT = Date.now();
+                    panLastX = pt.x; panLastY = pt.y;
+                    dragX = 0;
                 }
                 return;
             }
             if (!paging) return;
             paging = false;
+
+            // ── 확대 상태에서 손을 뗀 경우 ──
+            if (zoom.s > 1) {
+                var movedPx = Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY);
+                // 움직임 없는 탭 → 원래 크기로 (닫지 않는다)
+                if (!axisLocked && movedPx < 6) resetZoom(true);
+                else { clampPan(); applyZoom(true); }
+                return;
+            }
 
             var dt = Math.max(1, Date.now() - startT);
             var v = dragX / dt;
@@ -8092,7 +8197,7 @@ function _rectOf(el) {
         stage.addEventListener('pointerup', end);
         stage.addEventListener('pointercancel', end);
         stage.addEventListener('dblclick', function (e) { e.preventDefault(); });
-        window.addEventListener('resize', function () { if (track) layout(false); });
+        window.addEventListener('resize', function () { if (track) { layout(false); clampPan(); applyZoom(false); } });
     }
 
     // 외부에서 쓰는 API
