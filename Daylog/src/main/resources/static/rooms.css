@@ -22,7 +22,18 @@
     --shadow-lg: 0 10px 30px rgba(139,115,85,0.12), 0 4px 12px rgba(139,115,85,0.08);
     --font-main: 'Noto Sans KR', sans-serif;
     --font-logo: 'Lora', serif;
+
+    /* [B] edit by smsong - Android PWA 전용 시스템 바 여백. iOS/일반 웹은 항상 0 */
+    --safe-top: 0px;
+    --safe-bottom: 0px;
 }
+
+/* Android PWA(standalone) 에서만 실제 인셋 사용. 값은 head 부트스트랩이 실측해 덮어씀 */
+html.android-pwa {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* [E] edit by smsong */
 
 /* [B] edit by smsong - #6 다크모드: 변수 오버라이드 */
 [data-theme="dark"] {
@@ -62,7 +73,7 @@ html, body {
 /* 헤더 (상단 고정) */
 .rooms-header {
     flex: 0 0 auto;
-    padding: max(18px, env(safe-area-inset-top)) 18px 12px;
+    padding: max(18px, var(--safe-top)) 18px 12px; /* [B][E] edit by smsong */
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     background: var(--bg-color);
 }
@@ -199,7 +210,8 @@ html, body {
 .rooms-actions {
     flex: 0 0 auto;
     display: flex; gap: 10px;
-    padding: 12px 18px calc(env(safe-area-inset-bottom) + 16px);
+    /* [B][E] edit by smsong - Android 시스템 내비에 '방 만들기 / 코드로 입장' 이 가리지 않도록 */
+    padding: 12px 18px calc(var(--safe-bottom) + 16px);
     background: var(--bg-color);
     border-top: 1px solid var(--gray-200);
 }
@@ -226,7 +238,7 @@ html, body {
 .room-modal-card {
     width: 100%; max-width: 520px; margin: 0 auto;
     background: var(--white); border-radius: 22px 22px 0 0;
-    padding: 22px 20px calc(env(safe-area-inset-bottom) + 22px);
+    padding: 22px 20px calc(var(--safe-bottom) + 22px); /* [B][E] edit by smsong */
     box-shadow: var(--shadow-lg);
     animation: sheetUp 0.28s cubic-bezier(0.32,0.72,0,1);
 }

@@ -3,6 +3,54 @@
 <head>
     <!-- [B] edit by smsong - #6 다크모드: 렌더 전에 테마 적용(깜빡임 방지) -->
     <script>(function(){try{var t=localStorage.getItem("daylog_theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
+    <!-- [B] edit by smsong - Android PWA 하단 시스템 내비게이션(제스처바) 대응. iOS 는 절대 건드리지 않음.
+         env(safe-area-inset-*) 는 viewport-fit=cover 일 때만 실제 값을 주므로 Android 에서만 cover 를 붙이고,
+         html.android-pwa 아래에서만 --safe-top / --safe-bottom 이 값을 갖게 한다.
+         → iOS 는 메타도 클래스도 안 붙으므로 두 변수가 0px 로 남아 기존 레이아웃이 그대로 유지된다. -->
+    <script>(function () {
+        try {
+            if (!/Android/i.test(navigator.userAgent || '')) return;   // Android 전용
+            var de = document.documentElement;
+            de.classList.add('is-android');
+
+            var mv = document.querySelector('meta[name="viewport"]');
+            if (mv && mv.content.indexOf('viewport-fit') < 0) {
+                mv.setAttribute('content', mv.content + ', viewport-fit=cover');
+            }
+
+            var mm = window.matchMedia;
+            var standalone = (!!mm && (mm('(display-mode: standalone)').matches
+                    || mm('(display-mode: fullscreen)').matches
+                    || mm('(display-mode: minimal-ui)').matches))
+                || (document.referrer || '').indexOf('android-app://') === 0;
+            if (!standalone) return;            // 일반 크롬 탭이면 기존 그대로
+            de.classList.add('android-pwa');
+
+            // 일부 기기/버전에서 env() 가 0 을 주는 경우가 있어 실측 후 폴백.
+            //  제스처 내비 ~24px / 3버튼 내비 ~48px → 안전값 24px
+            var FALLBACK_BOTTOM = 24;
+            function measure() {
+                var p = document.createElement('div');
+                p.style.cssText = 'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;'
+                    + 'height:env(safe-area-inset-bottom,0px);';
+                document.body.appendChild(p);
+                var b = p.getBoundingClientRect().height;
+                p.style.height = 'env(safe-area-inset-top,0px)';
+                var t = p.getBoundingClientRect().height;
+                p.parentNode.removeChild(p);
+                de.style.setProperty('--safe-bottom', (b > 0 ? b : FALLBACK_BOTTOM) + 'px');
+                de.style.setProperty('--safe-top', t + 'px');
+            }
+            function boot() {
+                measure();
+                window.addEventListener('resize', measure);
+                window.addEventListener('orientationchange', function () { setTimeout(measure, 300); });
+            }
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+            else boot();
+        } catch (e) {}
+    })();</script>
+    <!-- [E] edit by smsong -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daylog</title>
@@ -16,7 +64,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Parisienne&family=Lora:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="main.css?v=1.0.29">
+    <link rel="stylesheet" href="main.css?v=1.0.30">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 </head>
 <body data-active-tab="tab-map">
@@ -721,12 +769,13 @@
 <div id="lightbox" class="lightbox hidden">
     <button type="button" class="lightbox-close" id="lightbox-close">&times;</button>
     <div class="lightbox-counter hidden" id="lightbox-counter"></div>
-    <button type="button" class="lightbox-nav prev hidden" id="lightbox-prev">&#8249;</button>
-    <button type="button" class="lightbox-nav next hidden" id="lightbox-next">&#8250;</button>
+    <!-- [B] edit by smsong - 좌우 화살표 제거: 이동은 스와이프(가로 스크롤)로만. 마크업/CSS/JS 모두 삭제 -->
+    <!-- 인스타식 트랙 구조: 단일 img 페이드 → 실제로 옆으로 밀리는 슬라이드 -->
     <div class="lightbox-stage" id="lightbox-stage">
-        <img id="lightbox-img" src="" alt="확대 이미지" draggable="false">
+        <div class="lb-track" id="lightbox-track"></div>
     </div>
-    <div class="lightbox-hint" id="lightbox-hint">탭하면 확대 · 좌우로 넘기기</div>
+    <div class="lightbox-hint" id="lightbox-hint">좌우로 넘기기 · 두 손가락으로 확대</div>
+    <!-- [E] edit by smsong -->
 </div>
 
 <!-- [B] edit by smsong - #4 축포 레이어 (body 레벨, 모달과 독립 → 폼 닫아도 다 떨어질 때까지 유지) -->
@@ -734,8 +783,6 @@
 <script src="config.js?v=1.0.8"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
-<!-- [B][E] edit by smsong - #36 안드로이드 뒤로가기 (main.js 보다 먼저 로드) -->
-<script src="nav.js?v=1.0.0"></script>
 <script src="main.js?v=1.0.28"></script>
 <script src="push.js?v=1.0.24"></script>
 <!-- [B] edit by smsong - #1 main 알림은 '이 방'으로 스코프 -->
