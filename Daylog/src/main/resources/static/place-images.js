@@ -55,19 +55,33 @@
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
             '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
-            '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;cursor:pointer;' +
+            '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;' +
             'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
-            '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
+            '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
-            '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);}' +
-            '.pi-no{position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;border-radius:50%;' +
-            'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
-            'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
-            'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
-            '.pi-cell.sel .pi-no{background:var(--primary,#b08968);color:#fff;}' +
+            '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);pointer-events:none;}' +
+            // 선택 순서 번호 — 좌측 상단 (선택됐을 때만 보임)
+            '.pi-no{position:absolute;top:6px;left:6px;z-index:3;min-width:22px;height:22px;padding:0 5px;' +
+            'border-radius:11px;display:none;align-items:center;justify-content:center;' +
+            'font-size:0.72rem;font-weight:800;background:var(--primary,#b08968);color:#fff;' +
+            'box-shadow:0 1px 4px rgba(0,0,0,.2);}' +
+            '.pi-cell.sel .pi-no{display:flex;}' +
+            // 우측 상단 선택(체크) 버튼 — 항상 보임, 선택되면 채워짐
+            '.pi-pick{position:absolute;top:6px;right:6px;z-index:4;width:24px;height:24px;padding:0;' +
+            'border-radius:50%;border:2px solid #fff;background:rgba(30,30,30,.28);cursor:pointer;' +
+            'box-shadow:0 1px 4px rgba(0,0,0,.25);}' +
+            '.pi-pick::after{content:"";position:absolute;left:50%;top:46%;width:6px;height:10px;' +
+            'border:solid #fff;border-width:0 2px 2px 0;transform:translate(-50%,-50%) rotate(45deg);opacity:.9;}' +
+            '.pi-cell.sel .pi-pick{background:var(--primary,#b08968);border-color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
             'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
-            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}' +
+            // 라이트박스(크게보기) 위 선택 버튼 — 우측 상단
+            '.pi-lb-pick{position:fixed;top:calc(14px + env(safe-area-inset-top));right:64px;z-index:4200;' +
+            'min-width:64px;height:38px;padding:0 16px;border-radius:19px;border:2px solid #fff;' +
+            'background:rgba(30,30,30,.5);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:800;' +
+            'cursor:pointer;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
+            '.pi-lb-pick.on{background:var(--primary,#b08968);border-color:#fff;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
@@ -160,6 +174,8 @@
         var body = ov.querySelector('#pi-body');
         var addBtn = ov.querySelector('#pi-add');
         var picked = [];   // 선택 순서 유지
+        var _items = [];   // 검색 결과
+        var _grid = null;  // 그리드 DOM
 
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         ov.querySelector('.pi-x').addEventListener('click', close);
@@ -196,6 +212,7 @@
         })();
 
         function render(items) {
+            _items = items;
             var grid = document.createElement('div');
             grid.className = 'pi-grid';
             items.forEach(function (it) {
@@ -203,6 +220,7 @@
                 cell.className = 'pi-cell';
                 cell.innerHTML =
                     '<span class="pi-no"></span>' +
+                    '<button type="button" class="pi-pick" aria-label="선택"></button>' +
                     '<span class="pi-src">' + esc(it.source || '') + '</span>';
                 var img = document.createElement('img');
                 img.alt = it.title || '';
@@ -212,27 +230,18 @@
                 img.onerror = function () { cell.remove(); };
                 cell.insertBefore(img, cell.firstChild);
 
-                cell.addEventListener('click', function () {
-                    var i = picked.indexOf(it);
-                    if (i >= 0) picked.splice(i, 1);
-                    else {
-                        if (picked.length >= limit) { toast('한 번에 ' + limit + '장까지 고를 수 있습니다'); return; }
-                        picked.push(it);
-                    }
-                    renumber();
-                    refreshBtn();
+                // 사진 클릭 → 크게보기(기존 라이트박스 재사용). 확대·좌우 이동은 프로젝트 기본 동작 그대로.
+                img.addEventListener('click', function () { openViewer(items.indexOf(it)); });
+
+                // 우측 상단 체크 버튼 → 선택 토글
+                cell.querySelector('.pi-pick').addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    toggle(it);
                 });
+
                 cell._item = it;
                 grid.appendChild(cell);
             });
-
-            function renumber() {
-                Array.prototype.forEach.call(grid.children, function (c) {
-                    var i = picked.indexOf(c._item);
-                    c.classList.toggle('sel', i >= 0);
-                    c.querySelector('.pi-no').textContent = i >= 0 ? String(i + 1) : '';
-                });
-            }
 
             body.innerHTML = '';
             body.appendChild(grid);
@@ -240,13 +249,107 @@
             note.className = 'pi-note';
             note.textContent = '웹에서 검색된 사진입니다. 저작권은 각 출처에 있으니 우리 방 기록용으로만 사용해주세요.';
             body.appendChild(note);
+            _grid = grid;
+            renumber();
+        }
+
+        // 선택 토글 + 번호 갱신 (그리드/라이트박스 공용)
+        function toggle(it) {
+            var i = picked.indexOf(it);
+            if (i >= 0) picked.splice(i, 1);
+            else {
+                if (picked.length >= limit) { toast('한 번에 ' + limit + '장까지 고를 수 있습니다'); return; }
+                picked.push(it);
+            }
+            renumber();
+            refreshBtn();
+            syncViewerBadge();
+        }
+
+        function renumber() {
+            if (!_grid) return;
+            Array.prototype.forEach.call(_grid.children, function (c) {
+                var i = picked.indexOf(c._item);
+                c.classList.toggle('sel', i >= 0);
+                var no = c.querySelector('.pi-no');
+                if (no) no.textContent = i >= 0 ? String(i + 1) : '';
+            });
+        }
+
+        // ----- 크게보기(라이트박스) + 선택 오버레이 -----
+        //  기존 window.openLightbox 로 확대·좌우 이동을 그대로 쓰고,
+        //  그 위에 '선택' 버튼만 얹어 라이트박스 안에서도 고를 수 있게 한다.
+        //  좌우로 넘기면 counter("N / M")를 읽어 현재 사진을 따라 배지를 갱신한다.
+        var _viewerBtn = null, _viewerPoll = null;
+
+        function openViewer(startIdx) {
+            var urls = _items.map(function (x) { return x.url; });
+            if (!urls.length || typeof global.openLightbox !== 'function') {
+                // 라이트박스를 못 쓰면 최소한 선택 토글로 폴백
+                toggle(_items[startIdx]); return;
+            }
+            var startImg = _grid && _grid.children[startIdx]
+                ? _grid.children[startIdx].querySelector('img') : null;
+            global.openLightbox(urls, startImg, startIdx);
+            mountViewerBtn();
+        }
+
+        function currentViewerIdx() {
+            // 라이트박스가 노출하는 counter("N / M")로 현재 인덱스를 읽는다. 단일 사진이면 0.
+            var c = document.getElementById('lightbox-counter');
+            if (c && c.textContent) {
+                var m = c.textContent.match(/(\d+)\s*\/\s*(\d+)/);
+                if (m) return Math.max(0, parseInt(m[1], 10) - 1);
+            }
+            return 0;
+        }
+
+        function mountViewerBtn() {
+            var lb = document.getElementById('lightbox');
+            if (!lb) return;
+            if (!_viewerBtn) {
+                _viewerBtn = document.createElement('button');
+                _viewerBtn.type = 'button';
+                _viewerBtn.className = 'pi-lb-pick';
+                _viewerBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var idx = currentViewerIdx();
+                    if (_items[idx]) toggle(_items[idx]);
+                });
+            }
+            if (_viewerBtn.parentNode !== lb) lb.appendChild(_viewerBtn);
+            syncViewerBadge();
+            // 좌우로 넘기면 counter 가 바뀌므로 주기적으로 배지를 맞춘다.
+            //  라이트박스가 닫히면(hidden) 폴링을 멈추고 버튼을 뗀다.
+            if (_viewerPoll) clearInterval(_viewerPoll);
+            _viewerPoll = setInterval(function () {
+                var l = document.getElementById('lightbox');
+                if (!l || l.classList.contains('hidden')) {
+                    clearInterval(_viewerPoll); _viewerPoll = null;
+                    if (_viewerBtn && _viewerBtn.parentNode) _viewerBtn.parentNode.removeChild(_viewerBtn);
+                    return;
+                }
+                syncViewerBadge();
+            }, 250);
+        }
+
+        function syncViewerBadge() {
+            if (!_viewerBtn) return;
+            var idx = currentViewerIdx();
+            var it = _items[idx];
+            var pos = it ? picked.indexOf(it) : -1;
+            _viewerBtn.classList.toggle('on', pos >= 0);
+            _viewerBtn.textContent = pos >= 0 ? String(pos + 1) : '선택';
         }
 
         // --- 추가 ---
         addBtn.addEventListener('click', function () {
             if (!picked.length) return;
             addBtn.disabled = true;
-            addBtn.textContent = '가져오는 중…';
+
+            // 프로젝트 공용 로딩창 사용 (다른 API 호출과 동일한 UX)
+            var loading = (Daylog && typeof Daylog.showLoading === 'function');
+            if (loading) Daylog.showLoading('사진 가져오는 중…');
 
             var files = [];
             var seq = Promise.resolve();
@@ -264,6 +367,7 @@
             });
 
             seq.then(function () {
+                if (loading && typeof Daylog.hideLoading === 'function') Daylog.hideLoading();
                 if (!files.length) {
                     toast('사진을 가져오지 못했습니다');
                     addBtn.disabled = false;
