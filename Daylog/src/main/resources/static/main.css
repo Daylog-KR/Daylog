@@ -1933,12 +1933,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 .cl-visited-col input[type="date"]:disabled { opacity: 0.45; cursor: not-allowed; }
 /* [E] edit by smsong */
-.cl-check-label {
-    display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
-    line-height: 1; /* 텍스트가 위로 붙지 않고 세로 중앙에 오도록 */
+.cl-visited-col label.cl-check-label {
+    display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
     color: var(--gray-600); font-weight: 700; cursor: pointer; user-select: none;
+    margin: 0; padding: 0;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
+/* 텍스트 span 을 flex item 으로 두어 baseline 영향 없이 정확히 세로 중앙에 오게 */
+.cl-check-label > span { display: inline-block; line-height: 1; }
 .cl-check-label:hover { border-color: #9bd96a; }
 /* 실제 체크박스는 숨기고 박스 클릭으로 토글 (라벨이 감싸고 있어 동작 유지) */
 .cl-check-label input[type="checkbox"] { display: none; }
