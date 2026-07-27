@@ -148,6 +148,22 @@ public class ChatService {
             reads.put(r.getUid(), r.getLastReadMessageId());
         }
 
+        // [B] edit by smsong - 헤더 표시용: 방 이름/1:1 상대
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        boolean direct = room != null && "DIRECT".equalsIgnoreCase(room.getType());
+        String title = (room != null) ? room.getName() : "채팅";
+        String peerUid = null, peerProfile = null;
+        if (direct) {
+            for (String mUid : members) {
+                if (mUid != null && !mUid.equals(requesterUid)) { peerUid = mUid; break; }
+            }
+            if (peerUid != null) {
+                title = displayName(peerUid);
+                UserEntity peer = userRepository.findByUid(peerUid).orElse(null);
+                if (peer != null) peerProfile = peer.getProfileURL();
+            }
+        }
+
         return ChatDTO.History.builder()
                 .me(requesterUid)
                 .memberCount(members.size())
@@ -155,6 +171,11 @@ public class ChatService {
                 .reads(reads)
                 .messages(msgs)
                 .hasMore(hasMore)
+                .title(title)
+                .direct(direct)
+                .peerUid(peerUid)
+                .peerProfileURL(peerProfile)
+                .muted(isChatMuted(roomId, requesterUid))
                 .build();
     }
 
@@ -332,11 +353,16 @@ public class ChatService {
             }
             if (targets.isEmpty()) return;
 
-            String roomName = roomRepository.findById(roomId).map(RoomEntity::getName).orElse("채팅");
+            RoomEntity roomEnt = roomRepository.findById(roomId).orElse(null);
+            boolean direct = roomEnt != null && "DIRECT".equalsIgnoreCase(roomEnt.getType());
             String senderName = displayName(senderUid);
+            String roomName = direct
+                    ? (senderName != null ? senderName : "1:1 대화")   // 1:1: 발신자 이름을 제목으로
+                    : (roomEnt != null ? roomEnt.getName() : "채팅");
             String preview = content == null ? "" : content.replaceAll("\\s+", " ").trim();
             if (preview.length() > 80) preview = preview.substring(0, 80) + "…";
-            String body = (senderName != null ? senderName + ": " : "") + preview;
+            // 1:1 은 제목이 이미 발신자라 본문엔 이름 생략, 그룹은 "이름: 내용"
+            String body = direct ? preview : ((senderName != null ? senderName + ": " : "") + preview);
             String url = "/main.html?room=" + roomId;
 
             // 여러 uid 에게 비동기 발송(본 요청 응답을 지연시키지 않음). 푸시 비활성/구독없음 시 자동 no-op.

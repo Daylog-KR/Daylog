@@ -40,6 +40,12 @@ public class ChatDTO {
         private Map<String, Long> reads;      // uid -> 마지막으로 읽은 메시지 id
         private List<Message> messages;       // 오름차순(과거 → 최신)
         private boolean hasMore;              // 위로 더 불러올 과거가 있는지
+        // [B] edit by smsong - 채팅 헤더 표시용(어느 방 / 누구와의 채팅인지)
+        private String title;                 // 방 이름(1:1 이면 상대 표시 이름)
+        private boolean direct;               // 1:1 채팅 여부
+        private String peerUid;               // 1:1 상대 uid (그룹이면 null)
+        private String peerProfileURL;        // 1:1 상대 프로필(헤더 아바타)
+        private boolean muted;                // 이 방 채팅 알림 꺼짐 여부
     }
 
     // [B] edit by smsong - 채팅방 리스트(카카오톡 대화목록) 한 줄

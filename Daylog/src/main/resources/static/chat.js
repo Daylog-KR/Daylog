@@ -52,7 +52,8 @@
         me: '', members: [], reads: {}, memberCount: 0,
         msgs: [],           // 오름차순 메시지 배열
         hasMore: false, loadingMore: false, oldestId: null,
-        open: false, unread: 0
+        open: false, unread: 0,
+        title: '채팅', direct: false, peerUid: null, peerProfileURL: null // [B] edit by smsong - 헤더용
     };
     var ws = null, wsTimer = null, wsBackoff = 1000, subscribed = false;
 
@@ -287,7 +288,13 @@
                 });
                 state.hasMore = !!h.hasMore;
                 state.oldestId = state.msgs.length ? state.msgs[0].id : null;
-                updateHeadCount();
+                // [B] edit by smsong - 헤더 정보 저장
+                state.title = h.title || '채팅';
+                state.direct = !!h.direct;
+                state.peerUid = h.peerUid || null;
+                state.peerProfileURL = h.peerProfileURL || null;
+                chatMuted = !!h.muted;
+                updateHeader();
                 renderAll();
                 scrollToBottom(false);
                 var last = state.msgs.length ? state.msgs[state.msgs.length - 1].id : 0;
@@ -320,9 +327,107 @@
             .finally(function () { state.loadingMore = false; });
     }
 
-    function updateHeadCount() {
-        var el = document.getElementById('dchat-membercount');
-        if (el) el.textContent = state.memberCount ? String(state.memberCount) : '';
+    function updateHeader() {
+        var titleEl = document.getElementById('dchat-title');
+        var subEl = document.getElementById('dchat-sub');
+        var avaEl = document.getElementById('dchat-head-ava');
+        if (titleEl) titleEl.textContent = state.title || '채팅';
+        if (subEl) {
+            if (state.direct) subEl.textContent = '1:1 대화';
+            else subEl.textContent = state.memberCount ? ('멤버 ' + state.memberCount + '명') : '';
+        }
+        if (avaEl) {
+            if (state.direct && state.peerProfileURL) {
+                avaEl.innerHTML = '<img src="' + esc(state.peerProfileURL) + '" alt="" referrerpolicy="no-referrer">';
+                avaEl.className = 'dchat-head-ava has-img';
+                avaEl.style.cursor = 'pointer';
+                avaEl.onclick = function () { if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title, profileURL: state.peerProfileURL }); };
+            } else if (state.direct) {
+                avaEl.innerHTML = esc((state.title || '?').trim().charAt(0) || '?');
+                avaEl.className = 'dchat-head-ava ph';
+                avaEl.style.cursor = 'pointer';
+                avaEl.onclick = function () { if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title }); };
+            } else {
+                // 그룹 방: 방 아이콘
+                avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+                avaEl.className = 'dchat-head-ava grp';
+                avaEl.style.cursor = 'default';
+                avaEl.onclick = null;
+            }
+        }
+    }
+
+    // ===== [B] edit by smsong - 채팅방 설정 시트 (카카오톡식) =====
+    function openChatSettings() {
+        injectSettingsStyle();
+        var ov = document.createElement('div');
+        ov.id = 'dcs-overlay';
+        ov.innerHTML =
+            '<div class="dcs-sheet" role="dialog" aria-modal="true">' +
+                '<div class="dcs-handle"></div>' +
+                '<div class="dcs-title">' + esc(state.title || '채팅') + '</div>' +
+                (state.direct
+                    ? '<button class="dcs-row" id="dcs-peer" type="button">' +
+                        '<span class="dcs-ic">' +
+                          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+                        '</span><span class="dcs-label">상대 프로필 보기</span></button>'
+                    : '') +
+                '<button class="dcs-row" id="dcs-mute" type="button">' +
+                    '<span class="dcs-ic">' +
+                      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
+                    '</span><span class="dcs-label">채팅 알림</span>' +
+                    '<span class="dcs-switch" id="dcs-switch"></span>' +
+                '</button>' +
+                '<button class="dcs-row dcs-cancel" id="dcs-close" type="button"><span class="dcs-label">닫기</span></button>' +
+            '</div>';
+        document.body.appendChild(ov);
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+
+        function syncSwitch() {
+            var sw = document.getElementById('dcs-switch');
+            if (sw) sw.classList.toggle('on', !chatMuted); // on = 알림 켜짐
+        }
+        syncSwitch();
+
+        function close() {
+            ov.classList.remove('show');
+            setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200);
+        }
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        document.getElementById('dcs-close').addEventListener('click', close);
+        var muteRow = document.getElementById('dcs-mute');
+        if (muteRow) muteRow.addEventListener('click', function () {
+            toggleChatMute(syncSwitch); // 서버 반영 완료 후 스위치 갱신
+        });
+        var peerRow = document.getElementById('dcs-peer');
+        if (peerRow) peerRow.addEventListener('click', function () {
+            close();
+            if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title, profileURL: state.peerProfileURL });
+        });
+    }
+    function injectSettingsStyle() {
+        if (document.getElementById('dcs-style')) return;
+        var css =
+            '#dcs-overlay{position:fixed;inset:0;z-index:10040;background:rgba(45,38,32,0.42);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .2s ease;}' +
+            '#dcs-overlay.show{opacity:1;}' +
+            '.dcs-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 12px calc(14px + var(--safe-b,0px));transform:translateY(16px);transition:transform .24s cubic-bezier(.2,.8,.3,1);}' +
+            '#dcs-overlay.show .dcs-sheet{transform:none;}' +
+            '.dcs-handle{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:8px auto 6px;}' +
+            '.dcs-title{font-size:1.02rem;font-weight:700;color:var(--gray-800);padding:6px 10px 12px;}' +
+            '.dcs-row{display:flex;align-items:center;gap:12px;width:100%;padding:14px 10px;border:none;background:transparent;cursor:pointer;font-family:inherit;text-align:left;border-radius:12px;}' +
+            '.dcs-row:active{background:var(--gray-50);}' +
+            '.dcs-ic{flex:0 0 auto;color:var(--gray-500);display:flex;}' +
+            '.dcs-label{flex:1 1 auto;font-size:0.98rem;font-weight:600;color:var(--gray-800);}' +
+            '.dcs-cancel{justify-content:center;color:var(--gray-500);margin-top:2px;}' +
+            '.dcs-cancel .dcs-label{flex:0 0 auto;color:var(--gray-500);font-weight:700;}' +
+            '.dcs-switch{flex:0 0 auto;width:46px;height:27px;border-radius:14px;background:var(--gray-200);position:relative;transition:background .2s;}' +
+            '.dcs-switch::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s;}' +
+            '.dcs-switch.on{background:var(--primary);}' +
+            '.dcs-switch.on::after{transform:translateX(19px);}';
+        var st = document.createElement('style');
+        st.id = 'dcs-style';
+        st.textContent = css;
+        document.head.appendChild(st);
     }
 
     // ===== 배지 =====
@@ -455,6 +560,10 @@
             if (cur) wsSend({ type: 'sub', roomId: Number(cur) });
         }
         refreshBadge();
+        // [B] edit by smsong - rooms.html 채팅 리스트가 열려 있으면 닫힌 뒤 갱신
+        if (typeof window.Daylog.onChatClosed === 'function') {
+            try { window.Daylog.onChatClosed(); } catch (e) {}
+        }
     }
 
     function openPanel(targetRoomId) {
@@ -474,8 +583,19 @@
         pn.id = 'dchat-panel';
         pn.innerHTML =
             '<div class="dchat-head">' +
-                '<div class="dchat-head-title">채팅 <span id="dchat-membercount" class="dchat-mc"></span></div>' +
-                '<button class="dchat-close" type="button" aria-label="닫기">&times;</button>' +
+                '<div class="dchat-head-main">' +
+                    '<div id="dchat-head-ava" class="dchat-head-ava"></div>' +
+                    '<div class="dchat-head-texts">' +
+                        '<div class="dchat-head-title" id="dchat-title">채팅</div>' +
+                        '<div class="dchat-head-sub" id="dchat-sub"></div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="dchat-head-actions">' +
+                    '<button class="dchat-gear" id="dchat-gear" type="button" aria-label="채팅방 설정">' +
+                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+                    '</button>' +
+                    '<button class="dchat-close" type="button" aria-label="닫기">&times;</button>' +
+                '</div>' +
             '</div>' +
             '<div id="dchat-scroll" class="dchat-scroll"></div>' +
             '<div class="dchat-inputbar">' +
@@ -492,6 +612,8 @@
         state.open = true;
         ov.addEventListener('click', closePanel);
         pn.querySelector('.dchat-close').addEventListener('click', closePanel);
+        var gear = document.getElementById('dchat-gear');
+        if (gear) gear.addEventListener('click', openChatSettings); // [B] edit by smsong - 채팅방 설정
 
         var scroll = document.getElementById('dchat-scroll');
         scroll.addEventListener('scroll', function () { if (scroll.scrollTop < 40) loadMore(); });
@@ -546,12 +668,19 @@
                 'background:var(--bg-color);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.18);' +
                 'transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.8,.3,1);}' +
             '#dchat-panel.show{transform:none;}' +
-            '.dchat-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;padding-top:calc(14px + var(--safe-t,0px));' +
+            '.dchat-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;padding-top:calc(12px + var(--safe-t,0px));' +
                 'background:var(--white);border-bottom:1px solid var(--gray-100);}' +
-            '.dchat-head-title{font-size:1.06rem;font-weight:700;color:var(--gray-800);display:flex;align-items:center;gap:6px;}' +
-            '.dchat-mc{font-size:0.86rem;font-weight:600;color:var(--gray-400);}' +
-            '.dchat-mc:not(:empty)::before{content:"";}' +
-            '.dchat-close{border:none;background:transparent;font-size:1.6rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:0 4px;}' +
+            '.dchat-head-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;}' +
+            '.dchat-head-ava{flex:0 0 auto;width:38px;height:38px;border-radius:13px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--gray-500);}' +
+            '.dchat-head-ava img{width:100%;height:100%;object-fit:cover;display:block;}' +
+            '.dchat-head-ava.ph{background:var(--primary-light);color:var(--primary-dark);font-weight:700;font-size:1.05rem;}' +
+            '.dchat-head-texts{min-width:0;display:flex;flex-direction:column;}' +
+            '.dchat-head-title{font-size:1.02rem;font-weight:700;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.dchat-head-sub{font-size:0.76rem;color:var(--gray-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.dchat-head-actions{flex:0 0 auto;display:flex;align-items:center;gap:2px;}' +
+            '.dchat-gear{border:none;background:transparent;color:var(--gray-400);cursor:pointer;padding:6px;display:flex;border-radius:10px;}' +
+            '.dchat-gear:hover{background:var(--gray-50);color:var(--gray-600);}' +
+            '.dchat-close{border:none;background:transparent;font-size:1.6rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:0 6px;}' +
             '.dchat-scroll{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 8px;display:flex;flex-direction:column;gap:2px;}' +
             '.dchat-empty{margin:auto;color:var(--gray-400);font-size:0.92rem;text-align:center;}' +
             '.dchat-daysep{text-align:center;margin:14px 0 10px;}' +
@@ -617,7 +746,7 @@
             .then(function (d) { if (d) { chatMuted = !!d.muted; applyChatNotifToggle(); } })
             .catch(function () {});
     }
-    function toggleChatMute() {
+    function toggleChatMute(done) {
         if (!loggedIn() || !roomId()) { toast('먼저 방을 선택해주세요'); return; }
         var next = !chatMuted;
         fetch(API + '/api/chat/' + roomId() + '/mute?muted=' + next, { method: 'POST', headers: authHeaders() })
@@ -626,8 +755,9 @@
                 chatMuted = (d && typeof d.muted === 'boolean') ? d.muted : next;
                 applyChatNotifToggle();
                 toast(chatMuted ? '채팅 알림 꺼짐' : '채팅 알림 켜짐');
+                if (typeof done === 'function') done();
             })
-            .catch(function () { toast('변경에 실패했어요'); });
+            .catch(function () { toast('변경에 실패했어요'); if (typeof done === 'function') done(); });
     }
 
     // ===== 초기화 =====

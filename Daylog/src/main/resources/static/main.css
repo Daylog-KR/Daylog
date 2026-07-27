@@ -142,10 +142,14 @@ body.picking .navbar .notif-btn { display: none; }
 .navbar .chat-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
 .navbar .chat-btn:active { transform: scale(0.96); }
 body.picking .navbar .chat-btn { display: none; }
+/* [B] edit by smsong - 채팅 배지를 알림 배지(notif-badge)와 완전히 동일한 빨간 숫자 원으로 통일 */
 .chat-badge {
-    position: absolute; top: -3px; right: -3px; min-width: 8px; height: 8px;
-    background: var(--rose, #cf8b8b); border-radius: 50%; border: 2px solid var(--white);
+    position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 9px; background: #e5322d; color: #fff; font-size: 0.68rem; font-weight: 800;
+    line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--white); z-index: 3;
+    pointer-events: none; width: auto;
 }
+.chat-badge.hidden { display: none; }
 /* [E] edit by smsong */
 /* 필터 컨트롤은 알림 오른쪽에 붙임(맨 오른쪽), 로그아웃(설정)도 맨 오른쪽 */
 body[data-active-tab="tab-map"] .header-map-controls,

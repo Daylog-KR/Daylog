@@ -544,14 +544,20 @@ function renderChatRooms(rooms) {
             '</div>' +
         '</div>';
     }).join('');
-    // 클릭 → 그 방으로 입장하면서 채팅 자동 열기
+    // 클릭 → 페이지 이동 없이 이 자리에서 채팅 패널 열기
     listEl2.querySelectorAll('.rchat-item').forEach(el => {
         el.addEventListener('click', () => {
             const rid = el.getAttribute('data-room');
-            const rname = el.getAttribute('data-name') || '';
-            const rtype = el.getAttribute('data-type') || 'COUPLE';
-            try { localStorage.setItem('openChatOnEnter', '1'); } catch (e) {} // main.js 가 읽어서 채팅 패널 자동 오픈
-            enterRoom({ id: rid, name: rname, type: rtype });
+            if (!rid) return;
+            if (window.Daylog && typeof window.Daylog.openChat === 'function') {
+                window.Daylog.openChat(rid); // rooms.html 에서 바로 해당 방 채팅 오픈
+            } else {
+                // chat.js 미로드 시 폴백: 기존처럼 방 입장 후 main 에서 열기
+                const rname = el.getAttribute('data-name') || '';
+                const rtype = el.getAttribute('data-type') || 'COUPLE';
+                try { localStorage.setItem('openChatOnEnter', '1'); } catch (e) {}
+                enterRoom({ id: rid, name: rname, type: rtype });
+            }
         });
     });
 }
@@ -561,6 +567,12 @@ function setChatTabBadge(n) {
     if (n && n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.classList.remove('hidden'); }
     else { b.classList.add('hidden'); }
 }
+// [B] edit by smsong - 채팅 패널을 닫으면(chat.js) 채팅 리스트/배지 갱신
+window.Daylog = window.Daylog || {};
+window.Daylog.onChatClosed = function () {
+    if (currentView === 'chat') loadChatRooms();
+    else preloadChatBadge();
+};
 // 채팅 탭에 들어가지 않아도 안읽음 총합 배지를 보여주기 위한 가벼운 프리로드
 async function preloadChatBadge() {
     try {
