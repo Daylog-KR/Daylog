@@ -1935,6 +1935,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* [E] edit by smsong */
 .cl-check-label {
     display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
+    line-height: 1; /* 텍스트가 위로 붙지 않고 세로 중앙에 오도록 */
     color: var(--gray-600); font-weight: 700; cursor: pointer; user-select: none;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
