@@ -3746,11 +3746,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력 (사용자가 비워둔 경우에만)
+        // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력
+        //  [B] edit by smsong - #44 위치를 바꾸면 제목도 새 장소명으로 갱신한다.
+        //   비어 있거나 '직전 자동입력값 그대로'면 덮어쓰고, 사용자가 손으로 고친 제목은 보존한다.
         const titleEl = document.getElementById('cl-title');
-        if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
-            titleEl.value = window._pendingPlaceTitle;
+        if (titleEl && window._pendingPlaceTitle) {
+            const cur = titleEl.value.trim();
+            if (!cur || cur === (window._lastAutoTitle || '')) {
+                titleEl.value = window._pendingPlaceTitle;
+                window._lastAutoTitle = window._pendingPlaceTitle;
+            }
         }
+        // [E] edit by smsong
         // [B][E] edit by smsong - #44 이 위치/장소를 사진 검색 기준으로 확정 (지우기 전에!)
         if (window.Daylog && Daylog.placeImages) {
             Daylog.placeImages.setPlace(
@@ -5434,11 +5441,17 @@ function openMemoryModal() {
     modal.classList.remove('hidden');
     const d = document.getElementById('memory-date');
     if (!d.value) d.value = new Date().toISOString().substring(0, 10);
-    // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력 (비어 있을 때만)
+    // 장소 검색으로 고른 경우 제목을 상호명으로 자동 입력
+    //  [B] edit by smsong - #44 위치를 바꾸면 제목도 새 장소명으로 갱신 (직전 자동값과 같을 때만)
     const titleEl = document.getElementById('memory-title');
-    if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
-        titleEl.value = window._pendingPlaceTitle;
+    if (titleEl && window._pendingPlaceTitle) {
+        const cur = titleEl.value.trim();
+        if (!cur || cur === (window._lastAutoTitle || '')) {
+            titleEl.value = window._pendingPlaceTitle;
+            window._lastAutoTitle = window._pendingPlaceTitle;
+        }
     }
+    // [E] edit by smsong
     // [B][E] edit by smsong - #44 이 위치/장소를 사진 검색 기준으로 확정 (지우기 전에!)
     if (window.Daylog && Daylog.placeImages) {
         Daylog.placeImages.setPlace(
@@ -5459,6 +5472,7 @@ function closeMemoryModal() {
     const lm = document.getElementById('location-mode');
     if (lm) lm.classList.add('hidden');
     if (window.Daylog && Daylog.placeImages) Daylog.placeImages.reset();
+    window._lastAutoTitle = ''; // [B][E] edit by smsong - #44 다음 작성 때 새 장소명이 제목에 들어가도록 초기화
 }
 
 // ====== 가볼곳(체크리스트) 모달 ======
@@ -5483,9 +5497,10 @@ function closeChecklistModal() {
     if (clChk) { clChk.checked = false; const lbl = clChk.closest('.cl-check-label'); if (lbl) lbl.classList.remove('checked'); }
     const lm = document.getElementById('location-mode');
     if (lm) lm.classList.add('hidden');
-}
-
-let _detailChecklist = null;
+    // [B][E] edit by smsong - #44 자동 제목 추적 초기화 + 열린 사진 시트 닫기
+    window._lastAutoTitle = '';
+    if (window.Daylog && Daylog.placeImages) Daylog.placeImages.reset();
+}let _detailChecklist = null;
 
 function openChecklistDetail(item, overModal) {
     _detailChecklist = item;

@@ -26,60 +26,56 @@
     function injectStyle() {
         if (document.getElementById('pi-style')) return;
         var css =
-            '.pi-fetch{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:9px 14px;' +
-            'border:1px dashed var(--gray-200,#e5e0d8);border-radius:13px;background:var(--gray-50,#faf9f8);' +
-            'color:var(--gray-600,#5c5751);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;}' +
-            '.pi-fetch:active{transform:scale(.98);}' +
-            '.pi-fetch:disabled{opacity:.5;cursor:default;}' +
+            // 가볼곳 사진 그리드의 '＋' 옆에 같은 크기(정사각형)로 놓이는 타일 버튼.
+            //  .media-add 와 동일한 aspect-ratio / 모양을 맞춰 나란히 보이게 한다.
+            '.pi-fetch{aspect-ratio:1/1;border-radius:12px;border:2px dashed var(--primary-light,#e6ccb2);' +
+                'background:var(--gray-50,#faf9f8);color:var(--primary,#b08968);cursor:pointer;' +
+                'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
+                'font-family:inherit;font-size:0.66rem;font-weight:700;line-height:1.15;text-align:center;padding:4px;}' +
+            '.pi-fetch:hover{background:var(--primary-light,#e6ccb2);}' +
+            '.pi-fetch:active{transform:scale(.97);}' +
+            '.pi-fetch svg{width:20px;height:20px;}' +
 
             '#pi-overlay{position:fixed;inset:0;z-index:2900;background:rgba(45,38,32,.52);' +
-            'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
+                'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
             '@media (min-width:600px){#pi-overlay{align-items:center;}}' +
             '#pi-card{width:100%;max-width:560px;max-height:88dvh;display:flex;flex-direction:column;' +
-            'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
-            'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
+                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
+                'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
             '@media (min-width:600px){#pi-card{border-radius:22px;}}' +
 
             '.pi-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
-            'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
+                'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#2e2b28);}' +
             '.pi-head .pi-q{font-size:0.8rem;color:var(--gray-500,#7a756e);font-weight:600;' +
-            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
             '.pi-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
-            'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
-
-            '.pi-search{display:flex;gap:8px;padding:12px 16px 4px;}' +
-            '.pi-search input{flex:1;min-width:0;border:1px solid var(--gray-200,#e5e0d8);border-radius:11px;' +
-            'padding:10px 12px;font-family:inherit;font-size:0.9rem;color:var(--gray-800,#2e2b28);' +
-            'background:var(--white,#fffdf9);}' +
-            '.pi-search input:focus{outline:none;border-color:var(--primary,#b08968);}' +
-            '.pi-search button{flex:none;border:none;border-radius:11px;padding:0 16px;font-family:inherit;' +
-            'font-size:0.88rem;font-weight:700;background:var(--primary,#b08968);color:#fff;cursor:pointer;}' +
+                'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
             '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
             '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;cursor:pointer;' +
-            'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
+                'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
             '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);}' +
             '.pi-no{position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;border-radius:50%;' +
-            'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
-            'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
-            'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
+                'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
+                'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
+                'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
             '.pi-cell.sel .pi-no{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
-            'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
-            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+                'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
+                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
 
             '.pi-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
-            'border-top:1px solid var(--gray-100,#f3f0ec);}' +
+                'border-top:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
-            'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
+                'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
             '.pi-btn.ghost{background:var(--gray-100,#f3f0ec);color:var(--gray-600,#5c5751);}' +
             '.pi-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-btn:disabled{opacity:.5;cursor:default;}' +
@@ -148,29 +144,21 @@
         ov.id = 'pi-overlay';
         ov.innerHTML =
             '<div id="pi-card" role="dialog" aria-modal="true" aria-label="장소 사진 가져오기">' +
-            '<div class="pi-head">' +
-            '<h3>장소 사진</h3>' +
-            '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
-            '</div>' +
-            // 검색어를 시트 안에서 직접 고칠 수 있게 한다 —
-            //  제목칸이 실제 장소와 다를 때(지도만 옮긴 경우 등) 여기서 바로잡는다.
-            '<div class="pi-search">' +
-            '<input type="text" id="pi-q-input" placeholder="가게 이름으로 검색" ' +
-            'value="' + esc(cfg.query || '') + '">' +
-            '<button type="button" id="pi-q-btn">검색</button>' +
-            '</div>' +
-            '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
-            '<div class="pi-foot">' +
-            '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
-            '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
-            '</div>' +
+                '<div class="pi-head">' +
+                    '<h3>장소 사진</h3>' +
+                    '<span class="pi-q">' + esc(cfg.query || '') + '</span>' +
+                    '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
+                '</div>' +
+                '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
+                '<div class="pi-foot">' +
+                    '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
+                    '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
+                '</div>' +
             '</div>';
         document.body.appendChild(ov);
 
         var body = ov.querySelector('#pi-body');
         var addBtn = ov.querySelector('#pi-add');
-        var qInput = ov.querySelector('#pi-q-input');
-        var qBtn = ov.querySelector('#pi-q-btn');
         var picked = [];   // 선택 순서 유지
 
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
@@ -182,14 +170,13 @@
             addBtn.textContent = picked.length ? (picked.length + '장 추가') : '추가';
         }
 
-        // --- 검색 (검색어가 바뀌면 언제든 다시 실행) ---
-        function runSearch(q) {
-            q = (q || '').trim();
-            if (!q) { body.innerHTML = '<div class="pi-msg">검색할 가게 이름을 입력해주세요.</div>'; return; }
-            picked = [];
-            refreshBtn();
-            body.innerHTML = '<div class="pi-msg">사진을 찾는 중…</div>';
-
+        // --- 검색 (버튼을 누른 시점의 장소명으로 자동 검색) ---
+        (function runSearch() {
+            var q = (cfg.query || '').trim();
+            if (!q) {
+                body.innerHTML = '<div class="pi-msg">먼저 장소를 검색하거나<br>제목을 입력해주세요.</div>';
+                return;
+            }
             var url = apiBase() + '/api/search/place-images?query=' + encodeURIComponent(q);
             if (cfg.region) url += '&region=' + encodeURIComponent(cfg.region);
 
@@ -197,8 +184,8 @@
                 .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
                 .then(function (items) {
                     if (!Array.isArray(items) || !items.length) {
-                        body.innerHTML = '<div class="pi-msg">이 이름으로는 사진을 찾지 못했습니다.<br>' +
-                            '가게 이름을 조금 더 정확히 적어보세요.</div>';
+                        body.innerHTML = '<div class="pi-msg">이 장소의 사진을 찾지 못했습니다.<br>' +
+                            '제목을 조금 더 정확한 가게 이름으로 바꿔보세요.</div>';
                         return;
                     }
                     render(items);
@@ -206,14 +193,7 @@
                 .catch(function () {
                     body.innerHTML = '<div class="pi-msg">사진을 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div>';
                 });
-        }
-
-        qBtn.addEventListener('click', function () { runSearch(qInput.value); });
-        qInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); runSearch(qInput.value); }
-        });
-
-        runSearch(cfg.query || '');   // 최초 1회 자동 검색 (비어 있으면 안내만 표시)
+        })();
 
         function render(items) {
             var grid = document.createElement('div');
@@ -273,11 +253,11 @@
             picked.forEach(function (it, idx) {
                 seq = seq.then(function () {
                     return fetch(apiBase() + '/api/search/image-proxy?url=' + encodeURIComponent(it.url),
-                        { headers: headers() })
+                                 { headers: headers() })
                         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
                         .then(function (blob) {
                             files.push(new File([blob], 'place_' + Date.now() + '_' + idx + '.jpg',
-                                { type: 'image/jpeg' }));
+                                                { type: 'image/jpeg' }));
                         })
                         .catch(function () { /* 개별 실패는 건너뛴다 */ });
                 });
@@ -293,38 +273,59 @@
                 if (mgr) mgr.addFiles(files);
                 close();
                 toast(files.length + '장을 추가했어요' +
-                    (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
+                      (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
             });
         });
     }
 
     // ---------- 버튼 부착 ----------
-    // 그리드 바로 다음 형제로 버튼을 넣는다.
-    //  (그리드 안에 넣으면 mgr.render() 의 innerHTML='' 에 같이 지워진다)
+    //  가볼곳 그리드의 '＋' 타일 바로 뒤에 같은 크기 타일 버튼을 넣는다.
+    //  mgr.render() 가 그리드를 매번 새로 그리므로(innerHTML=''), render 를 래핑해
+    //  매 렌더 직후 버튼을 다시 붙인다.
+    function makeBtn(cfg) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pi-fetch';
+        btn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/>' +
+            '<path d="M21 16l-5-5-6 6"/></svg><span>장소 사진</span>';
+        btn.addEventListener('click', function () {
+            var q = (typeof cfg.query === 'function' ? cfg.query() : cfg.query) || '';
+            q = String(q).trim();
+            var r = (typeof cfg.region === 'function' ? cfg.region() : cfg.region) || '';
+            open({ query: q, region: r, mgr: (typeof cfg.mgr === 'function' ? cfg.mgr() : cfg.mgr) });
+        });
+        return btn;
+    }
+
     function attach(cfg) {
         var grid = document.getElementById(cfg.gridId);
         if (!grid || grid._piBound) return;
         grid._piBound = true;
         injectStyle();
 
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'pi-fetch';
-        btn.innerHTML =
-            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-            'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-            '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/>' +
-            '<path d="M21 16l-5-5-6 6"/></svg> 장소 사진 가져오기';
+        // 렌더 직후 버튼을 그리드 마지막(＋ 다음)에 붙이는 함수
+        function place() {
+            if (grid.querySelector('.pi-fetch')) return; // 중복 방지
+            grid.appendChild(makeBtn(cfg));
+        }
 
-        btn.addEventListener('click', function () {
-            var q = (typeof cfg.query === 'function' ? cfg.query() : cfg.query) || '';
-            q = String(q).trim();
-            var r = (typeof cfg.region === 'function' ? cfg.region() : cfg.region) || '';
-            // 검색어가 비어도 시트는 연다 — 사용자가 시트 안 검색창에서 직접 입력할 수 있다.
-            open({ query: q, region: r, mgr: (typeof cfg.mgr === 'function' ? cfg.mgr() : cfg.mgr) });
-        });
-
-        grid.insertAdjacentElement('afterend', btn);
+        // mgr 이 준비돼 있으면 render 를 래핑, 아니면 잠깐 뒤 재시도
+        (function hook(tries) {
+            var mgr = (typeof cfg.mgr === 'function') ? cfg.mgr() : cfg.mgr;
+            if (mgr && typeof mgr.render === 'function' && !mgr._piWrapped) {
+                mgr._piWrapped = true;
+                var orig = mgr.render;
+                mgr.render = function () { orig.apply(this, arguments); place(); };
+                mgr.render(); // 즉시 한 번
+            } else if ((!mgr || typeof mgr.render !== 'function') && tries > 0) {
+                setTimeout(function () { hook(tries - 1); }, 200);
+            } else {
+                place(); // 최후 폴백: 그냥 현재 그리드에 한 번 붙인다
+            }
+        })(10);
     }
 
     function val(id) {
@@ -361,35 +362,13 @@
         return '';
     }
 
-    // 폼 4곳(추억 작성/수정, 가볼곳 작성/수정)에 버튼을 붙인다.
+    // 가볼곳(체크리스트) 작성 폼에서만 사용한다. (추억 폼에서는 제거)
     function mount() {
-        // 추억 작성 — 제목칸(현재 값) 우선, region 은 지금 배지에서 실시간으로 읽는다
-        attach({
-            gridId: 'memory-media-grid',
-            mgr: function () { return global._memCreateMgr; },
-            query: function () { return currentPlace('memory-title'); },
-            region: function () { return regionHint(text('location-status-badge')) || _place.region; }
-        });
-        // 가볼곳 작성
         attach({
             gridId: 'cl-media-grid',
             mgr: function () { return global._clCreateMgr; },
             query: function () { return currentPlace('cl-title'); },
             region: function () { return regionHint(text('location-status-badge')) || _place.region; }
-        });
-        // 추억 수정 — 여긴 확정 장소 개념이 없으니 제목을 쓴다
-        attach({
-            gridId: 'edit-media-grid',
-            mgr: function () { return global._memEditMgr; },
-            query: function () { return val('edit-memory-title'); },
-            region: function () { return regionHint(text('edit-loc')); }
-        });
-        // 가볼곳 수정
-        attach({
-            gridId: 'cl-edit-media-grid',
-            mgr: function () { return global._clEditMgr; },
-            query: function () { return val('cl-edit-title'); },
-            region: function () { return regionHint(text('cl-edit-loc')); }
         });
     }
 
