@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatService chatService;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     // roomId -> 그 방을 구독중인 세션들
     private final Map<Long, Set<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
