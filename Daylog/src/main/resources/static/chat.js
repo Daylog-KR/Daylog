@@ -427,8 +427,8 @@
         var css =
             '#dml-overlay{position:fixed;inset:0;z-index:10050;background:rgba(45,38,32,0.5);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;}' +
             '#dml-overlay.show{opacity:1;}' +
-            '.dml-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:74vh;display:flex;flex-direction:column;transform:translateY(18px);transition:transform .24s cubic-bezier(.2,.8,.3,1);}' +
-            '#dml-overlay.show .dml-sheet{transform:none;}' +
+            '.dml-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:74vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);will-change:transform;}' +
+            '#dml-overlay.show .dml-sheet{transform:translateY(0);}' +
             '.dml-handle{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:8px auto 6px;}' +
             '.dml-title{font-size:0.98rem;font-weight:700;color:var(--gray-800);text-align:center;padding:4px 16px 10px;border-bottom:1px solid var(--gray-100);}' +
             '.dml-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;min-height:60px;}' +
@@ -458,7 +458,7 @@
             '</div>';
         document.body.appendChild(ov);
         requestAnimationFrame(function () { ov.classList.add('show'); });
-        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 300); }
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         document.getElementById('dml-close').addEventListener('click', close);
 
@@ -487,17 +487,9 @@
                         var uid = row.getAttribute('data-uid');
                         var nm = row.getAttribute('data-name') || '';
                         var pf = row.getAttribute('data-profile') || '';
-                        // [B] edit by smsong - 멤버 리스트는 '닫지 않고' 유지한다(프로필 위에 겹쳐 띄움).
-                        //  → 프로필에서 '닫기'를 누르면 채팅방으로 나가지 않고 멤버 리스트로 돌아온다.
+                        // [B] edit by smsong - 아바타/이름 어디를 눌러도 상대 프로필 모달을 연다(확대는 그 모달 안에서).
+                        //  멤버 리스트는 '닫지 않고' 유지 → 프로필 '닫기' 시 멤버 리스트로 복귀.
                         openPeerProfile(uid, { name: nm, profileURL: pf });
-                    });
-                });
-                // [B] edit by smsong - 멤버 프로필 썸네일 클릭 → 이미지 크게보기 (행 클릭보다 우선)
-                el.querySelectorAll('img.dml-ava').forEach(function (im) {
-                    im.style.cursor = 'zoom-in';
-                    im.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        viewImage(im.getAttribute('src'), im);
                     });
                 });
             })
@@ -728,10 +720,13 @@
         if (_oldOv && _oldOv.parentNode) _oldOv.parentNode.removeChild(_oldOv);
         if (_oldPn && _oldPn.parentNode) _oldPn.parentNode.removeChild(_oldPn);
         // [B] edit by smsong - 새 채팅을 열 때(예: 멤버 프로필 → 1:1 대화하기) 남아있는 관련 모달들도 정리
-        ['dml-overlay', 'dcs-overlay', 'dpp-overlay'].forEach(function (id) {
+        ['dml-overlay', 'dcs-overlay', 'dpp-overlay', 'dlb-overlay'].forEach(function (id) {
             var e = document.getElementById(id);
             if (e && e.parentNode) e.parentNode.removeChild(e);
         });
+        // 메인(main.js)의 라이트박스가 열려 있거나 '지연 애니메이션' 대기 중이면 확실히 닫는다
+        //  → 프로필 사진을 확대로 잘못 열었다가 채팅 진입 후 뒤늦게 떠오르던 문제 차단.
+        if (typeof window.closeLightbox === 'function') { try { window.closeLightbox(); } catch (e) {} }
         // 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
         activeRoomId = (targetRoomId && String(targetRoomId)) || null;
         if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
@@ -935,6 +930,27 @@
             if (!document.hidden) { refreshBadge(); if (!ws || ws.readyState > 1) wsConnect(); }
         });
         window.addEventListener('focus', function () { if (!ws || ws.readyState > 1) wsConnect(); });
+
+        // [B] edit by smsong - 안드로이드/브라우저 뒤로가기: 채팅 오버레이들을 위→아래 순으로 등록.
+        //  nav.js 가 뒤로가기마다 '최상단 레이어 하나'만 닫아 준다.
+        //  (기존엔 채팅 오버레이가 등록되지 않아 뒤로가기가 엉뚱하게 동작했다)
+        if (window.DaylogNav && typeof window.DaylogNav.registerProvider === 'function') {
+            function _closeOv(id) {
+                var ov = document.getElementById(id);
+                if (!ov) return;
+                ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 220);
+            }
+            window.DaylogNav.registerProvider(function () {
+                var layers = [];
+                if (document.getElementById('dlb-overlay')) layers.push({ name: 'dlb', close: function () { _closeOv('dlb-overlay'); } });
+                if (document.getElementById('dpp-overlay')) layers.push({ name: 'dpp', close: closePeerProfile });
+                if (document.getElementById('dml-overlay')) layers.push({ name: 'dml', close: function () { _closeOv('dml-overlay'); } });
+                if (document.getElementById('dcs-overlay')) layers.push({ name: 'dcs', close: function () { _closeOv('dcs-overlay'); } });
+                if (document.getElementById('dchat-panel')) layers.push({ name: 'dchat', close: closePanel });
+                return layers; // 위(라이트박스) → 아래(패널)
+            });
+        }
 
         // [B] edit by smsong - 채팅 푸시 클릭 진입: URL 에 chat=1 이면 해당 방 채팅을 바로 연다.
         //  (웹푸시 url = /main.html?room={id}&chat=1 → sw.js 가 이 주소로 이동 → 여기서 패널 오픈)

@@ -896,7 +896,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* ================= 이미지 라이트박스 ================= */
 .lightbox {
-    position: fixed; inset: 0; z-index: 4000;
+    position: fixed; inset: 0; z-index: 10080; /* [B][E] edit by smsong - 채팅 오버레이(≤10070) 위로 */
     background: rgba(15, 13, 11, 0.94);
     display: flex; align-items: center; justify-content: center;
     animation: backdropIn 0.25s ease;

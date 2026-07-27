@@ -5633,7 +5633,19 @@ function openChecklistDetail(item, overModal) {
     bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
     Daylog._fitDetailStage(document.getElementById('cl-detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
     const av = document.getElementById('cl-author-avatar');
-    if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
+    if (av) {
+        // [B] edit by smsong - 작성자 아바타/이름 클릭 → 상대 프로필 모달(1:1). 내 글이면 사진 확대.
+        const _openAuthor = () => {
+            if (isOwner) { openLightbox(authorPhoto, av); return; }
+            if (window.Daylog && typeof Daylog.openPeerProfile === 'function')
+                Daylog.openPeerProfile(item.ownerUid, { name: authorName, profileURL: authorPhoto });
+            else openLightbox(authorPhoto, av);
+        };
+        av.style.cursor = 'pointer';
+        av.addEventListener('click', _openAuthor);
+        const _an = av.parentNode && av.parentNode.querySelector('.da-name');
+        if (_an) { _an.style.cursor = 'pointer'; _an.addEventListener('click', _openAuthor); }
+    }
     const locEl = document.getElementById('cl-detail-loc');
     if (locEl && item.lat != null && item.lng != null) {
         locEl.addEventListener('click', () => Daylog.focusChecklistOnMap && Daylog.focusChecklistOnMap(item));
@@ -6237,7 +6249,19 @@ function openDetailModal(memory, overModal) {
 
     // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
     const da = document.getElementById('detail-author-avatar');
-    if (da) da.addEventListener('click', () => openLightbox(authorPhoto, da));
+    if (da) {
+        // [B] edit by smsong - 작성자 아바타/이름 클릭 → 상대 프로필 모달(1:1). 내 글이면 사진 확대.
+        const _openAuthorM = () => {
+            if (isOwner) { openLightbox(authorPhoto, da); return; }
+            if (window.Daylog && typeof Daylog.openPeerProfile === 'function')
+                Daylog.openPeerProfile(memory.ownerUid, { name: authorName, profileURL: authorPhoto });
+            else openLightbox(authorPhoto, da);
+        };
+        da.style.cursor = 'pointer';
+        da.addEventListener('click', _openAuthorM);
+        const _an2 = da.parentNode && da.parentNode.querySelector('.da-name');
+        if (_an2) { _an2.style.cursor = 'pointer'; _an2.addEventListener('click', _openAuthorM); }
+    }
 
     const eo = document.getElementById('detail-edit-open');
     if (eo) eo.addEventListener('click', () => enterDetailEdit(memory));
