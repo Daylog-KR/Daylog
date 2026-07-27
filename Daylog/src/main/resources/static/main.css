@@ -1935,7 +1935,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* [E] edit by smsong */
 .cl-visited-col label.cl-check-label {
     display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
-    color: var(--gray-600); font-weight: 700; cursor: pointer; user-select: none;
+    color: var(--gray-600); font-weight: 500; cursor: pointer; user-select: none;
     margin: 0; padding: 0;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -1949,7 +1949,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     background: #8ed94f; border-color: #6fbf3a; color: #fff;
     box-shadow: 0 0 0 4px rgba(142, 217, 79, 0.28);
 }
-.cl-check-label.checked::before { content: '✓'; font-weight: 800; }
+.cl-check-label.checked::before { content: '✓'; font-weight: 600; }
 .cl-file-input { font-size: 0.85rem; }
 
 /* ---- 가볼곳 상세 ---- */

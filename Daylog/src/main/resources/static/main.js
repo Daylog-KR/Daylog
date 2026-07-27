@@ -3789,7 +3789,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasImage = clFiles.length > 0;
         // '다녀왔습니다'가 체크된 경우 이미지는 필수
         if (visited && !hasImage) {
-            showToast('다녀왔습니다로 표시하려면 사진을 첨부해주십시오');
+            showToast('다녀옴으로 표시하려면 사진을 첨부해주십시오');
             alert('다녀온 곳은 사진을 반드시 첨부해야 합니다.');
             return;
         }
