@@ -5863,6 +5863,9 @@ function openLayerStack() {
     var L = [];
     var add = function (name, el, cond, close) { if (el && cond) L.push({ name: name, close: close }); };
 
+    // [B][E] edit by smsong - #44 장소 사진 시트 (가장 위 레이어)
+    if (Daylog.placeImages) { try { L = L.concat(Daylog.placeImages.layers() || []); } catch (e) {} }
+
     var lb = document.getElementById('lightbox');
     add('lightbox', lb, lb && !lb.classList.contains('hidden'), closeLightbox);
 
@@ -8429,6 +8432,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window._clCreateMgr = _mkMgr('cl-media-grid', 'cl-image');
     window._memEditMgr = _mkMgr('edit-media-grid', 'edit-media-input');
     window._clEditMgr = _mkMgr('cl-edit-media-grid', 'cl-edit-image-file');
+
+    // [B][E] edit by smsong - #44 그리드 아래에 '장소 사진 가져오기' 버튼 부착
+    if (window.Daylog && Daylog.placeImages) Daylog.placeImages.mount();
 
     // 상세 수정 폼
     const detailEditForm = document.getElementById('detail-edit-form');

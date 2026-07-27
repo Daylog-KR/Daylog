@@ -39,6 +39,17 @@ daylog:
     zone: Asia/Seoul
     link: main.html
   # [E] edit by smsong
+  # [B] edit by smsong - #44 장소 사진 자동 첨부
+  #  네이버 '이미지 검색' API 로 상호명 사진 후보를 뽑아 사용자가 고르게 한다.
+  #  자격증명은 OAuth2 로그인용 네이버 앱과 공유한다
+  #  (네이버 개발자센터는 한 앱에 로그인 + 검색을 같이 켜고 Client ID/Secret 을 공유한다).
+  place-image:
+    enabled: true
+    client-id: ${NAVER_ID}
+    client-secret: ${NAVER_SECRET_ID}
+    result-max: 15        # 선택 시트에 띄울 후보 장수
+    max-edge: 1600        # 첨부 시 긴 변 축소 크기(px). multipart 20MB 제한에 여유 충분
+  # [E] edit by smsong
 
 google:
   cloud:
