@@ -2380,6 +2380,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm('로그아웃을 진행합니다.')) serverLogoutThenRedirect('로그아웃 되었습니다.');
     });
 
+    // [B] edit by smsong - 방 채팅 버튼 (기능은 추후 구현 · 현재는 준비 중 안내)
+    var _btnChat = document.getElementById('btn-chat');
+    if (_btnChat) _btnChat.addEventListener('click', (e) => {
+        e.preventDefault();
+        showToast('채팅 기능은 준비 중입니다');
+    });
+    // [E] edit by smsong
+
     // [B] edit by smsong - main 상단 좌측 Daylog 로고 → 확인 후 방 목록으로 이동 (main 페이지 전용)
     const navLogo = document.querySelector('.navbar .logo');
     if (navLogo) {

@@ -131,6 +131,22 @@ body[data-active-tab="tab-map"] #btn-logout { display: none; }
 .navbar .notif-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
 .navbar .notif-btn:active { transform: scale(0.96); }
 body.picking .navbar .notif-btn { display: none; }
+/* [B] edit by smsong - 방 채팅 버튼: 알림과 동일 톤, 알림 오른쪽(맨 우측)에 모든 탭 공통 표시 */
+.navbar .chat-btn {
+    order: 52; margin-left: 0; flex-shrink: 0; position: relative;
+    width: 40px; height: 40px; border-radius: 12px; padding: 0; cursor: pointer;
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s ease, background 0.2s, color 0.15s ease, border-color 0.15s ease;
+}
+.navbar .chat-btn:hover { background: var(--gray-50); color: var(--primary-dark); border-color: var(--primary-light); }
+.navbar .chat-btn:active { transform: scale(0.96); }
+body.picking .navbar .chat-btn { display: none; }
+.chat-badge {
+    position: absolute; top: -3px; right: -3px; min-width: 8px; height: 8px;
+    background: var(--rose, #cf8b8b); border-radius: 50%; border: 2px solid var(--white);
+}
+/* [E] edit by smsong */
 /* 필터 컨트롤은 알림 오른쪽에 붙임(맨 오른쪽), 로그아웃(설정)도 맨 오른쪽 */
 body[data-active-tab="tab-map"] .header-map-controls,
 body[data-active-tab="tab-timeline"] .header-timeline-controls,

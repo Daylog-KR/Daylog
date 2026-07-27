@@ -85,12 +85,12 @@
     </div>
     <div id="header-map-controls" class="header-map-controls">
         <div id="header-map-filter" class="header-map-filter">
-            <!-- [B] edit by smsong - 필터 기능 아이콘을 돋보기(검색 오해) → 깔때기(필터)로 변경 (스타일 동일) --><button type="button" id="btn-map-filter" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="22 4 2 4 10 12.46 10 19 14 21 14 12.46 22 4"/></svg></button><!-- [E] edit by smsong -->
+            <!-- [B][E] edit by smsong - 필터 버튼 제거(채팅으로 대체). 팝오버 마크업은 보존(여는 버튼 없어 미표시) -->
             <div id="map-filter-pop" class="map-filter-pop hidden"></div>
         </div>
     </div>
     <div id="header-timeline-controls" class="header-timeline-controls">
-        <!-- [B] edit by smsong - 필터 아이콘 변경(돋보기→깔때기) + 라벨 정정 --><button type="button" id="tl-filter-toggle" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="22 4 2 4 10 12.46 10 19 14 21 14 12.46 22 4"/></svg></button><!-- [E] edit by smsong -->
+        <!-- [B][E] edit by smsong - 필터 버튼 제거(채팅으로 대체). 팝오버 보존 -->
         <div id="tl-filter-pop" class="map-filter-pop hdr-filter-pop hidden">
                     <div class="filter-field">
                         <span class="filter-label">검색어</span>
@@ -116,7 +116,7 @@
         </div>
     </div>
     <div id="header-checklist-controls" class="header-checklist-controls">
-        <!-- [B] edit by smsong - 필터 아이콘 변경(돋보기→깔때기) + 라벨 정정 --><button type="button" id="cl-filter-toggle" class="hdr-icon-btn" title="필터" aria-label="필터"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polygon points="22 4 2 4 10 12.46 10 19 14 21 14 12.46 22 4"/></svg></button><!-- [E] edit by smsong -->
+        <!-- [B][E] edit by smsong - 필터 버튼 제거(채팅으로 대체). 팝오버 보존 -->
         <div id="cl-filter-pop" class="map-filter-pop hdr-filter-pop hidden">
                     <div class="filter-search-row cl-search-row">
                         <input type="text" id="cl-filter-keyword" placeholder="제목·내용·위치 검색" autocomplete="off">
@@ -150,8 +150,8 @@
     </div>
     <!-- [B] edit by smsong - #1 상단 로그아웃 → 알림 버튼(방별 알림). 로그아웃은 설정 메뉴에 있음 -->
     <button class="notif-btn" id="btn-notif" type="button" title="알림" aria-label="알림"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge hidden" id="notif-badge"></span></button>
-    <!-- [B] edit by smsong - #5 로그아웃 버튼 복원 (설정 탭 전용, 맨 오른쪽). 알림은 그 왼쪽 -->
-    <button class="logout-btn" id="btn-logout" type="button" title="로그아웃" aria-label="로그아웃"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+    <!-- [B] edit by smsong - 필터/로그아웃 버튼을 방 채팅 버튼으로 대체 (모든 탭 공통). 채팅 기능은 추후 구현 -->
+    <button class="chat-btn" id="btn-chat" type="button" title="채팅" aria-label="채팅"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="chat-badge hidden" id="chat-badge"></span></button>
     <!-- [E] edit by smsong -->
     <input type="file" id="memory-file" accept="image/*" multiple style="display: none;">
 </header>
