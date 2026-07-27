@@ -2,14 +2,19 @@ package com.example.Daylog.Service;
 
 import com.example.Daylog.DTO.ChatDTO;
 import com.example.Daylog.Entity.ChatMessageEntity;
+import com.example.Daylog.Entity.ChatMuteEntity;
 import com.example.Daylog.Entity.ChatReadEntity;
+import com.example.Daylog.Entity.RoomEntity;
 import com.example.Daylog.Entity.RoomMemberEntity;
 import com.example.Daylog.Entity.UserEntity;
 import com.example.Daylog.Repository.ChatMessageRepository;
+import com.example.Daylog.Repository.ChatMuteRepository;
 import com.example.Daylog.Repository.ChatReadRepository;
 import com.example.Daylog.Repository.RoomMemberRepository;
+import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,8 +29,14 @@ public class ChatService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatReadRepository chatReadRepository;
+    private final ChatMuteRepository chatMuteRepository;
     private final RoomMemberRepository roomMemberRepository;
+    private final RoomRepository roomRepository;
     private final UserRepository userRepository;
+
+    // 새 메시지 → 웹푸시 발송 연결점. 구현 빈이 없으면 푸시만 생략(선택 주입).
+    @Autowired(required = false)
+    private ChatPushSender chatPushSender;
 
     private static final int PAGE = 30;
 
@@ -136,11 +147,76 @@ public class ChatService {
         return chatMessageRepository.countByRoomIdAndIdGreaterThanAndSenderUidNot(roomId, lastRead, uid);
     }
 
+    // ===== 채팅 알림 끄기 (방별 · 유저별) =====
+    public boolean isChatMuted(Long roomId, String uid) {
+        if (roomId == null || uid == null) return false;
+        return chatMuteRepository.findByRoomIdAndUid(roomId, uid)
+                .map(ChatMuteEntity::isMuted).orElse(false);
+    }
+
+    @Transactional
+    public boolean setChatMuted(Long roomId, String uid, boolean muted) {
+        assertMember(uid, roomId);
+        ChatMuteEntity e = chatMuteRepository.findByRoomIdAndUid(roomId, uid).orElse(null);
+        if (e == null) {
+            e = ChatMuteEntity.builder().roomId(roomId).uid(uid).muted(muted).build();
+        } else {
+            e.setMuted(muted);
+        }
+        chatMuteRepository.save(e);
+        return muted;
+    }
+
+    // 방에서 채팅 알림을 끈 유저 uid 집합
+    public Set<String> chatMutedUids(Long roomId) {
+        Set<String> s = new HashSet<>();
+        for (ChatMuteEntity e : chatMuteRepository.findByRoomIdAndMutedTrue(roomId)) s.add(e.getUid());
+        return s;
+    }
+
+    // ===== 새 메시지 푸시 발송 =====
+    //  대상 = 방 멤버 − 발신자 − 채팅음소거자 − 지금 채팅방 접속중(excludeUids)
+    //  excludeUids: WebSocket 핸들러가 넘겨주는 '현재 이 방 채팅에 붙어있는 uid'(있으면 굳이 푸시 안 함)
+    public void notifyNewMessage(Long roomId, String senderUid, String content, Set<String> excludeUids) {
+        if (chatPushSender == null) return; // 어댑터 미구현 → 푸시 생략
+        try {
+            Set<String> muted = chatMutedUids(roomId);
+            List<String> targets = new ArrayList<>();
+            for (String uid : memberUids(roomId)) {
+                if (uid == null) continue;
+                if (uid.equals(senderUid)) continue;
+                if (muted.contains(uid)) continue;
+                if (excludeUids != null && excludeUids.contains(uid)) continue;
+                targets.add(uid);
+            }
+            if (targets.isEmpty()) return;
+
+            String roomName = roomRepository.findById(roomId).map(RoomEntity::getName).orElse("채팅");
+            String senderName = displayName(senderUid);
+            String preview = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+            if (preview.length() > 80) preview = preview.substring(0, 80) + "…";
+            String body = (senderName != null ? senderName + ": " : "") + preview;
+            String url = "/main.html?room=" + roomId;
+
+            chatPushSender.sendChatPush(targets, roomId, roomName, body, url);
+        } catch (Exception ignore) {
+            // 푸시 실패가 채팅 전송을 막지 않도록 무시
+        }
+    }
+
     // 방 삭제 시 채팅 정리 (RoomService.deleteRoom 에서 호출 권장)
     @Transactional
     public void deleteRoomChats(Long roomId) {
         chatMessageRepository.deleteByRoomId(roomId);
         chatReadRepository.deleteByRoomId(roomId);
+        chatMuteRepository.deleteByRoomId(roomId);
+    }
+
+    private String displayName(String uid) {
+        if (uid == null) return null;
+        UserEntity u = userRepository.findByUid(uid).orElse(null);
+        if (u == null) return null;
+        return (u.getNickname() != null && !u.getNickname().isBlank()) ? u.getNickname() : u.getName();
     }
 
     // ===== 내부 =====

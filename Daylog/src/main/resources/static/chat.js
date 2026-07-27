@@ -135,16 +135,17 @@
                 bubble +
                 '</div>';
         }
-        // 상대 메시지: 왼쪽. 연속이면 아바타/이름 생략.
-        var head = showHead
-            ? avatarHtml(m) + '<div class="dchat-name">' + esc(m.senderName || '알 수 없음') + '</div>'
-            : '<span class="dchat-ava-spacer"></span>';
+        // 상대 메시지: 카톡식. 아바타(왼쪽) + [닉네임 → 버블] 세로 배치. 연속이면 아바타/닉네임 생략.
+        var avatar = showHead ? avatarHtml(m) : '<span class="dchat-ava-spacer"></span>';
+        var nameLine = showHead ? '<div class="dchat-name">' + esc(m.senderName || '알 수 없음') + '</div>' : '';
         return '<div class="dchat-row other' + (showHead ? ' head' : '') + '" data-id="' + m.id + '">' +
-            (showHead ? '<div class="dchat-otherhead">' + head + '</div>' : '') +
-            '<div class="dchat-otherbody">' +
-                (showHead ? '' : '<span class="dchat-ava-spacer"></span>') +
-                bubble +
-                '<div class="dchat-meta">' + time + cnt + '</div>' +
+            '<div class="dchat-avacol">' + avatar + '</div>' +
+            '<div class="dchat-othercol">' +
+                nameLine +
+                '<div class="dchat-line">' +
+                    bubble +
+                    '<div class="dchat-meta">' + time + cnt + '</div>' +
+                '</div>' +
             '</div>' +
             '</div>';
     }
@@ -429,17 +430,18 @@
             '.dchat-daysep span{display:inline-block;background:var(--gray-100);color:var(--gray-500);font-size:0.72rem;padding:4px 12px;border-radius:12px;}' +
             '.dchat-sys{text-align:center;color:var(--gray-400);font-size:0.78rem;margin:6px 0;}' +
             // 공통 row
-            '.dchat-row{display:flex;align-items:flex-end;gap:6px;margin:2px 0;max-width:100%;}' +
+            '.dchat-row{display:flex;align-items:flex-end;gap:8px;margin:2px 0;max-width:100%;}' +
             '.dchat-row.mine{justify-content:flex-end;}' +
-            '.dchat-row.other{justify-content:flex-start;}' +
+            '.dchat-row.other{justify-content:flex-start;align-items:flex-start;}' +
             '.dchat-row.head{margin-top:12px;}' +
-            // 상대 헤더(아바타+이름)
-            '.dchat-otherhead{display:flex;align-items:center;gap:8px;margin-bottom:3px;padding-left:2px;}' +
-            '.dchat-ava{width:34px;height:34px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--gray-100);}' +
-            '.dchat-ava-ph{display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary-dark);background:var(--primary-light);font-size:0.95rem;}' +
-            '.dchat-ava-spacer{width:34px;flex-shrink:0;}' +
-            '.dchat-name{font-size:0.82rem;color:var(--gray-600);font-weight:600;}' +
-            '.dchat-otherbody{display:flex;align-items:flex-end;gap:6px;max-width:82%;}' +
+            // 상대: 아바타(좌) + [닉네임/버블] 세로 컬럼 (카톡식)
+            '.dchat-avacol{flex:0 0 auto;width:34px;}' +
+            '.dchat-ava{width:34px;height:34px;border-radius:14px;object-fit:cover;display:block;background:var(--gray-100);}' +
+            '.dchat-ava-ph{width:34px;height:34px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary-dark);background:var(--primary-light);font-size:0.95rem;}' +
+            '.dchat-ava-spacer{display:block;width:34px;}' +
+            '.dchat-othercol{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:calc(100% - 46px);}' +
+            '.dchat-name{font-size:0.82rem;color:var(--gray-600);font-weight:600;margin:0 0 1px 2px;}' +
+            '.dchat-line{display:flex;align-items:flex-end;gap:6px;min-width:0;}' +
             // 버블
             '.dchat-bubble{font-size:0.95rem;line-height:1.45;padding:9px 12px;border-radius:16px;word-break:break-word;white-space:pre-wrap;max-width:100%;}' +
             '.dchat-row.other .dchat-bubble{background:var(--white);color:var(--gray-800);border:1px solid var(--gray-100);border-top-left-radius:5px;}' +
@@ -459,14 +461,45 @@
                 'display:flex;align-items:center;justify-content:center;transition:transform .12s,filter .15s;}' +
             '.dchat-send:hover{filter:brightness(.96);}' +
             '.dchat-send:active{transform:scale(.94);}' +
-            // 상단 채팅 배지를 알림 배지와 동일한 숫자형으로
+            // 상단 채팅 배지를 알림(notif-badge)과 완전히 동일한 빨간 동그라미 숫자형으로
             '.chat-btn .chat-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;' +
-                'background:#e5322d;color:#fff;font-size:0.68rem;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--white);width:auto;}' +
+                'background:#e5322d;color:#fff;font-size:0.68rem;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px #fff;z-index:3;pointer-events:none;width:auto;}' +
             '.chat-btn .chat-badge.hidden{display:none;}';
         var st = document.createElement('style');
         st.id = 'dchat-style';
         st.textContent = css;
         document.head.appendChild(st);
+    }
+
+    // ===== 채팅 알림 끄기 토글 (방별 · 유저별) =====
+    //  · 설정 메뉴의 #btn-room-chat-notif-toggle 스위치와 연동.
+    //  · 스위치 ON = 채팅 푸시 켜짐 / OFF = 이 방 채팅 푸시만 끔(방 알림 토글과 별개).
+    var chatMuted = false;
+    function applyChatNotifToggle() {
+        var btn = document.getElementById('btn-room-chat-notif-toggle');
+        if (!btn) return;
+        var on = !chatMuted;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    function loadChatMute() {
+        if (!loggedIn() || !roomId()) return;
+        fetch(API + '/api/chat/' + roomId() + '/mute', { headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (d) { chatMuted = !!d.muted; applyChatNotifToggle(); } })
+            .catch(function () {});
+    }
+    function toggleChatMute() {
+        if (!loggedIn() || !roomId()) { toast('먼저 방을 선택해주세요'); return; }
+        var next = !chatMuted;
+        fetch(API + '/api/chat/' + roomId() + '/mute?muted=' + next, { method: 'POST', headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                chatMuted = (d && typeof d.muted === 'boolean') ? d.muted : next;
+                applyChatNotifToggle();
+                toast(chatMuted ? '채팅 알림 꺼짐' : '채팅 알림 켜짐');
+            })
+            .catch(function () { toast('변경에 실패했어요'); });
     }
 
     // ===== 초기화 =====
@@ -477,6 +510,9 @@
         refreshBadge();
         wsConnect(); // 패널을 안 열어도 실시간 배지 갱신을 위해 상시 연결
         setInterval(refreshBadge, 30000);
+        var _bcn = document.getElementById('btn-room-chat-notif-toggle'); // [B] 채팅 알림 끄기 토글
+        if (_bcn) _bcn.addEventListener('click', toggleChatMute);
+        loadChatMute();
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden) { refreshBadge(); if (!ws || ws.readyState > 1) wsConnect(); }
         });

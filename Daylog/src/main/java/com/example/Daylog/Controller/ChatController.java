@@ -54,5 +54,23 @@ public class ChatController {
         chatService.markRead(roomId, uid, lastId);
         return ResponseEntity.ok().build();
     }
+
+    // 채팅 알림 끄기 상태 조회 → {muted: bool}
+    @GetMapping("/{roomId}/mute")
+    public ResponseEntity<Map<String, Object>> getMute(@PathVariable("roomId") Long roomId,
+                                                       @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        return ResponseEntity.ok(Map.of("muted", chatService.isChatMuted(roomId, uid)));
+    }
+
+    // 채팅 알림 끄기 설정 → {muted: bool}
+    @PostMapping("/{roomId}/mute")
+    public ResponseEntity<Map<String, Object>> setMute(@PathVariable("roomId") Long roomId,
+                                                       @RequestParam("muted") boolean muted,
+                                                       @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        boolean now = chatService.setChatMuted(roomId, uid, muted);
+        return ResponseEntity.ok(Map.of("muted", now));
+    }
 }
 // [E] edit by smsong

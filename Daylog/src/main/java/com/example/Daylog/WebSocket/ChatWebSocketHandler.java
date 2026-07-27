@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatService chatService;
+    // [B] edit by smsong - ObjectMapper 빈이 컨텍스트에 없을 수 있어(WebMvc 자동설정 미포함 등) 직접 생성
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // roomId -> 그 방을 구독중인 세션들
@@ -82,6 +83,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         out.put("type", "msg");
         out.put("message", saved);
         broadcast(roomId, out);
+
+        // [B] edit by smsong - 새 메시지 푸시: 지금 이 방에 접속중(구독중)인 유저는 제외하고 발송
+        //  (접속중 유저는 실시간 메시지/배지로 이미 확인 → 오프라인/백그라운드 유저에게만 푸시)
+        chatService.notifyNewMessage(roomId, uid, content, onlineUids(roomId));
+    }
+
+    // 현재 이 방 채팅에 붙어있는(구독중인) 유저 uid 집합
+    private Set<String> onlineUids(long roomId) {
+        Set<String> online = new HashSet<>();
+        Set<WebSocketSession> set = roomSessions.get(roomId);
+        if (set != null) {
+            for (WebSocketSession s : set) {
+                if (s != null && s.isOpen()) {
+                    String u = uidOf(s);
+                    if (u != null) online.add(u);
+                }
+            }
+        }
+        return online;
     }
 
     private void handleRead(WebSocketSession session, String uid, long roomId, long lastId) {
