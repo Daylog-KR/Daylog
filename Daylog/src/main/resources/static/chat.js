@@ -775,6 +775,24 @@
             if (!document.hidden) { refreshBadge(); if (!ws || ws.readyState > 1) wsConnect(); }
         });
         window.addEventListener('focus', function () { if (!ws || ws.readyState > 1) wsConnect(); });
+
+        // [B] edit by smsong - 채팅 푸시 클릭 진입: URL 에 chat=1 이면 해당 방 채팅을 바로 연다.
+        //  (웹푸시 url = /main.html?room={id}&chat=1 → sw.js 가 이 주소로 이동 → 여기서 패널 오픈)
+        try {
+            var qs = new URLSearchParams(location.search || '');
+            if (qs.get('chat') === '1') {
+                var rid = qs.get('room') || roomId();
+                setTimeout(function () {
+                    try { openPanel(rid ? String(rid) : undefined); } catch (e) {}
+                    // 새로고침 시 재오픈 방지: chat 파라미터만 제거
+                    try {
+                        qs.delete('chat');
+                        var q = qs.toString();
+                        history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+                    } catch (e) {}
+                }, 400);
+            }
+        } catch (e) {}
     }
 
     window.Daylog = window.Daylog || {};

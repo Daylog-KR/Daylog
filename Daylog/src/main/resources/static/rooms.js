@@ -413,12 +413,53 @@ if (imgInput) {
 if (imgPreview) imgPreview.addEventListener('click', () => { if (imgInput) imgInput.click(); });
 if (imgClearBtn) imgClearBtn.addEventListener('click', () => resetRoomImagePicker(''));
 
+// [B] edit by smsong - 썸네일 회전 버그 근본 해결: 업로드 전에 EXIF 방향을 픽셀에 '구워서'
+//  똑바로 세운 JPEG 로 변환해 보낸다. (서버 썸네일 생성기가 EXIF 방향을 반영하지 못해
+//  회전돼 보이던 문제 → 애초에 방향 없는 정위치 이미지를 올리면 원본/썸네일 모두 정상)
+//  · createImageBitmap(file, {imageOrientation:'from-image'}) 이 EXIF 를 적용해 준다(안드로이드 크롬 지원).
+//  · 큰 사진은 최대 변에서 2048px 로 축소(용량↓). 실패/미지원 브라우저면 원본 그대로 업로드(안전).
+async function normalizeImageForUpload(file) {
+    try {
+        if (!file || !/^image\//.test(file.type)) return file;          // 이미지 아님
+        if (/gif|svg/i.test(file.type)) return file;                    // 애니메이션/벡터는 건드리지 않음
+        if (typeof createImageBitmap !== 'function' || typeof document.createElement('canvas').toBlob !== 'function') return file;
+
+        let bmp;
+        try {
+            bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+        } catch (e) {
+            bmp = await createImageBitmap(file); // 옵션 미지원 브라우저 → 방향 적용은 못하지만 진행
+        }
+
+        const MAX = 2048;
+        let w = bmp.width, h = bmp.height;
+        if (Math.max(w, h) > MAX) {
+            const s = MAX / Math.max(w, h);
+            w = Math.round(w * s); h = Math.round(h * s);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bmp, 0, 0, w, h);
+        if (bmp.close) { try { bmp.close(); } catch (e) {} }
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) return file;
+
+        const baseName = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg';
+        return new File([blob], baseName, { type: 'image/jpeg', lastModified: Date.now() });
+    } catch (e) {
+        return file; // 어떤 이유로든 실패하면 원본 그대로(업로드 자체는 막지 않음)
+    }
+}
+
 // 방 대표 이미지 업로드 (생성/이름수정 성공 후 호출) — 백엔드: POST /api/rooms/{id}/image (multipart, part명 'mediaData')
 async function uploadRoomImage(roomId, file) {
     if (!roomId || !file) return;
     try {
+        const upFile = await normalizeImageForUpload(file); // [B] edit by smsong - 방향 보정
         const fd = new FormData();
-        fd.append('mediaData', file);
+        fd.append('mediaData', upFile);
         const res = await fetch(`${API_BASE}/api/rooms/${roomId}/image`, {
             method: 'POST', headers: authHeaders(false), body: fd // FormData → Content-Type 자동
         });
@@ -595,7 +636,9 @@ function renderCurrentView() {
     if (chatList) chatList.style.display = isChat ? 'flex' : 'none';
     if (chatEmpty && !isChat) chatEmpty.style.display = 'none';
     // 방 만들기/코드입장 액션은 채팅 탭에서 숨김
-    var actions = document.querySelector('.rooms-actions');
+    //  [B] edit by smsong - 기존 querySelector('.rooms-actions') 는 헤더 아이콘 그룹을 먼저 잡아
+    //   채팅 탭에서 알림/프로필 버튼이 사라지던 버그가 있었다 → id 로 정확히 버튼 행만 토글.
+    var actions = document.getElementById('rooms-create-actions');
     if (actions) actions.style.display = isChat ? 'none' : 'flex';
 
     if (isChat) {
