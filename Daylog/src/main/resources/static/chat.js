@@ -574,12 +574,14 @@
 
     function openPanel(targetRoomId) {
         if (!loggedIn()) { toast('로그인이 필요해요'); return; }
-        // [B] edit by smsong - 이미 열려있으면 '먼저' 닫는다. closePanel 이 activeRoomId 를 null 로
-        //  되돌리므로, 반드시 닫은 뒤에 activeRoomId 를 지정해야 1:1 등 지정 방이 유지된다.
-        //  (기존엔 activeRoomId 지정 → closePanel 순서라, 지정 방이 지워져 이전 방/빈 채팅이 떴다)
-        if (document.getElementById('dchat-panel')) {
-            closePanel();
-        }
+        // [B] edit by smsong - 이미 열려있으면 '즉시(애니메이션 없이)' 제거한다.
+        //  closePanel 은 DOM 제거를 240ms 뒤로 미루는데, 그 사이 openPanel 이 같은 id 의 새 패널을
+        //  만들면 getElementById 가 '곧 사라질 옛 패널'을 먼저 잡아 히스토리/헤더가 옛 패널에 그려지고,
+        //  240ms 뒤 옛 패널이 지워지며 새(빈) 패널만 남았다 → 1:1 빈 채팅 버그. 그래서 여기서 동기 제거한다.
+        var _oldOv = document.getElementById('dchat-overlay');
+        var _oldPn = document.getElementById('dchat-panel');
+        if (_oldOv && _oldOv.parentNode) _oldOv.parentNode.removeChild(_oldOv);
+        if (_oldPn && _oldPn.parentNode) _oldPn.parentNode.removeChild(_oldPn);
         // 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
         activeRoomId = (targetRoomId && String(targetRoomId)) || null;
         if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
