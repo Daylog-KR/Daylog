@@ -429,7 +429,8 @@
                         var uid = row.getAttribute('data-uid');
                         var nm = row.getAttribute('data-name') || '';
                         var pf = row.getAttribute('data-profile') || '';
-                        close();
+                        // [B] edit by smsong - 멤버 리스트는 '닫지 않고' 유지한다(프로필 위에 겹쳐 띄움).
+                        //  → 프로필에서 '닫기'를 누르면 채팅방으로 나가지 않고 멤버 리스트로 돌아온다.
                         openPeerProfile(uid, { name: nm, profileURL: pf });
                     });
                 });
@@ -655,6 +656,11 @@
         var _oldPn = document.getElementById('dchat-panel');
         if (_oldOv && _oldOv.parentNode) _oldOv.parentNode.removeChild(_oldOv);
         if (_oldPn && _oldPn.parentNode) _oldPn.parentNode.removeChild(_oldPn);
+        // [B] edit by smsong - 새 채팅을 열 때(예: 멤버 프로필 → 1:1 대화하기) 남아있는 관련 모달들도 정리
+        ['dml-overlay', 'dcs-overlay', 'dpp-overlay'].forEach(function (id) {
+            var e = document.getElementById(id);
+            if (e && e.parentNode) e.parentNode.removeChild(e);
+        });
         // 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
         activeRoomId = (targetRoomId && String(targetRoomId)) || null;
         if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
