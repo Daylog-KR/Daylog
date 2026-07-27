@@ -53,33 +53,32 @@
             'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
-            // 체크리스트/추억처럼 가로가 넓은 4:3 카드, 2열
-            '.pi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}' +
-            '@media (min-width:520px){.pi-grid{grid-template-columns:repeat(3,1fr);}}' +
-            '.pi-cell{position:relative;aspect-ratio:4/3;border-radius:12px;overflow:hidden;' +
+            // 타임라인 추억 그리드(인스타그램식)와 동일: 3:4 세로 비율, 3열
+            '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}' +
+            '.pi-cell{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;' +
             'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
             '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.18);pointer-events:none;}' +
             // 카카오톡 스타일 선택 동그라미 — 우측 상단, 항상 빈 원. 선택되면 채워지고 안에 숫자.
-            '.pi-pick{position:absolute;top:7px;right:7px;z-index:4;width:26px;height:26px;padding:0;' +
+            '.pi-pick{position:absolute;top:6px;right:6px;z-index:4;width:24px;height:24px;padding:0;' +
             'border-radius:50%;border:2px solid #fff;background:rgba(30,30,30,.22);cursor:pointer;' +
             'display:flex;align-items:center;justify-content:center;' +
-            'font-family:inherit;font-size:0.78rem;font-weight:800;color:#fff;line-height:1;' +
+            'font-family:inherit;font-size:0.74rem;font-weight:800;color:#fff;line-height:1;' +
             'box-shadow:0 1px 5px rgba(0,0,0,.28);}' +
             '.pi-cell.sel .pi-pick{background:var(--primary,#b08968);border-color:#fff;}' +
-            '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
+            '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.6rem;' +
             'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}' +
-            // 라이트박스(크게보기) 위 선택 동그라미 — 우측 상단(X 는 왼쪽으로 옮긴다)
-            '.pi-lb-pick{position:fixed;top:calc(12px + env(safe-area-inset-top));right:16px;z-index:4200;' +
-            'width:40px;height:40px;padding:0;border-radius:50%;border:2px solid #fff;' +
-            'background:rgba(30,30,30,.42);color:#fff;font-family:inherit;font-size:1rem;font-weight:800;' +
+            // 라이트박스 선택 동그라미 — X 버튼과 top/크기를 정확히 동일하게 맞춘다.
+            '.pi-lb-pick{position:fixed;top:calc(16px + var(--safe-t,0px));right:18px;z-index:4200;' +
+            'width:44px;height:44px;padding:0;border-radius:50%;border:2px solid #fff;box-sizing:border-box;' +
+            'background:rgba(30,30,30,.42);color:#fff;font-family:inherit;font-size:1.05rem;font-weight:800;' +
             'line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
             'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
             '.pi-lb-pick.on{background:var(--primary,#b08968);border-color:#fff;}' +
             // X 버튼을 왼쪽으로 (라이트박스가 열려 있는 동안만)
-            'body.pi-lb-open #lightbox-close{left:16px;right:auto;}' +
+            'body.pi-lb-open #lightbox-close{left:18px;right:auto;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
