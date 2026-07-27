@@ -477,8 +477,10 @@
                 <input type="file" id="memory-media-input" accept="image/*" multiple style="display:none">
             </div>
             <button type="button" id="btn-retake-photo" class="retake-photo-btn hidden"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg> 다시 촬영하기</button>
-            <div id="location-status-badge" class="location-badge">위치 설정 중...</div>
-            <button type="button" id="btn-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
+            <div class="form-group">
+                <label>위치 <span class="label-hint">눌러서 변경</span></label>
+                <div id="location-status-badge" class="location-badge">위치 설정 중...</div>
+            </div>
 
             <div class="form-group">
                 <label>날짜</label>
@@ -516,10 +518,7 @@
                 <label class="media-edit-label">사진 (최대 10장 · 꾹 눌러 정렬 / <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> 삭제)</label>
                 <div class="media-grid" id="edit-media-grid"></div>
                 <input type="file" id="edit-media-input" accept="image/*" multiple style="display:none">
-                <span class="meta-item edit-loc-line" id="edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 확인 중…</span>
-                <!-- [B] edit by smsong - 수정 화면에서도 위치 변경 가능 -->
-                <button type="button" id="edit-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
-                <!-- [E] edit by smsong -->
+                <span class="meta-item edit-loc-line" id="edit-loc" title="눌러서 위치 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 확인 중…</span>
             </div>
             <div class="form-group">
                 <label>날짜</label>
@@ -550,8 +549,10 @@
             <button type="button" class="close-modal" onclick="closeChecklistModal()">&times;</button>
         </div>
         <form id="checklist-form">
-            <div id="cl-location-badge" class="location-badge">위치 설정 중...</div>
-            <button type="button" id="cl-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
+            <div class="form-group">
+                <label>위치 <span class="label-hint">눌러서 변경</span></label>
+                <div id="cl-location-badge" class="location-badge">위치 설정 중...</div>
+            </div>
 
             <div class="form-group">
                 <label>타입</label>
@@ -609,10 +610,7 @@
         <!-- 수정 영역 (본인 가볼곳만 · 위치 제외 / 사진 변경 가능) -->
         <form id="cl-edit-form" class="hidden">
             <div class="cl-edit-loc-wrap">
-                <span class="meta-item edit-loc-line" id="cl-edit-loc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
-                <!-- [B] edit by smsong - 수정 화면에서도 위치 변경 가능 -->
-                <button type="button" id="cl-edit-reset-location" class="reset-location-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 위치 다시 설정하기</button>
-                <!-- [E] edit by smsong -->
+                <span class="meta-item edit-loc-line" id="cl-edit-loc" title="눌러서 위치 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
             </div>
             <div class="form-group">
                 <label>사진 (최대 10장)</label>

@@ -820,6 +820,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     margin-bottom: 16px; font-weight: 600; cursor: pointer;
     transition: filter 0.15s ease, transform 0.12s ease;
 }
+/* [B][E] edit by smsong - 배지를 form-group 으로 감쌌을 때 이중 마진 제거 + 라벨 힌트 */
+.form-group .location-badge { margin-bottom: 0; }
+.label-hint { font-size: 0.72rem; font-weight: 500; color: var(--gray-400); margin-left: 4px; }
 .location-badge:hover { filter: brightness(0.97); }
 .location-badge:active { transform: scale(0.985); }
 .location-badge.success { background-color: #f1f8ec; color: #4a7c59; }
@@ -1913,8 +1916,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* [B] edit by smsong - '방문 여부'와 '다녀온 날짜'를 대칭 2칸으로.
    각 칸은 [작은 라벨 + 입력부] 구조라 라벨/입력부 높이가 좌우 정확히 맞는다. */
 .cl-visited-row { display: flex; align-items: flex-start; gap: 10px; }
-.cl-visited-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.cl-vlabel { font-size: 0.82rem; font-weight: 600; color: var(--gray-600); padding-left: 2px; }
+.cl-visited-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+/* 라벨을 다른 폼 라벨(.form-group label)과 동일하게 */
+.cl-vlabel { display: block; font-size: 0.85rem; color: var(--gray-500); margin-bottom: 6px; font-weight: 500; padding-left: 2px; }
 /* 좌우 입력부 공통 높이 (다녀왔습니다 박스 = 날짜 박스) */
 .cl-visited-col .cl-check-label,
 .cl-visited-col input[type="date"] {
@@ -1930,7 +1934,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .cl-visited-col input[type="date"]:disabled { opacity: 0.45; cursor: not-allowed; }
 /* [E] edit by smsong */
 .cl-check-label {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
     color: var(--gray-600); font-weight: 700; cursor: pointer; user-select: none;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
