@@ -53,35 +53,33 @@
             'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
-            '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
-            '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
-            '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;' +
+            // 체크리스트/추억처럼 가로가 넓은 4:3 카드, 2열
+            '.pi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}' +
+            '@media (min-width:520px){.pi-grid{grid-template-columns:repeat(3,1fr);}}' +
+            '.pi-cell{position:relative;aspect-ratio:4/3;border-radius:12px;overflow:hidden;' +
             'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
-            '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);pointer-events:none;}' +
-            // 선택 순서 번호 — 좌측 상단 (선택됐을 때만 보임)
-            '.pi-no{position:absolute;top:6px;left:6px;z-index:3;min-width:22px;height:22px;padding:0 5px;' +
-            'border-radius:11px;display:none;align-items:center;justify-content:center;' +
-            'font-size:0.72rem;font-weight:800;background:var(--primary,#b08968);color:#fff;' +
-            'box-shadow:0 1px 4px rgba(0,0,0,.2);}' +
-            '.pi-cell.sel .pi-no{display:flex;}' +
-            // 우측 상단 선택(체크) 버튼 — 항상 보임, 선택되면 채워짐
-            '.pi-pick{position:absolute;top:6px;right:6px;z-index:4;width:24px;height:24px;padding:0;' +
-            'border-radius:50%;border:2px solid #fff;background:rgba(30,30,30,.28);cursor:pointer;' +
-            'box-shadow:0 1px 4px rgba(0,0,0,.25);}' +
-            '.pi-pick::after{content:"";position:absolute;left:50%;top:46%;width:6px;height:10px;' +
-            'border:solid #fff;border-width:0 2px 2px 0;transform:translate(-50%,-50%) rotate(45deg);opacity:.9;}' +
+            '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.18);pointer-events:none;}' +
+            // 카카오톡 스타일 선택 동그라미 — 우측 상단, 항상 빈 원. 선택되면 채워지고 안에 숫자.
+            '.pi-pick{position:absolute;top:7px;right:7px;z-index:4;width:26px;height:26px;padding:0;' +
+            'border-radius:50%;border:2px solid #fff;background:rgba(30,30,30,.22);cursor:pointer;' +
+            'display:flex;align-items:center;justify-content:center;' +
+            'font-family:inherit;font-size:0.78rem;font-weight:800;color:#fff;line-height:1;' +
+            'box-shadow:0 1px 5px rgba(0,0,0,.28);}' +
             '.pi-cell.sel .pi-pick{background:var(--primary,#b08968);border-color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
             'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}' +
-            // 라이트박스(크게보기) 위 선택 버튼 — 우측 상단
-            '.pi-lb-pick{position:fixed;top:calc(14px + env(safe-area-inset-top));right:64px;z-index:4200;' +
-            'min-width:64px;height:38px;padding:0 16px;border-radius:19px;border:2px solid #fff;' +
-            'background:rgba(30,30,30,.5);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:800;' +
-            'cursor:pointer;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
+            // 라이트박스(크게보기) 위 선택 동그라미 — 우측 상단(X 는 왼쪽으로 옮긴다)
+            '.pi-lb-pick{position:fixed;top:calc(12px + env(safe-area-inset-top));right:16px;z-index:4200;' +
+            'width:40px;height:40px;padding:0;border-radius:50%;border:2px solid #fff;' +
+            'background:rgba(30,30,30,.42);color:#fff;font-family:inherit;font-size:1rem;font-weight:800;' +
+            'line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+            'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
             '.pi-lb-pick.on{background:var(--primary,#b08968);border-color:#fff;}' +
+            // X 버튼을 왼쪽으로 (라이트박스가 열려 있는 동안만)
+            'body.pi-lb-open #lightbox-close{left:16px;right:auto;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
@@ -219,7 +217,6 @@
                 var cell = document.createElement('div');
                 cell.className = 'pi-cell';
                 cell.innerHTML =
-                    '<span class="pi-no"></span>' +
                     '<button type="button" class="pi-pick" aria-label="선택"></button>' +
                     '<span class="pi-src">' + esc(it.source || '') + '</span>';
                 var img = document.createElement('img');
@@ -271,8 +268,8 @@
             Array.prototype.forEach.call(_grid.children, function (c) {
                 var i = picked.indexOf(c._item);
                 c.classList.toggle('sel', i >= 0);
-                var no = c.querySelector('.pi-no');
-                if (no) no.textContent = i >= 0 ? String(i + 1) : '';
+                var pick = c.querySelector('.pi-pick');
+                if (pick) pick.textContent = i >= 0 ? String(i + 1) : '';
             });
         }
 
@@ -307,10 +304,12 @@
         function mountViewerBtn() {
             var lb = document.getElementById('lightbox');
             if (!lb) return;
+            document.body.classList.add('pi-lb-open'); // X 버튼을 왼쪽으로
             if (!_viewerBtn) {
                 _viewerBtn = document.createElement('button');
                 _viewerBtn.type = 'button';
                 _viewerBtn.className = 'pi-lb-pick';
+                _viewerBtn.setAttribute('aria-label', '선택');
                 _viewerBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
                     var idx = currentViewerIdx();
@@ -326,6 +325,7 @@
                 var l = document.getElementById('lightbox');
                 if (!l || l.classList.contains('hidden')) {
                     clearInterval(_viewerPoll); _viewerPoll = null;
+                    document.body.classList.remove('pi-lb-open');
                     if (_viewerBtn && _viewerBtn.parentNode) _viewerBtn.parentNode.removeChild(_viewerBtn);
                     return;
                 }
@@ -339,7 +339,7 @@
             var it = _items[idx];
             var pos = it ? picked.indexOf(it) : -1;
             _viewerBtn.classList.toggle('on', pos >= 0);
-            _viewerBtn.textContent = pos >= 0 ? String(pos + 1) : '선택';
+            _viewerBtn.textContent = pos >= 0 ? String(pos + 1) : ''; // 빈 동그라미 / 선택 시 숫자
         }
 
         // --- 추가 ---
