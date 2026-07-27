@@ -48,6 +48,14 @@
             '.pi-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
             'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
+            '.pi-search{display:flex;gap:8px;padding:12px 16px 4px;}' +
+            '.pi-search input{flex:1;min-width:0;border:1px solid var(--gray-200,#e5e0d8);border-radius:11px;' +
+            'padding:10px 12px;font-family:inherit;font-size:0.9rem;color:var(--gray-800,#2e2b28);' +
+            'background:var(--white,#fffdf9);}' +
+            '.pi-search input:focus{outline:none;border-color:var(--primary,#b08968);}' +
+            '.pi-search button{flex:none;border:none;border-radius:11px;padding:0 16px;font-family:inherit;' +
+            'font-size:0.88rem;font-weight:700;background:var(--primary,#b08968);color:#fff;cursor:pointer;}' +
+
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
             '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
@@ -122,7 +130,7 @@
     }
 
     /**
-     * @param cfg.query   검색할 장소명 (필수)
+     * @param cfg.query   검색할 장소명 (필수 · 초기값)
      * @param cfg.region  지역 힌트 (선택)
      * @param cfg.mgr     createMediaManager 인스턴스
      */
@@ -142,8 +150,14 @@
             '<div id="pi-card" role="dialog" aria-modal="true" aria-label="장소 사진 가져오기">' +
             '<div class="pi-head">' +
             '<h3>장소 사진</h3>' +
-            '<span class="pi-q">' + esc(cfg.query) + '</span>' +
             '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
+            '</div>' +
+            // 검색어를 시트 안에서 직접 고칠 수 있게 한다 —
+            //  제목칸이 실제 장소와 다를 때(지도만 옮긴 경우 등) 여기서 바로잡는다.
+            '<div class="pi-search">' +
+            '<input type="text" id="pi-q-input" placeholder="가게 이름으로 검색" ' +
+            'value="' + esc(cfg.query || '') + '">' +
+            '<button type="button" id="pi-q-btn">검색</button>' +
             '</div>' +
             '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
             '<div class="pi-foot">' +
@@ -155,6 +169,8 @@
 
         var body = ov.querySelector('#pi-body');
         var addBtn = ov.querySelector('#pi-add');
+        var qInput = ov.querySelector('#pi-q-input');
+        var qBtn = ov.querySelector('#pi-q-btn');
         var picked = [];   // 선택 순서 유지
 
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
@@ -166,23 +182,38 @@
             addBtn.textContent = picked.length ? (picked.length + '장 추가') : '추가';
         }
 
-        // --- 검색 ---
-        var url = apiBase() + '/api/search/place-images?query=' + encodeURIComponent(cfg.query);
-        if (cfg.region) url += '&region=' + encodeURIComponent(cfg.region);
+        // --- 검색 (검색어가 바뀌면 언제든 다시 실행) ---
+        function runSearch(q) {
+            q = (q || '').trim();
+            if (!q) { body.innerHTML = '<div class="pi-msg">검색할 가게 이름을 입력해주세요.</div>'; return; }
+            picked = [];
+            refreshBtn();
+            body.innerHTML = '<div class="pi-msg">사진을 찾는 중…</div>';
 
-        fetch(url, { headers: headers() })
-            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-            .then(function (items) {
-                if (!Array.isArray(items) || !items.length) {
-                    body.innerHTML = '<div class="pi-msg">이 장소의 사진을 찾지 못했습니다.<br>' +
-                        '가게 이름을 조금 더 정확히 적어보세요.</div>';
-                    return;
-                }
-                render(items);
-            })
-            .catch(function () {
-                body.innerHTML = '<div class="pi-msg">사진을 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div>';
-            });
+            var url = apiBase() + '/api/search/place-images?query=' + encodeURIComponent(q);
+            if (cfg.region) url += '&region=' + encodeURIComponent(cfg.region);
+
+            fetch(url, { headers: headers() })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (items) {
+                    if (!Array.isArray(items) || !items.length) {
+                        body.innerHTML = '<div class="pi-msg">이 이름으로는 사진을 찾지 못했습니다.<br>' +
+                            '가게 이름을 조금 더 정확히 적어보세요.</div>';
+                        return;
+                    }
+                    render(items);
+                })
+                .catch(function () {
+                    body.innerHTML = '<div class="pi-msg">사진을 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div>';
+                });
+        }
+
+        qBtn.addEventListener('click', function () { runSearch(qInput.value); });
+        qInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); runSearch(qInput.value); }
+        });
+
+        runSearch(cfg.query || '');   // 최초 1회 자동 검색 (비어 있으면 안내만 표시)
 
         function render(items) {
             var grid = document.createElement('div');
@@ -289,11 +320,7 @@
             var q = (typeof cfg.query === 'function' ? cfg.query() : cfg.query) || '';
             q = String(q).trim();
             var r = (typeof cfg.region === 'function' ? cfg.region() : cfg.region) || '';
-            // [임시 디버그] 클릭 시점의 실제 검색어/지역을 확인 — 문제 해결되면 이 줄만 지우세요
-            try { console.log('[place-image] 검색:', { query: q, region: r,
-                title: val((cfg.gridId||'').indexOf('cl')===0?'cl-title':'memory-title'),
-                pending: global._pendingPlaceTitle, place: _place }); } catch (e) {}
-            if (!q) { toast('먼저 장소를 검색하거나 제목을 입력해주세요'); return; }
+            // 검색어가 비어도 시트는 연다 — 사용자가 시트 안 검색창에서 직접 입력할 수 있다.
             open({ query: q, region: r, mgr: (typeof cfg.mgr === 'function' ? cfg.mgr() : cfg.mgr) });
         });
 
