@@ -27,51 +27,51 @@
         if (document.getElementById('pi-style')) return;
         var css =
             '.pi-fetch{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:9px 14px;' +
-                'border:1px dashed var(--gray-200,#e5e0d8);border-radius:13px;background:var(--gray-50,#faf9f8);' +
-                'color:var(--gray-600,#5c5751);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;}' +
+            'border:1px dashed var(--gray-200,#e5e0d8);border-radius:13px;background:var(--gray-50,#faf9f8);' +
+            'color:var(--gray-600,#5c5751);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;}' +
             '.pi-fetch:active{transform:scale(.98);}' +
             '.pi-fetch:disabled{opacity:.5;cursor:default;}' +
 
             '#pi-overlay{position:fixed;inset:0;z-index:2900;background:rgba(45,38,32,.52);' +
-                'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
+            'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
             '@media (min-width:600px){#pi-overlay{align-items:center;}}' +
             '#pi-card{width:100%;max-width:560px;max-height:88dvh;display:flex;flex-direction:column;' +
-                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
-                'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
+            'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
+            'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
             '@media (min-width:600px){#pi-card{border-radius:22px;}}' +
 
             '.pi-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
-                'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
+            'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#2e2b28);}' +
             '.pi-head .pi-q{font-size:0.8rem;color:var(--gray-500,#7a756e);font-weight:600;' +
-                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
             '.pi-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
-                'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
+            'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
             '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
             '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;cursor:pointer;' +
-                'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
+            'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
             '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);}' +
             '.pi-no{position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;border-radius:50%;' +
-                'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
-                'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
-                'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
+            'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
+            'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
+            'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
             '.pi-cell.sel .pi-no{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
-                'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
-                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
 
             '.pi-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
-                'border-top:1px solid var(--gray-100,#f3f0ec);}' +
+            'border-top:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
-                'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
+            'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
             '.pi-btn.ghost{background:var(--gray-100,#f3f0ec);color:var(--gray-600,#5c5751);}' +
             '.pi-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-btn:disabled{opacity:.5;cursor:default;}' +
@@ -92,8 +92,14 @@
 
     function toast(m) { if (typeof global.showToast === 'function') global.showToast(m); }
 
+    // main.js 의 API_BASE_URL 은 const 라 window 에 없다.
+    //  → main.js 가 공개해 둔 Daylog.api 를 최우선으로, APP_CONFIG 를 폴백으로 쓴다.
+    //  (이걸 못 찾으면 상대경로가 되어 Vercel(프론트) 로 요청이 새어 404 가 난다)
     function apiBase() {
-        return (typeof global.API_BASE_URL === 'string') ? global.API_BASE_URL : '';
+        if (Daylog && typeof Daylog.api === 'string' && Daylog.api) return Daylog.api;
+        if (global.APP_CONFIG && global.APP_CONFIG.BACKEND_BASE) return global.APP_CONFIG.BACKEND_BASE;
+        if (typeof global.API_BASE_URL === 'string' && global.API_BASE_URL) return global.API_BASE_URL;
+        return '';
     }
 
     function headers() {
@@ -134,16 +140,16 @@
         ov.id = 'pi-overlay';
         ov.innerHTML =
             '<div id="pi-card" role="dialog" aria-modal="true" aria-label="장소 사진 가져오기">' +
-                '<div class="pi-head">' +
-                    '<h3>장소 사진</h3>' +
-                    '<span class="pi-q">' + esc(cfg.query) + '</span>' +
-                    '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
-                '</div>' +
-                '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
-                '<div class="pi-foot">' +
-                    '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
-                    '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
-                '</div>' +
+            '<div class="pi-head">' +
+            '<h3>장소 사진</h3>' +
+            '<span class="pi-q">' + esc(cfg.query) + '</span>' +
+            '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
+            '</div>' +
+            '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
+            '<div class="pi-foot">' +
+            '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
+            '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
+            '</div>' +
             '</div>';
         document.body.appendChild(ov);
 
@@ -236,11 +242,11 @@
             picked.forEach(function (it, idx) {
                 seq = seq.then(function () {
                     return fetch(apiBase() + '/api/search/image-proxy?url=' + encodeURIComponent(it.url),
-                                 { headers: headers() })
+                        { headers: headers() })
                         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
                         .then(function (blob) {
                             files.push(new File([blob], 'place_' + Date.now() + '_' + idx + '.jpg',
-                                                { type: 'image/jpeg' }));
+                                { type: 'image/jpeg' }));
                         })
                         .catch(function () { /* 개별 실패는 건너뛴다 */ });
                 });
@@ -256,7 +262,7 @@
                 if (mgr) mgr.addFiles(files);
                 close();
                 toast(files.length + '장을 추가했어요' +
-                      (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
+                    (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
             });
         });
     }
