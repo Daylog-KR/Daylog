@@ -115,6 +115,37 @@ public class ChatService {
         return m;
     }
 
+    // [B] edit by smsong - 현재 채팅방 멤버 리스트 (설정 > 멤버 보기). 방 멤버만 조회 가능.
+    //  방장(owner) → 나(me) → 나머지 순으로 정렬해 반환.
+    public List<Map<String, Object>> memberList(Long roomId, String requesterUid) {
+        assertMember(requesterUid, roomId);
+        RoomEntity room = roomRepository.findById(roomId).orElse(null);
+        String ownerUid = (room != null) ? room.getOwnerUid() : null;
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String uid : memberUids(roomId)) {
+            UserEntity u = userRepository.findByUid(uid).orElse(null);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("uid", uid);
+            m.put("displayName", (u != null) ? displayName(uid) : uid);
+            m.put("profileURL", (u != null) ? u.getProfileURL() : null);
+            m.put("me", uid.equals(requesterUid));
+            m.put("owner", ownerUid != null && ownerUid.equals(uid));
+            out.add(m);
+        }
+        // 방장 먼저, 그다음 나, 그다음 이름순
+        out.sort((a, b) -> {
+            int ao = Boolean.TRUE.equals(a.get("owner")) ? 0 : 1;
+            int bo = Boolean.TRUE.equals(b.get("owner")) ? 0 : 1;
+            if (ao != bo) return ao - bo;
+            int am = Boolean.TRUE.equals(a.get("me")) ? 0 : 1;
+            int bm = Boolean.TRUE.equals(b.get("me")) ? 0 : 1;
+            if (am != bm) return am - bm;
+            return String.valueOf(a.get("displayName")).compareToIgnoreCase(String.valueOf(b.get("displayName")));
+        });
+        return out;
+    }
+
     // ===== 히스토리 =====
     @Transactional
     public ChatDTO.History history(Long roomId, String requesterUid, Long beforeId, boolean markRead) {

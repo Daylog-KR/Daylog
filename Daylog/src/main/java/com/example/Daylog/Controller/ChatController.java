@@ -52,6 +52,15 @@ public class ChatController {
         return ResponseEntity.ok(chatService.peerProfile(peerUid));
     }
 
+    // [B] edit by smsong - 현재 채팅방 멤버 리스트 (설정 > 멤버 보기)
+    //  ⚠ 경로 충돌 주의: "/{roomId}/members" 는 "/{roomId}" 보다 구체적이라 정상 매칭됨.
+    @GetMapping("/{roomId}/members")
+    public ResponseEntity<List<Map<String, Object>>> members(@PathVariable("roomId") Long roomId,
+                                                             @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        return ResponseEntity.ok(chatService.memberList(roomId, uid));
+    }
+
     // 히스토리 (첫 진입: beforeId 없음 → 최신 30개 + 읽음 처리. 위로 스크롤: beforeId 지정)
     @GetMapping("/{roomId}")
     public ResponseEntity<ChatDTO.History> history(@PathVariable("roomId") Long roomId,

@@ -363,6 +363,80 @@
         }
     }
 
+    // ===== [B] edit by smsong - 멤버 보기: 현재 채팅방 멤버 리스트 (모든 방 공통) =====
+    function injectMemberListStyle() {
+        if (document.getElementById('dml-style')) return;
+        var css =
+            '#dml-overlay{position:fixed;inset:0;z-index:10050;background:rgba(45,38,32,0.5);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;}' +
+            '#dml-overlay.show{opacity:1;}' +
+            '.dml-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:74vh;display:flex;flex-direction:column;transform:translateY(18px);transition:transform .24s cubic-bezier(.2,.8,.3,1);}' +
+            '#dml-overlay.show .dml-sheet{transform:none;}' +
+            '.dml-handle{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:8px auto 6px;}' +
+            '.dml-title{font-size:0.98rem;font-weight:700;color:var(--gray-800);text-align:center;padding:4px 16px 10px;border-bottom:1px solid var(--gray-100);}' +
+            '.dml-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;min-height:60px;}' +
+            '.dml-row{display:flex;align-items:center;gap:12px;width:100%;border:none;background:transparent;cursor:pointer;padding:10px 12px;border-radius:14px;text-align:left;font-family:inherit;}' +
+            '.dml-row:active{background:var(--gray-50);}' +
+            '.dml-row.me{cursor:default;}' +
+            '.dml-ava{width:44px;height:44px;border-radius:15px;object-fit:cover;flex-shrink:0;background:var(--gray-100);display:block;image-orientation:from-image;}' +
+            '.dml-ava-ph{width:44px;height:44px;border-radius:15px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary-dark);background:var(--primary-light);}' +
+            '.dml-name{font-size:0.98rem;font-weight:600;color:var(--gray-800);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.dml-badge{font-size:0.68rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);border-radius:6px;padding:2px 6px;flex-shrink:0;margin-left:6px;}' +
+            '.dml-badge.me{color:var(--gray-500);background:var(--gray-100);}' +
+            '.dml-empty{padding:28px;text-align:center;color:var(--gray-400);font-size:0.9rem;}' +
+            '.dml-close{margin:6px 12px 0;padding:13px;border-radius:14px;border:none;background:var(--gray-100);color:var(--gray-600);font-family:inherit;font-size:0.95rem;font-weight:700;cursor:pointer;}';
+        var st = document.createElement('style'); st.id = 'dml-style'; st.textContent = css; document.head.appendChild(st);
+    }
+    function openMemberList() {
+        if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
+        injectMemberListStyle();
+        var ov = document.createElement('div');
+        ov.id = 'dml-overlay';
+        ov.innerHTML =
+            '<div class="dml-sheet" role="dialog" aria-modal="true">' +
+                '<div class="dml-handle"></div>' +
+                '<div class="dml-title" id="dml-title">멤버' + (state.memberCount ? ' ' + state.memberCount + '명' : '') + '</div>' +
+                '<div class="dml-list" id="dml-list"><div class="dml-empty">불러오는 중…</div></div>' +
+                '<button class="dml-close" id="dml-close" type="button">닫기</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        document.getElementById('dml-close').addEventListener('click', close);
+
+        fetch(API + '/api/chat/' + roomId() + '/members', { headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (list) {
+                var el = document.getElementById('dml-list');
+                if (!el) return;
+                if (!list || !list.length) { el.innerHTML = '<div class="dml-empty">멤버가 없어요</div>'; return; }
+                var tt = document.getElementById('dml-title'); if (tt) tt.textContent = '멤버 ' + list.length + '명';
+                el.innerHTML = list.map(function (m) {
+                    var nm = esc(m.displayName || '사용자');
+                    var ava = m.profileURL
+                        ? '<img class="dml-ava" src="' + esc(m.profileURL) + '" alt="" referrerpolicy="no-referrer">'
+                        : '<span class="dml-ava-ph">' + esc((m.displayName || '?').trim().charAt(0) || '?') + '</span>';
+                    var badge = m.owner ? '<span class="dml-badge">방장</span>' : '';
+                    if (m.me) badge += '<span class="dml-badge me">나</span>';
+                    return '<button class="dml-row' + (m.me ? ' me' : '') + '" type="button" data-uid="' + esc(m.uid) +
+                        '" data-name="' + nm + '" data-profile="' + esc(m.profileURL || '') + '" data-me="' + (m.me ? '1' : '') + '">' +
+                        ava + '<span class="dml-name">' + nm + '</span>' + badge +
+                    '</button>';
+                }).join('');
+                el.querySelectorAll('.dml-row').forEach(function (row) {
+                    row.addEventListener('click', function () {
+                        if (row.getAttribute('data-me') === '1') return; // 나는 프로필 안 엶
+                        var uid = row.getAttribute('data-uid');
+                        var nm = row.getAttribute('data-name') || '';
+                        var pf = row.getAttribute('data-profile') || '';
+                        close();
+                        openPeerProfile(uid, { name: nm, profileURL: pf });
+                    });
+                });
+            })
+            .catch(function () { var el = document.getElementById('dml-list'); if (el) el.innerHTML = '<div class="dml-empty">불러오지 못했어요</div>'; });
+    }
+
     // ===== [B] edit by smsong - 채팅방 설정 시트 (카카오톡식) =====
     function openChatSettings() {
         injectSettingsStyle();
@@ -372,12 +446,11 @@
             '<div class="dcs-sheet" role="dialog" aria-modal="true">' +
                 '<div class="dcs-handle"></div>' +
                 '<div class="dcs-title">' + esc(state.title || '채팅') + '</div>' +
-                (state.direct
-                    ? '<button class="dcs-row" id="dcs-peer" type="button">' +
-                        '<span class="dcs-ic">' +
-                          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
-                        '</span><span class="dcs-label">상대 프로필 보기</span></button>'
-                    : '') +
+                // [B] edit by smsong - 모든 채팅방 공통: 멤버 보기(현재 방 멤버 리스트)
+                '<button class="dcs-row" id="dcs-members" type="button">' +
+                    '<span class="dcs-ic">' +
+                      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' +
+                    '</span><span class="dcs-label">멤버 보기</span></button>' +
                 '<button class="dcs-row" id="dcs-mute" type="button">' +
                     '<span class="dcs-ic">' +
                       '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
@@ -405,10 +478,10 @@
         if (muteRow) muteRow.addEventListener('click', function () {
             toggleChatMute(syncSwitch); // 서버 반영 완료 후 스위치 갱신
         });
-        var peerRow = document.getElementById('dcs-peer');
-        if (peerRow) peerRow.addEventListener('click', function () {
+        var membersRow = document.getElementById('dcs-members');
+        if (membersRow) membersRow.addEventListener('click', function () {
             close();
-            if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title, profileURL: state.peerProfileURL });
+            openMemberList();
         });
     }
     function injectSettingsStyle() {
