@@ -3751,6 +3751,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
             titleEl.value = window._pendingPlaceTitle;
         }
+        // [B][E] edit by smsong - #44 이 위치/장소를 사진 검색 기준으로 확정 (지우기 전에!)
+        if (window.Daylog && Daylog.placeImages) {
+            Daylog.placeImages.setPlace(
+                window._pendingPlaceTitle || (currentLocationMeta && currentLocationMeta.placeName) || '',
+                (currentLocationMeta && currentLocationMeta.placeName) || ''
+            );
+        }
         window._pendingPlaceTitle = '';
         if (window._clCreateMgr) window._clCreateMgr.reset([]);
     };
@@ -5431,6 +5438,13 @@ function openMemoryModal() {
     const titleEl = document.getElementById('memory-title');
     if (titleEl && window._pendingPlaceTitle && !titleEl.value.trim()) {
         titleEl.value = window._pendingPlaceTitle;
+    }
+    // [B][E] edit by smsong - #44 이 위치/장소를 사진 검색 기준으로 확정 (지우기 전에!)
+    if (window.Daylog && Daylog.placeImages) {
+        Daylog.placeImages.setPlace(
+            window._pendingPlaceTitle || (currentLocationMeta && currentLocationMeta.placeName) || '',
+            (currentLocationMeta && currentLocationMeta.placeName) || ''
+        );
     }
     window._pendingPlaceTitle = '';
 }
