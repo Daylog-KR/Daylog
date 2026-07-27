@@ -35,7 +35,7 @@
 
     /* 폰트 설정 */
     --font-main: 'Noto Sans KR', sans-serif;
-    --font-logo: 'Lora', serif; /* 고급스러운 명조체 느낌 */
+    --font-logo: 'Noto Sans KR', sans-serif;
 }
 
 html, body {

@@ -21,7 +21,7 @@
     --shadow-md: 0 4px 15px rgba(139,115,85,0.08);
     --shadow-lg: 0 10px 30px rgba(139,115,85,0.12), 0 4px 12px rgba(139,115,85,0.08);
     --font-main: 'Noto Sans KR', sans-serif;
-    --font-logo: 'Lora', serif;
+    --font-logo: 'Noto Sans KR', sans-serif; /* [smsong] 명조(Lora)->산세리프 통일 */
 
     /* [B] edit by smsong - Android PWA 전용 시스템 바 여백. iOS/일반 웹은 항상 0 */
     --safe-top: 0px;
