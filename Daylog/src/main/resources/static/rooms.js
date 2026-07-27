@@ -309,7 +309,7 @@ window.DaylogRoomImg = {
     // 캐시된 이미지는 load 가 안 뜨는 경우가 있어, 이미 완료된 것들을 주기적으로 확인
     sweep: function () {
         var list;
-        try { list = document.querySelectorAll('.room-thumb img[data-full]'); } catch (e) { return; }
+        try { list = document.querySelectorAll('.room-thumb img[data-full], .rchat-ava-thumb img[data-full]'); } catch (e) { return; }
         for (var i = 0; i < list.length; i++) {
             var im = list[i];
             if (im.complete && im.naturalWidth > 0) window.DaylogRoomImg.ok(im);
@@ -570,8 +570,14 @@ function renderChatRooms(rooms) {
         const muteIcon = r.muted ? '<span class="rchat-mute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span>' : '';
         const unread = (r.unreadCount > 0) ? ('<span class="rchat-unread">' + (r.unreadCount > 99 ? '99+' : r.unreadCount) + '</span>') : '';
         let ava;
-        if (r.imageURL) ava = '<img class="rchat-ava" src="' + _chatEsc(r.imageURL) + '" alt="" referrerpolicy="no-referrer">';
-        else ava = '<span class="rchat-ava-ph">' + _chatEsc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+        // [B] edit by smsong - main.html 타임라인/체크리스트와 동일한 견고 로드 방식 적용:
+        //  원본 이미지(방향 정상) + 기본 opacity:1 + onerror 폴백 + 캐시 sweep(DaylogRoomImg)
+        //  → "가끔 로드돼도 안 보이는" 문제 방지. 회전은 원본+image-orientation 으로 해결.
+        if (r.imageURL) {
+            ava = '<div class="rchat-ava rchat-ava-thumb"><img src="' + _chatEsc(r.imageURL) + '" data-full="' + _chatEsc(r.imageURL) + '" alt="" decoding="sync" referrerpolicy="no-referrer" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,\'\')"></div>';
+        } else {
+            ava = '<span class="rchat-ava rchat-ava-ph">' + _chatEsc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+        }
         return '<div class="rchat-item" data-room="' + r.roomId + '" data-name="' + title + '" data-type="' + _chatEsc(r.type || '') + '">' +
             ava +
             '<div class="rchat-body">' +
@@ -684,7 +690,7 @@ function renderRooms(rooms) {
         // [B] edit by smsong - 방 썸네일 (이미지 있으면 표시, 없으면 타입별 자리표시자)
         const imgUrl = r.imageUrl || r.thumbnailUrl || '';
         const thumbHtml = imgUrl
-            ? `<div class="room-thumb"><img src="${esc(_roomThumbUrl(imgUrl))}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
             : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
         // [E] edit by smsong
         card.innerHTML = `
@@ -768,7 +774,7 @@ function renderPendingRooms(rooms) {
         const t = typeLabel(r.type);
         const imgUrl = r.imageUrl || r.thumbnailUrl || '';
         const thumbHtml = imgUrl
-            ? `<div class="room-thumb"><img src="${esc(_roomThumbUrl(imgUrl))}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
             : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
         const statusBadge = rejected
             ? (kicked
@@ -1563,5 +1569,16 @@ if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'E
 // ===== 시작 =====
 // 유효한 세션일 때만 로드. (이미 gotoLoginCleared() 로 이동 중이면 실행 안 함)
 // [B] edit by smsong - #10 로그인이 유지된 상태면 마지막 방으로 바로 이동, 아니면 방 목록을 그린다
-if (validSession && !tryAutoEnterLastRoom()) { loadRooms(); loadMe(); }
+//  단, 채팅 알림으로 들어온 경우(chat=1)엔 마지막 방 자동 이동을 건너뛰고 방 목록에 머문다.
+//  (chat.js 가 이어서 해당 방 채팅 패널을 자동으로 연다)
+var __chatEntry = false;
+try { __chatEntry = new URLSearchParams(location.search || '').get('chat') === '1'; } catch (e) {}
+if (validSession) {
+    if (__chatEntry) {
+        loadRooms(); loadMe();
+        try { setView('chat'); } catch (e) {}   // 패널 닫으면 채팅 목록이 보이도록
+    } else if (!tryAutoEnterLastRoom()) {
+        loadRooms(); loadMe();
+    }
+}
 // [E] edit by smsong

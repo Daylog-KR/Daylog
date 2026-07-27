@@ -153,6 +153,7 @@ public class ChatService {
         boolean direct = room != null && "DIRECT".equalsIgnoreCase(room.getType());
         String title = (room != null) ? room.getName() : "채팅";
         String peerUid = null, peerProfile = null;
+        String roomImageURL = (room != null && !direct) ? room.getImageUrl() : null; // [B] edit by smsong - 그룹방 헤더 썸네일
         if (direct) {
             for (String mUid : members) {
                 if (mUid != null && !mUid.equals(requesterUid)) { peerUid = mUid; break; }
@@ -175,6 +176,7 @@ public class ChatService {
                 .direct(direct)
                 .peerUid(peerUid)
                 .peerProfileURL(peerProfile)
+                .roomImageURL(roomImageURL)
                 .muted(isChatMuted(roomId, requesterUid))
                 .build();
     }
@@ -363,7 +365,8 @@ public class ChatService {
             if (preview.length() > 80) preview = preview.substring(0, 80) + "…";
             // 1:1 은 제목이 이미 발신자라 본문엔 이름 생략, 그룹은 "이름: 내용"
             String body = direct ? preview : ((senderName != null ? senderName + ": " : "") + preview);
-            String url = "/main.html?room=" + roomId;
+            // [B] edit by smsong - 채팅 알림 클릭 시 마지막 방 자동입장을 우회하고 rooms.html 채팅을 바로 연다
+            String url = "/rooms.html?chat=1&room=" + roomId;
 
             // 여러 uid 에게 비동기 발송(본 요청 응답을 지연시키지 않음). 푸시 비활성/구독없음 시 자동 no-op.
             webPushService.sendToUids(targets, roomName, body, url);

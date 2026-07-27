@@ -53,7 +53,7 @@
         msgs: [],           // 오름차순 메시지 배열
         hasMore: false, loadingMore: false, oldestId: null,
         open: false, unread: 0,
-        title: '채팅', direct: false, peerUid: null, peerProfileURL: null // [B] edit by smsong - 헤더용
+        title: '채팅', direct: false, peerUid: null, peerProfileURL: null, roomImageURL: null // [B] edit by smsong - 헤더용
     };
     var ws = null, wsTimer = null, wsBackoff = 1000, subscribed = false;
 
@@ -293,6 +293,7 @@
                 state.direct = !!h.direct;
                 state.peerUid = h.peerUid || null;
                 state.peerProfileURL = h.peerProfileURL || null;
+                state.roomImageURL = h.roomImageURL || null; // [B] edit by smsong - 그룹방 헤더 썸네일
                 chatMuted = !!h.muted;
                 updateHeader();
                 renderAll();
@@ -348,9 +349,14 @@
                 avaEl.style.cursor = 'pointer';
                 avaEl.onclick = function () { if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title }); };
             } else {
-                // 그룹 방: 방 아이콘
-                avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-                avaEl.className = 'dchat-head-ava grp';
+                // 그룹 방: 방 대표 이미지가 있으면 썸네일, 없으면 사람 아이콘
+                if (state.roomImageURL) {
+                    avaEl.innerHTML = '<img src="' + esc(state.roomImageURL) + '" alt="" referrerpolicy="no-referrer">';
+                    avaEl.className = 'dchat-head-ava has-img';
+                } else {
+                    avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+                    avaEl.className = 'dchat-head-ava grp';
+                }
                 avaEl.style.cursor = 'default';
                 avaEl.onclick = null;
             }
@@ -568,14 +574,16 @@
 
     function openPanel(targetRoomId) {
         if (!loggedIn()) { toast('로그인이 필요해요'); return; }
-        // [B] edit by smsong - 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
-        activeRoomId = (targetRoomId && String(targetRoomId)) || null;
-        if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
-        injectStyle();
-        // 이미 열려있으면 교체 위해 닫고 다시 연다
+        // [B] edit by smsong - 이미 열려있으면 '먼저' 닫는다. closePanel 이 activeRoomId 를 null 로
+        //  되돌리므로, 반드시 닫은 뒤에 activeRoomId 를 지정해야 1:1 등 지정 방이 유지된다.
+        //  (기존엔 activeRoomId 지정 → closePanel 순서라, 지정 방이 지워져 이전 방/빈 채팅이 떴다)
         if (document.getElementById('dchat-panel')) {
             closePanel();
         }
+        // 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
+        activeRoomId = (targetRoomId && String(targetRoomId)) || null;
+        if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
+        injectStyle();
 
         var ov = document.createElement('div');
         ov.id = 'dchat-overlay';
@@ -672,7 +680,7 @@
                 'background:var(--white);border-bottom:1px solid var(--gray-100);}' +
             '.dchat-head-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;}' +
             '.dchat-head-ava{flex:0 0 auto;width:38px;height:38px;border-radius:13px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--gray-500);}' +
-            '.dchat-head-ava img{width:100%;height:100%;object-fit:cover;display:block;}' +
+            '.dchat-head-ava img{width:100%;height:100%;object-fit:cover;display:block;image-orientation:from-image;}' +
             '.dchat-head-ava.ph{background:var(--primary-light);color:var(--primary-dark);font-weight:700;font-size:1.05rem;}' +
             '.dchat-head-texts{min-width:0;display:flex;flex-direction:column;}' +
             '.dchat-head-title{font-size:1.02rem;font-weight:700;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
