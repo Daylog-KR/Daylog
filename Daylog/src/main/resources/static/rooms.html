@@ -100,18 +100,17 @@
         <!-- [E] edit by smsong -->
     </header>
 
-    <!-- [smsong] 상단 탭 (헤더 아래 고정) -->
-    <nav class="rooms-tabs">
-        <button id="tab-member" class="rooms-tab active" type="button">내가 속한 방</button>
-        <button id="tab-owner" class="rooms-tab" type="button">내가 방장인 방</button>
-        <!-- [B] edit by smsong - 요청 대기중/거절된 방 -->
-        <button id="tab-pending" class="rooms-tab" type="button">요청 대기중인 방</button>
-    </nav>
+    <!-- [B] edit by smsong - 상단 탭 → 하단 네비로 이동 (main.html 스타일) -->
 
     <main class="rooms-main">
         <div id="rooms-list" class="rooms-list"></div>
         <div id="rooms-empty" class="rooms-empty" style="display:none;">
             아직 참여한 방이 없어요.<br>방을 만들거나 초대 코드로 입장해보세요.
+        </div>
+        <!-- [B] edit by smsong - 채팅 탭: 내 채팅방 대화목록(카카오톡식) -->
+        <div id="rooms-chat-list" class="rooms-chat-list" style="display:none;"></div>
+        <div id="rooms-chat-empty" class="rooms-empty" style="display:none;">
+            아직 채팅이 없어요.<br>방에 들어가 첫 메시지를 남겨보세요.
         </div>
     </main>
 
@@ -119,6 +118,26 @@
         <button id="btn-create-room" class="room-action primary" type="button">+ 방 만들기</button>
         <button id="btn-join-room" class="room-action" type="button">코드로 입장</button>
     </div>
+
+    <!-- [B] edit by smsong - 하단 네비 (main.html 스타일). 방 목록 3분류 + 채팅 -->
+    <nav class="rooms-bottom-nav">
+        <button id="tab-member" class="rnav-item active" type="button">
+            <span class="rnav-icon"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <span class="rnav-text">속한 방</span>
+        </button>
+        <button id="tab-owner" class="rnav-item" type="button">
+            <span class="rnav-icon"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l4 3 5-6 5 6 4-3v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg></span>
+            <span class="rnav-text">방장인 방</span>
+        </button>
+        <button id="tab-pending" class="rnav-item" type="button">
+            <span class="rnav-icon"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
+            <span class="rnav-text">대기중</span>
+        </button>
+        <button id="tab-chat" class="rnav-item" type="button">
+            <span class="rnav-icon" style="position:relative;"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="rnav-badge hidden" id="rooms-chat-badge"></span></span>
+            <span class="rnav-text">채팅</span>
+        </button>
+    </nav>
 </div>
 
 <!-- 입력 모달 (방 만들기 / 코드 입장 공용) -->

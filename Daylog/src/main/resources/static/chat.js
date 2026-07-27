@@ -12,7 +12,9 @@
     // ===== 공통 유틸 =====
     function token() { return localStorage.getItem('accessToken'); }
     function loggedIn() { return !!token(); }
-    function roomId() { return localStorage.getItem('selectedRoomId') || ''; }
+    // [B] edit by smsong - 활성 채팅방: 1:1 방 등 특정 방을 열 때 사용. null 이면 현재 선택된 방.
+    var activeRoomId = null;
+    function roomId() { return activeRoomId || localStorage.getItem('selectedRoomId') || ''; }
     function myUid() { return (window.Daylog && window.Daylog.currentUid) || localStorage.getItem('uid') || ''; }
     function authHeaders(json) {
         var h = {};
@@ -138,7 +140,10 @@
         // 상대 메시지: 카톡식. 아바타(왼쪽) + [닉네임 → 버블] 세로 배치. 연속이면 아바타/닉네임 생략.
         var avatar = showHead ? avatarHtml(m) : '<span class="dchat-ava-spacer"></span>';
         var nameLine = showHead ? '<div class="dchat-name">' + esc(m.senderName || '알 수 없음') + '</div>' : '';
-        return '<div class="dchat-row other' + (showHead ? ' head' : '') + '" data-id="' + m.id + '">' +
+        return '<div class="dchat-row other' + (showHead ? ' head' : '') + '" data-id="' + m.id + '"' +
+            ' data-uid="' + esc(m.senderUid || '') + '"' +
+            ' data-name="' + esc(m.senderName || '') + '"' +
+            ' data-profile="' + esc(m.senderProfileURL || '') + '">' +
             '<div class="dchat-avacol">' + avatar + '</div>' +
             '<div class="dchat-othercol">' +
                 nameLine +
@@ -335,9 +340,106 @@
             .catch(function () {});
     }
 
+    // ===== [B] edit by smsong - 상대 프로필 모달 + 1:1 대화 시작 =====
+    //  · 어디서든 Daylog.openPeerProfile(uid) 로 호출 (멤버 리스트/댓글/채팅 발신자 공용)
+    //  · 프로필 사진 크게 + 이름 + [1:1 대화하기] 버튼
+    function injectProfileStyle() {
+        if (document.getElementById('dpp-style')) return;
+        var css =
+            '#dpp-overlay{position:fixed;inset:0;z-index:10050;background:rgba(45,38,32,0.5);' +
+                'display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s ease;padding:24px;}' +
+            '#dpp-overlay.show{opacity:1;}' +
+            '.dpp-card{width:100%;max-width:320px;background:var(--white);border-radius:22px;padding:26px 22px 20px;' +
+                'text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.28);transform:scale(.94);transition:transform .2s cubic-bezier(.2,.8,.3,1);}' +
+            '#dpp-overlay.show .dpp-card{transform:none;}' +
+            '.dpp-ava{width:110px;height:110px;border-radius:50%;object-fit:cover;margin:0 auto 14px;display:block;background:var(--gray-100);}' +
+            '.dpp-ava-ph{width:110px;height:110px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;' +
+                'font-size:2.6rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);}' +
+            '.dpp-name{font-size:1.18rem;font-weight:700;color:var(--gray-800);margin-bottom:4px;}' +
+            '.dpp-sub{font-size:0.82rem;color:var(--gray-400);margin-bottom:20px;}' +
+            '.dpp-actions{display:flex;flex-direction:column;gap:8px;}' +
+            '.dpp-btn{width:100%;padding:13px;border-radius:14px;border:none;cursor:pointer;font-family:inherit;font-size:0.96rem;font-weight:700;}' +
+            '.dpp-btn.primary{background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;gap:7px;}' +
+            '.dpp-btn.primary:active{transform:scale(.98);}' +
+            '.dpp-btn.ghost{background:var(--gray-100);color:var(--gray-600);}';
+        var st = document.createElement('style');
+        st.id = 'dpp-style';
+        st.textContent = css;
+        document.head.appendChild(st);
+    }
+    function closePeerProfile() {
+        var ov = document.getElementById('dpp-overlay');
+        if (!ov) return;
+        ov.classList.remove('show');
+        setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200);
+    }
+    // 이미 알고 있는 정보(이름/프로필)를 넘기면 즉시 표시하고, uid 로 최신 프로필을 보강한다.
+    function openPeerProfile(uid, hint) {
+        if (!uid) return;
+        if (uid === myUid()) { toast('나 자신과는 대화할 수 없어요'); return; }
+        injectProfileStyle();
+        closePeerProfile();
+        hint = hint || {};
+
+        var ov = document.createElement('div');
+        ov.id = 'dpp-overlay';
+        ov.innerHTML =
+            '<div class="dpp-card" role="dialog" aria-modal="true">' +
+                '<div id="dpp-ava-slot"></div>' +
+                '<div class="dpp-name" id="dpp-name">' + esc(hint.name || '사용자') + '</div>' +
+                '<div class="dpp-sub" id="dpp-sub"></div>' +
+                '<div class="dpp-actions">' +
+                    '<button class="dpp-btn primary" id="dpp-chat" type="button">' +
+                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
+                        '1:1 대화하기' +
+                    '</button>' +
+                    '<button class="dpp-btn ghost" id="dpp-close" type="button">닫기</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+
+        function setAvatar(url, nm) {
+            var slot = document.getElementById('dpp-ava-slot');
+            if (!slot) return;
+            if (url) slot.innerHTML = '<img class="dpp-ava" src="' + esc(url) + '" alt="" referrerpolicy="no-referrer">';
+            else slot.innerHTML = '<span class="dpp-ava-ph">' + esc((nm || '?').trim().charAt(0) || '?') + '</span>';
+        }
+        setAvatar(hint.profileURL, hint.name);
+
+        ov.addEventListener('click', function (e) { if (e.target === ov) closePeerProfile(); });
+        document.getElementById('dpp-close').addEventListener('click', closePeerProfile);
+        document.getElementById('dpp-chat').addEventListener('click', function () { startDirectChat(uid); });
+
+        // 최신 프로필 보강
+        fetch(API + '/api/chat/peer/' + encodeURIComponent(uid), { headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (p) {
+                if (!p) return;
+                var nm = p.displayName || p.nickname || p.name || hint.name || '사용자';
+                var nameEl = document.getElementById('dpp-name'); if (nameEl) nameEl.textContent = nm;
+                setAvatar(p.profileURL, nm);
+            })
+            .catch(function () {});
+    }
+    // 1:1 방 생성/조회 후 그 방으로 채팅 열기
+    function startDirectChat(peerUid) {
+        var btn = document.getElementById('dpp-chat');
+        if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+        fetch(API + '/api/chat/direct?peerUid=' + encodeURIComponent(peerUid), { method: 'POST', headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d || !d.roomId) { toast('대화를 시작하지 못했어요'); if (btn) { btn.disabled = false; btn.style.opacity = ''; } return; }
+                closePeerProfile();
+                openPanel(String(d.roomId)); // 해당 1:1 방으로 채팅 열기
+            })
+            .catch(function () { toast('대화를 시작하지 못했어요'); if (btn) { btn.disabled = false; btn.style.opacity = ''; } });
+    }
+
     // ===== 패널 열기/닫기 =====
     function closePanel() {
         state.open = false;
+        var wasActive = activeRoomId;
         var ov = document.getElementById('dchat-overlay');
         var pn = document.getElementById('dchat-panel');
         if (pn) pn.classList.remove('show');
@@ -346,15 +448,25 @@
             if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
             if (pn && pn.parentNode) pn.parentNode.removeChild(pn);
         }, 240);
+        // [B] edit by smsong - 1:1 방을 보고 있었다면, 닫을 때 현재 방(그룹) 구독으로 복귀
+        activeRoomId = null;
+        if (wasActive && ws && ws.readyState === WebSocket.OPEN) {
+            var cur = localStorage.getItem('selectedRoomId');
+            if (cur) wsSend({ type: 'sub', roomId: Number(cur) });
+        }
         refreshBadge();
     }
 
-    function openPanel() {
+    function openPanel(targetRoomId) {
         if (!loggedIn()) { toast('로그인이 필요해요'); return; }
+        // [B] edit by smsong - 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
+        activeRoomId = (targetRoomId && String(targetRoomId)) || null;
         if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
         injectStyle();
-        // 이미 열려있으면 무시
-        if (document.getElementById('dchat-panel')) return;
+        // 이미 열려있으면 교체 위해 닫고 다시 연다
+        if (document.getElementById('dchat-panel')) {
+            closePanel();
+        }
 
         var ov = document.createElement('div');
         ov.id = 'dchat-overlay';
@@ -383,6 +495,17 @@
 
         var scroll = document.getElementById('dchat-scroll');
         scroll.addEventListener('scroll', function () { if (scroll.scrollTop < 40) loadMore(); });
+        // [B] edit by smsong - 상대 아바타/이름 클릭 → 프로필 모달 (1:1 대화 시작 가능)
+        scroll.addEventListener('click', function (e) {
+            var head = e.target.closest ? e.target.closest('.dchat-avacol, .dchat-name') : null;
+            if (!head) return;
+            var row = head.closest('.dchat-row.other');
+            if (!row) return;
+            var uid = row.getAttribute('data-uid');
+            var nm = row.getAttribute('data-name') || '';
+            var pf = row.getAttribute('data-profile') || '';
+            if (uid) openPeerProfile(uid, { name: nm, profileURL: pf });
+        });
 
         var input = document.getElementById('dchat-input');
         var sendBtn = document.getElementById('dchat-send');
@@ -404,7 +527,12 @@
             input.value = ''; autoGrow(); input.focus();
         }
 
-        wsConnect();
+        // 소켓이 이미 열려 있으면 이 방을 명시적으로 구독(1:1 방으로 전환 시 필요)
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            wsSend({ type: 'sub', roomId: Number(roomId()) });
+        } else {
+            wsConnect();
+        }
         loadHistory().then(function () { setTimeout(function () { input && input.focus(); }, 100); });
     }
 
@@ -435,12 +563,12 @@
             '.dchat-row.other{justify-content:flex-start;align-items:flex-start;}' +
             '.dchat-row.head{margin-top:12px;}' +
             // 상대: 아바타(좌) + [닉네임/버블] 세로 컬럼 (카톡식)
-            '.dchat-avacol{flex:0 0 auto;width:34px;}' +
+            '.dchat-avacol{flex:0 0 auto;width:34px;cursor:pointer;}' +
             '.dchat-ava{width:34px;height:34px;border-radius:14px;object-fit:cover;display:block;background:var(--gray-100);}' +
             '.dchat-ava-ph{width:34px;height:34px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primary-dark);background:var(--primary-light);font-size:0.95rem;}' +
             '.dchat-ava-spacer{display:block;width:34px;}' +
             '.dchat-othercol{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:calc(100% - 46px);}' +
-            '.dchat-name{font-size:0.82rem;color:var(--gray-600);font-weight:600;margin:0 0 1px 2px;}' +
+            '.dchat-name{font-size:0.82rem;color:var(--gray-600);font-weight:600;margin:0 0 1px 2px;cursor:pointer;}' +
             '.dchat-line{display:flex;align-items:flex-end;gap:6px;min-width:0;}' +
             // 버블
             '.dchat-bubble{font-size:0.95rem;line-height:1.45;padding:9px 12px;border-radius:16px;word-break:break-word;white-space:pre-wrap;max-width:100%;}' +
@@ -521,6 +649,8 @@
 
     window.Daylog = window.Daylog || {};
     window.Daylog.openChat = openPanel;
+    window.Daylog.openPeerProfile = openPeerProfile;   // [B] edit by smsong - 프로필 모달(멤버/댓글/채팅 공용)
+    window.Daylog.startDirectChat = startDirectChat;   // [B] edit by smsong - 1:1 대화 시작
     window.Daylog.refreshChatBadge = refreshBadge;
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();

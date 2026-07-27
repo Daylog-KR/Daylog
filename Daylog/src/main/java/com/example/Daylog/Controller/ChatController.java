@@ -10,10 +10,11 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Map;
 
 // [B] edit by smsong - 방 채팅 REST. 실시간 송수신은 WebSocket(/ws/chat) 이 담당하고,
-//  여기서는 히스토리 로딩 / 안읽음 배지 / 읽음 처리(폴백)만 담당한다.
+//  여기서는 히스토리 로딩 / 안읽음 배지 / 읽음 처리(폴백) / 채팅방 리스트만 담당한다.
 @RestController
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
@@ -24,6 +25,31 @@ public class ChatController {
     private String uidOf(UserDetails ud) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
         return ud.getUsername();
+    }
+
+    // [B] edit by smsong - 채팅 탭: 내가 속한 모든 방의 대화목록(카카오톡식)
+    //  ⚠ 경로 충돌 주의: "/rooms" 는 "/{roomId}" 보다 먼저 선언(고정 경로 우선 매칭).
+    @GetMapping("/rooms")
+    public ResponseEntity<List<ChatDTO.RoomSummary>> chatRooms(@AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        return ResponseEntity.ok(chatService.chatRoomList(uid));
+    }
+
+    // [B] edit by smsong - 1:1 대화 시작: 상대와의 DIRECT 방을 생성하거나 기존 방 재사용 → {roomId}
+    @PostMapping("/direct")
+    public ResponseEntity<Map<String, Object>> direct(@RequestParam("peerUid") String peerUid,
+                                                      @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        Long roomId = chatService.getOrCreateDirectRoom(uid, peerUid);
+        return ResponseEntity.ok(Map.of("roomId", roomId));
+    }
+
+    // [B] edit by smsong - 상대 프로필(1:1 시작 전 프로필 모달용)
+    @GetMapping("/peer/{peerUid}")
+    public ResponseEntity<Map<String, Object>> peer(@PathVariable("peerUid") String peerUid,
+                                                    @AuthenticationPrincipal UserDetails ud) {
+        uidOf(ud); // 로그인 확인
+        return ResponseEntity.ok(chatService.peerProfile(peerUid));
     }
 
     // 히스토리 (첫 진입: beforeId 없음 → 최신 30개 + 읽음 처리. 위로 스크롤: beforeId 지정)

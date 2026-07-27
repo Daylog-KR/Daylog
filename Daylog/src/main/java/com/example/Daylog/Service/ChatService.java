@@ -54,6 +54,67 @@ public class ChatService {
         return uids;
     }
 
+    // ===== [B] edit by smsong - 1:1(DIRECT) 채팅방 생성/조회 =====
+    //  기존 Room 을 재활용한다. type="DIRECT", 멤버는 나+상대 2명.
+    //  이미 둘만 있는 DIRECT 방이 있으면 그대로 재사용(중복 생성 방지).
+    private static final String DIRECT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private final java.security.SecureRandom directRandom = new java.security.SecureRandom();
+
+    @Transactional
+    public Long getOrCreateDirectRoom(String meUid, String peerUid) {
+        if (meUid == null || peerUid == null || meUid.equals(peerUid)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 대상입니다");
+        }
+        // 상대가 실제 존재하는 유저인지 확인
+        userRepository.findByUid(peerUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상대를 찾을 수 없습니다"));
+
+        // 내가 속한 DIRECT 방들 중 상대도 멤버이고 멤버가 정확히 2명인 방 찾기
+        for (RoomMemberEntity m : roomMemberRepository.findByUid(meUid)) {
+            RoomEntity room = roomRepository.findById(m.getRoomId()).orElse(null);
+            if (room == null || !"DIRECT".equalsIgnoreCase(room.getType())) continue;
+            List<String> members = memberUids(room.getId());
+            if (members.size() == 2 && members.contains(peerUid)) {
+                return room.getId();
+            }
+        }
+
+        // 없으면 새로 생성
+        RoomEntity room = roomRepository.save(RoomEntity.builder()
+                .name("1:1 대화")                 // 표시용 이름은 조회 시 상대 이름으로 대체됨
+                .ownerUid(meUid)
+                .inviteCode(genDirectCode())      // DIRECT 는 코드입장 미사용이지만 컬럼이 not-null
+                .type("DIRECT")
+                .build());
+        roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(meUid).build());
+        roomMemberRepository.save(RoomMemberEntity.builder().roomId(room.getId()).uid(peerUid).build());
+        return room.getId();
+    }
+
+    private String genDirectCode() {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            StringBuilder sb = new StringBuilder(8);
+            sb.append("D"); // DIRECT 구분용 접두어(선택)
+            for (int i = 0; i < 7; i++) sb.append(DIRECT_ALPHABET.charAt(directRandom.nextInt(DIRECT_ALPHABET.length())));
+            String code = sb.toString();
+            if (!roomRepository.existsByInviteCode(code)) return code;
+        }
+        return "D" + System.currentTimeMillis();
+    }
+
+    // 상대 프로필(1:1 시작 전 모달용) — 표시 이름/닉네임/프로필/성별 등 공개 가능한 정보만
+    public Map<String, Object> peerProfile(String peerUid) {
+        UserEntity u = userRepository.findByUid(peerUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상대를 찾을 수 없습니다"));
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("uid", u.getUid());
+        m.put("name", u.getName());
+        m.put("nickname", u.getNickname());
+        m.put("displayName", displayName(peerUid));
+        m.put("profileURL", u.getProfileURL());
+        return m;
+    }
+
     // ===== 히스토리 =====
     @Transactional
     public ChatDTO.History history(Long roomId, String requesterUid, Long beforeId, boolean markRead) {
@@ -141,6 +202,91 @@ public class ChatService {
         long lastRead = chatReadRepository.findByRoomIdAndUid(roomId, uid)
                 .map(ChatReadEntity::getLastReadMessageId).orElse(0L);
         return chatMessageRepository.countByRoomIdAndIdGreaterThanAndSenderUidNot(roomId, lastRead, uid);
+    }
+
+    // ===== [B] edit by smsong - 채팅방 리스트(카카오톡 대화목록) =====
+    //  내가 속한 모든 방을 최근 메시지 순으로. 각 방의 마지막 메시지/안읽음/음소거 포함.
+    //  ⚠ RoomMemberRepository 에 findByUid(String uid) 가 필요하다(없으면 아래 [필요 메서드] 참고).
+    //  ⚠ ChatMessageRepository 에 findTop1ByRoomIdOrderByIdDesc(Long roomId) 가 필요하다.
+    public List<ChatDTO.RoomSummary> chatRoomList(String uid) {
+        if (uid == null) return List.of();
+
+        // 내가 속한 방 id 목록
+        List<Long> roomIds = new ArrayList<>();
+        for (RoomMemberEntity m : roomMemberRepository.findByUid(uid)) roomIds.add(m.getRoomId());
+        if (roomIds.isEmpty()) return List.of();
+
+        Set<String> mutedRoomKeys = new HashSet<>();
+        for (ChatMuteEntity e : chatMuteRepository.findByUidAndMutedTrue(uid)) {
+            mutedRoomKeys.add(String.valueOf(e.getRoomId()));
+        }
+
+        List<ChatDTO.RoomSummary> out = new ArrayList<>();
+        for (Long roomId : roomIds) {
+            RoomEntity room = roomRepository.findById(roomId).orElse(null);
+            if (room == null) continue;
+
+            ChatMessageEntity last = chatMessageRepository.findTop1ByRoomIdOrderByIdDesc(roomId).orElse(null);
+            long unread = unreadCount(roomId, uid);
+            long members = roomMemberRepository.findByRoomId(roomId).size();
+            boolean direct = isDirectRoom(room);
+
+            String title = room.getName();
+            String image = room.getImageUrl();
+            String peerUid = null;
+
+            // 1:1 방이면 제목/이미지를 상대방 기준으로 (다음 단계 대비)
+            if (direct) {
+                for (String mUid : memberUids(roomId)) {
+                    if (mUid != null && !mUid.equals(uid)) { peerUid = mUid; break; }
+                }
+                if (peerUid != null) {
+                    UserEntity peer = userRepository.findByUid(peerUid).orElse(null);
+                    if (peer != null) {
+                        title = displayName(peerUid);
+                        image = peer.getProfileURL();
+                    }
+                }
+            }
+
+            out.add(ChatDTO.RoomSummary.builder()
+                    .roomId(roomId)
+                    .title(title)
+                    .imageURL(image)
+                    .type(room.getType())
+                    .direct(direct)
+                    .peerUid(peerUid)
+                    .lastMessage(last == null ? null : previewOf(last))
+                    .lastMessageAt(last == null || last.getCreatedAt() == null ? null : last.getCreatedAt().toString())
+                    .unreadCount(unread)
+                    .memberCount(members)
+                    .muted(mutedRoomKeys.contains(String.valueOf(roomId)))
+                    .build());
+        }
+
+        // 최근 메시지 순 정렬(메시지 없는 방은 뒤로)
+        out.sort((a, b) -> {
+            String ta = a.getLastMessageAt(), tb = b.getLastMessageAt();
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+        return out;
+    }
+
+    // 방이 1:1(DIRECT) 인지 판정. Room 타입에 "DIRECT" 가 있으면 그걸 쓰고,
+    //  없으면 멤버 2명 + 이름 규칙으로 판정(다음 단계에서 1:1 생성 로직과 함께 확정).
+    private boolean isDirectRoom(RoomEntity room) {
+        return room != null && "DIRECT".equalsIgnoreCase(room.getType());
+    }
+
+    private String previewOf(ChatMessageEntity m) {
+        if (m == null) return null;
+        if ("SYSTEM".equals(m.getType())) return m.getContent();
+        String c = m.getContent() == null ? "" : m.getContent().replaceAll("\\s+", " ").trim();
+        if (c.length() > 60) c = c.substring(0, 60) + "…";
+        return c;
     }
 
     // ===== 채팅 알림 끄기 (방별 · 유저별) =====

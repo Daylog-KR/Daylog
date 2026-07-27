@@ -23,5 +23,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
 
     // 방 삭제 시 정리
     void deleteByRoomId(Long roomId);
+
+    // 방의 가장 최근 메시지 1건 (대화목록 미리보기용)
+    Optional<ChatMessageEntity> findTop1ByRoomIdOrderByIdDesc(Long roomId);
 }
 // [E] edit by smsong

@@ -14,5 +14,8 @@ public interface ChatMuteRepository extends JpaRepository<ChatMuteEntity, Long> 
     List<ChatMuteEntity> findByRoomIdAndMutedTrue(Long roomId);
 
     void deleteByRoomId(Long roomId);
+
+    // 이 유저가 알림을 끈 방들 (대화목록에서 muted 표시)
+    List<ChatMuteEntity> findByUidAndMutedTrue(String uid);
 }
 // [E] edit by smsong

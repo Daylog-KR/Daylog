@@ -214,6 +214,7 @@ const ddayInput = document.getElementById('room-dday-input');
 const tabMemberEl = document.getElementById('tab-member'); // 내가 속한 방
 const tabOwnerEl = document.getElementById('tab-owner');   // 내가 방장인 방
 const tabPendingEl = document.getElementById('tab-pending'); // [smsong] 요청 대기중인 방
+const tabChatEl = document.getElementById('tab-chat'); // [B] edit by smsong - 채팅 탭
 const mainEl = document.querySelector('.rooms-main');
 
 // [B] edit by smsong - 코드 입장 미리보기 모달
@@ -444,6 +445,7 @@ async function loadRooms() {
         await loadPendingRooms(); // [B] edit by smsong - 요청 대기중/거절 방도 함께 갱신
         renderCurrentView();
         maybeShowEntryNotices(); // [B] edit by smsong - 거절/강퇴 안내 또는 입장 수락 안내 1회 표시
+        preloadChatBadge(); // [B] edit by smsong - 채팅 탭 안읽음 배지 미리 채우기
     } catch (e) {
         console.error(e);
         showToast('서버에 연결하지 못했습니다');
@@ -468,8 +470,125 @@ async function loadPendingRooms() {
 }
 
 // 현재 탭에 맞춰 필터링 후 렌더
+// ===== [B] edit by smsong - 채팅 탭: 내 채팅방 대화목록 =====
+let _chatRoomsLoaded = false;
+function _chatTimeLabel(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    if (sameDay) {
+        var h = d.getHours(), m = d.getMinutes();
+        var ap = h < 12 ? '오전' : '오후'; var hh = h % 12; if (hh === 0) hh = 12;
+        return ap + ' ' + hh + ':' + (m < 10 ? '0' + m : m);
+    }
+    var oneDay = 24 * 60 * 60 * 1000;
+    var diff = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / oneDay);
+    if (diff === 1) return '어제';
+    if (diff < 7) return ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] + '요일';
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+}
+function _chatEsc(s) {
+    return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+async function loadChatRooms() {
+    const listEl2 = document.getElementById('rooms-chat-list');
+    const emptyEl2 = document.getElementById('rooms-chat-empty');
+    if (!listEl2) return;
+    if (!_chatRoomsLoaded) listEl2.innerHTML = '<div class="rooms-empty" style="display:block;padding-top:30px;">불러오는 중…</div>';
+    try {
+        const res = await fetch(`${API_BASE}/api/chat/rooms`, { headers: authHeaders(true) });
+        if (!res.ok) throw new Error(res.status);
+        const rooms = await res.json();
+        _chatRoomsLoaded = true;
+        renderChatRooms(Array.isArray(rooms) ? rooms : []);
+        // 채팅 탭 배지(총 안읽음)
+        let total = 0;
+        (rooms || []).forEach(r => { total += (r.unreadCount || 0); });
+        setChatTabBadge(total);
+    } catch (e) {
+        listEl2.innerHTML = '';
+        if (emptyEl2) { emptyEl2.textContent = '채팅을 불러오지 못했어요.'; emptyEl2.style.display = 'block'; }
+    }
+}
+function renderChatRooms(rooms) {
+    const listEl2 = document.getElementById('rooms-chat-list');
+    const emptyEl2 = document.getElementById('rooms-chat-empty');
+    if (!listEl2) return;
+    if (!rooms.length) {
+        listEl2.innerHTML = '';
+        if (emptyEl2) { emptyEl2.innerHTML = '아직 채팅이 없어요.<br>방에 들어가 첫 메시지를 남겨보세요.'; emptyEl2.style.display = 'block'; }
+        return;
+    }
+    if (emptyEl2) emptyEl2.style.display = 'none';
+    listEl2.innerHTML = rooms.map(r => {
+        const title = _chatEsc(r.title || '채팅');
+        const preview = r.lastMessage ? _chatEsc(r.lastMessage) : '아직 대화가 없어요';
+        const time = r.lastMessageAt ? _chatTimeLabel(r.lastMessageAt) : '';
+        const mc = (!r.direct && r.memberCount > 2) ? ('<span class="rchat-mc">' + r.memberCount + '</span>') : '';
+        const muteIcon = r.muted ? '<span class="rchat-mute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span>' : '';
+        const unread = (r.unreadCount > 0) ? ('<span class="rchat-unread">' + (r.unreadCount > 99 ? '99+' : r.unreadCount) + '</span>') : '';
+        let ava;
+        if (r.imageURL) ava = '<img class="rchat-ava" src="' + _chatEsc(r.imageURL) + '" alt="" referrerpolicy="no-referrer">';
+        else ava = '<span class="rchat-ava-ph">' + _chatEsc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+        return '<div class="rchat-item" data-room="' + r.roomId + '" data-name="' + title + '" data-type="' + _chatEsc(r.type || '') + '">' +
+            ava +
+            '<div class="rchat-body">' +
+                '<div class="rchat-toprow">' +
+                    '<span class="rchat-title">' + title + '</span>' + mc + muteIcon +
+                    '<span class="rchat-time">' + time + '</span>' +
+                '</div>' +
+                '<div class="rchat-botrow">' +
+                    '<span class="rchat-preview">' + preview + '</span>' + unread +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    // 클릭 → 그 방으로 입장하면서 채팅 자동 열기
+    listEl2.querySelectorAll('.rchat-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const rid = el.getAttribute('data-room');
+            const rname = el.getAttribute('data-name') || '';
+            const rtype = el.getAttribute('data-type') || 'COUPLE';
+            try { localStorage.setItem('openChatOnEnter', '1'); } catch (e) {} // main.js 가 읽어서 채팅 패널 자동 오픈
+            enterRoom({ id: rid, name: rname, type: rtype });
+        });
+    });
+}
+function setChatTabBadge(n) {
+    const b = document.getElementById('rooms-chat-badge');
+    if (!b) return;
+    if (n && n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.classList.remove('hidden'); }
+    else { b.classList.add('hidden'); }
+}
+// 채팅 탭에 들어가지 않아도 안읽음 총합 배지를 보여주기 위한 가벼운 프리로드
+async function preloadChatBadge() {
+    try {
+        const res = await fetch(`${API_BASE}/api/chat/rooms`, { headers: authHeaders(true) });
+        if (!res.ok) return;
+        const rooms = await res.json();
+        let total = 0;
+        (rooms || []).forEach(r => { total += (r.unreadCount || 0); });
+        setChatTabBadge(total);
+    } catch (e) {}
+}
+
 function renderCurrentView() {
-    if (currentView === 'pending') {
+    // [B] edit by smsong - 채팅 탭: 방 목록 대신 채팅방 대화목록 표시
+    var chatList = document.getElementById('rooms-chat-list');
+    var chatEmpty = document.getElementById('rooms-chat-empty');
+    var isChat = (currentView === 'chat');
+    if (listEl) listEl.style.display = isChat ? 'none' : '';
+    if (emptyEl && isChat) emptyEl.style.display = 'none';
+    if (chatList) chatList.style.display = isChat ? 'flex' : 'none';
+    if (chatEmpty && !isChat) chatEmpty.style.display = 'none';
+    // 방 만들기/코드입장 액션은 채팅 탭에서 숨김
+    var actions = document.querySelector('.rooms-actions');
+    if (actions) actions.style.display = isChat ? 'none' : 'flex';
+
+    if (isChat) {
+        loadChatRooms();
+    } else if (currentView === 'pending') {
         renderPendingRooms(myPendingRooms); // [B] edit by smsong
     } else {
         const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
@@ -478,13 +597,14 @@ function renderCurrentView() {
     if (mainEl) mainEl.scrollTop = 0; // [smsong] 렌더 직후 항상 맨 위에서 시작 (탭 전환 시 이전 스크롤 위치 캐시 방지)
 }
 
-// ===== 탭 전환 (내가 속한 방 / 내가 방장인 방 / 요청 대기중인 방) =====
+// ===== 탭 전환 (속한 방 / 방장인 방 / 대기중 / 채팅) =====
 function setView(view) {
     if (currentView === view) return;
     currentView = view;
     if (tabMemberEl)  tabMemberEl.classList.toggle('active', view === 'member');
     if (tabOwnerEl)   tabOwnerEl.classList.toggle('active', view === 'owner');
     if (tabPendingEl) tabPendingEl.classList.toggle('active', view === 'pending');
+    if (tabChatEl)    tabChatEl.classList.toggle('active', view === 'chat'); // [B] edit by smsong
     renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터 (스크롤 초기화 포함)
 }
 
@@ -1058,6 +1178,7 @@ async function leaveRoom(r) {
 if (tabMemberEl) tabMemberEl.addEventListener('click', () => setView('member'));
 if (tabOwnerEl)  tabOwnerEl.addEventListener('click', () => setView('owner'));
 if (tabPendingEl) tabPendingEl.addEventListener('click', () => setView('pending'));
+if (tabChatEl) tabChatEl.addEventListener('click', () => setView('chat')); // [B] edit by smsong
 // [B] edit by smsong - 미리보기/거절 모달 이벤트
 if (previewOkBtn) previewOkBtn.addEventListener('click', confirmPreview);
 if (previewCancelBtn) previewCancelBtn.addEventListener('click', closePreviewModal);

@@ -288,6 +288,8 @@ public class RoomService {
         List<RoomDTO> result = new ArrayList<>();
         for (RoomMemberEntity m : memberships) {
             roomRepository.findById(m.getRoomId()).ifPresent(room -> {
+                // [B] edit by smsong - 1:1(DIRECT) 방은 방 목록에 표시하지 않는다(채팅 탭 전용)
+                if ("DIRECT".equalsIgnoreCase(room.getType())) return;
                 RoomDTO dto = RoomDTO.from(room, uid, roomMemberRepository.countByRoomId(room.getId()));
                 // [B] edit by smsong - 방장이 아닌 멤버만 '입장 수락됨' 최초 1회 안내 대상 판단
                 if (!dto.isOwner()) dto.setAcceptSeen(permissionService.getAcceptSeen(room.getId(), uid));

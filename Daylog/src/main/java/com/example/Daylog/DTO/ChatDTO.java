@@ -41,5 +41,27 @@ public class ChatDTO {
         private List<Message> messages;       // 오름차순(과거 → 최신)
         private boolean hasMore;              // 위로 더 불러올 과거가 있는지
     }
+
+    // [B] edit by smsong - 채팅방 리스트(카카오톡 대화목록) 한 줄
+    //  · 채팅 탭에서 내가 속한 방들의 채팅을 최근 메시지 순으로 보여준다.
+    //  · direct=true 면 1:1 방(다음 단계에서 사용). 이때 title/imageURL 은 상대방 기준으로 채워진다.
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Getter
+    @Setter
+    @Builder
+    public static class RoomSummary {
+        private Long roomId;
+        private String title;          // 방 이름(1:1 이면 상대방 표시 이름)
+        private String imageURL;       // 방 대표 이미지(1:1 이면 상대방 프로필)
+        private String type;           // 방 타입(COUPLE/FAMILY/... 또는 DIRECT)
+        private boolean direct;        // 1:1 채팅 여부
+        private String peerUid;        // 1:1 일 때 상대방 uid (그룹이면 null)
+        private String lastMessage;    // 마지막 메시지 미리보기(없으면 null)
+        private String lastMessageAt;  // 마지막 메시지 시각 ISO (없으면 null)
+        private long unreadCount;      // 내가 안 읽은 메시지 수
+        private long memberCount;      // 방 멤버 수
+        private boolean muted;         // 이 방 채팅 알림을 껐는지
+    }
 }
 // [E] edit by smsong

@@ -1199,8 +1199,8 @@ function renderRoomMembers(room) {
             ? '<button class="rm-kick" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '">강퇴하기</button>'
             : '';
         html += '<div class="rm-item">' +
-                    '<span class="rm-avatar">' + avatar + '</span>' +
-                    '<span class="rm-name">' + _escHtml(name) + ' ' + badge + '</span>' +
+                    '<span class="rm-avatar rm-peer" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '" data-profile="' + _escHtml(m.profileURL || '') + '">' + avatar + '</span>' +
+                    '<span class="rm-name rm-peer" data-uid="' + _escHtml(m.uid) + '" data-name="' + _escHtml(name) + '" data-profile="' + _escHtml(m.profileURL || '') + '">' + _escHtml(name) + ' ' + badge + '</span>' +
                     action +
                 '</div>';
     });
@@ -1209,6 +1209,16 @@ function renderRoomMembers(room) {
     body.querySelectorAll('.rm-kick').forEach(function (btn) {
         btn.addEventListener('click', function () {
             kickRoomMember(btn.getAttribute('data-uid'), btn.getAttribute('data-name'));
+        });
+    });
+    // [B] edit by smsong - 멤버 프로필 클릭 → 프로필 모달(1:1 대화 시작). 나 자신은 제외.
+    body.querySelectorAll('.rm-peer').forEach(function (el) {
+        el.addEventListener('click', function () {
+            var puid = el.getAttribute('data-uid');
+            if (!puid || puid === myUid) return;
+            if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
+                Daylog.openPeerProfile(puid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
+            }
         });
     });
 }
@@ -2380,13 +2390,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm('로그아웃을 진행합니다.')) serverLogoutThenRedirect('로그아웃 되었습니다.');
     });
 
-    // [B] edit by smsong - 방 채팅 버튼 (기능은 추후 구현 · 현재는 준비 중 안내)
+    // [B] edit by smsong - 방 채팅 버튼 → chat.js 패널 열기
     var _btnChat = document.getElementById('btn-chat');
     if (_btnChat) _btnChat.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.Daylog && typeof window.Daylog.openChat === 'function') window.Daylog.openChat();
-        else showToast('채팅 기능은 준비 중입니다');
+        else showToast('채팅을 불러오는 중이에요');
     });
+    // 채팅 탭에서 방을 눌러 들어온 경우, 진입 직후 채팅 패널 자동 오픈
+    try {
+        if (localStorage.getItem('openChatOnEnter') === '1') {
+            localStorage.removeItem('openChatOnEnter');
+            var _tryOpenChat = function (n) {
+                if (window.Daylog && typeof window.Daylog.openChat === 'function') { window.Daylog.openChat(); return; }
+                if (n > 0) setTimeout(function () { _tryOpenChat(n - 1); }, 250); // chat.js 로드 대기
+            };
+            setTimeout(function () { _tryOpenChat(12); }, 400);
+        }
+    } catch (e) {}
     // [E] edit by smsong
 
     // [B] edit by smsong - main 상단 좌측 Daylog 로고 → 확인 후 방 목록으로 이동 (main 페이지 전용)
@@ -6402,7 +6423,21 @@ function commentTimeLabel(iso) {
 
 function commentAvatarHtml(c) {
     const src = (c.ownerProfileURL && c.ownerProfileURL.trim()) ? c.ownerProfileURL : DEFAULT_AVATAR;
-    return '<div class="c-avatar" style="background-image:url(\'' + src + '\')" data-photo="' + src + '" onclick="openLightbox(this.dataset.photo, this)"></div>';
+    // [B] edit by smsong - 댓글 작성자 아바타 클릭: 남이면 프로필 모달(1:1 대화), 나면 사진 확대
+    const uid = c.ownerUid || '';
+    return '<div class="c-avatar" style="background-image:url(\'' + src + '\')" ' +
+        'data-photo="' + src + '" data-uid="' + escapeHtml(uid) + '" data-name="' + escapeHtml(c.ownerName || '') + '" ' +
+        'data-profile="' + escapeHtml(c.ownerProfileURL || '') + '" onclick="onCommentAvatarClick(this)"></div>';
+}
+// [B] edit by smsong - 댓글 아바타 클릭 핸들러
+function onCommentAvatarClick(el) {
+    const uid = el.getAttribute('data-uid');
+    if (uid && Daylog.currentUid && uid !== Daylog.currentUid &&
+        window.Daylog && typeof Daylog.openPeerProfile === 'function') {
+        Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
+    } else {
+        openLightbox(el.getAttribute('data-photo'), el);
+    }
 }
 
 function commentItemHtml(c, kind, targetId, isReply) {

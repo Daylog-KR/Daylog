@@ -97,6 +97,60 @@ html, body {
 }
 .rooms-tab.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
 .rooms-tab:active { transform: scale(0.98); }
+
+/* [B] edit by smsong - 하단 네비 (main.html 스타일). 방 3분류 + 채팅 */
+.rooms-bottom-nav {
+    flex: 0 0 auto;
+    display: flex; justify-content: space-around; align-items: center;
+    background: var(--white); border-top: 1px solid var(--gray-200);
+    padding-bottom: var(--safe-bottom, 0px);
+    box-shadow: var(--shadow-up, 0 -2px 12px rgba(0,0,0,0.05));
+}
+.rnav-item {
+    flex: 1 1 0; min-width: 0; border: none; background: transparent; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 9px 2px 8px; color: var(--gray-400); font-family: var(--font-main);
+    transition: color 0.15s ease;
+}
+.rnav-icon { display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
+.rnav-text { font-size: 0.7rem; font-weight: 500; white-space: nowrap; }
+.rnav-item.active { color: var(--primary-dark); }
+.rnav-item.active .rnav-icon { transform: translateY(-2px) scale(1.06); }
+.rnav-item.active .rnav-text { font-weight: 700; }
+.rnav-item:active .rnav-icon { transform: scale(0.9); }
+/* 채팅 탭 안읽음 배지 — 알림 배지와 동일한 빨간 원 숫자 */
+.rnav-badge {
+    position: absolute; top: -5px; right: -9px; min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 9px; background: #e5322d; color: #fff; font-size: 0.64rem; font-weight: 800;
+    line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--white); pointer-events: none;
+}
+.rnav-badge.hidden { display: none; }
+
+/* 채팅 리스트(카카오톡 대화목록) */
+.rooms-chat-list { display: flex; flex-direction: column; }
+.rchat-item {
+    display: flex; align-items: center; gap: 12px; padding: 12px 4px; cursor: pointer;
+    border-bottom: 1px solid var(--gray-100);
+}
+.rchat-item:active { background: var(--gray-50); }
+.rchat-ava { width: 50px; height: 50px; border-radius: 18px; object-fit: cover; flex-shrink: 0; background: var(--gray-100); }
+.rchat-ava-ph {
+    width: 50px; height: 50px; border-radius: 18px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.15rem; color: var(--primary-dark); background: var(--primary-light);
+}
+.rchat-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rchat-toprow { display: flex; align-items: baseline; gap: 6px; }
+.rchat-title { font-size: 0.96rem; font-weight: 700; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rchat-mc { font-size: 0.78rem; color: var(--gray-400); font-weight: 600; flex-shrink: 0; }
+.rchat-mute { flex-shrink: 0; color: var(--gray-400); display: inline-flex; }
+.rchat-time { margin-left: auto; font-size: 0.72rem; color: var(--gray-400); flex-shrink: 0; }
+.rchat-botrow { display: flex; align-items: center; gap: 8px; }
+.rchat-preview { flex: 1 1 auto; min-width: 0; font-size: 0.86rem; color: var(--gray-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rchat-unread {
+    flex-shrink: 0; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+    background: #e5322d; color: #fff; font-size: 0.72rem; font-weight: 800; line-height: 20px; text-align: center;
+}
 .rooms-logout-btn {
     flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; cursor: pointer;
     background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
@@ -211,10 +265,9 @@ html, body {
 .rooms-actions {
     flex: 0 0 auto;
     display: flex; gap: 10px;
-    /* [B][E] edit by smsong - Android 시스템 내비에 '방 만들기 / 코드로 입장' 이 가리지 않도록 */
-    padding: 12px 18px calc(var(--safe-bottom) + 16px);
+    /* [B][E] edit by smsong - 하단 네비가 아래에 붙으므로 border-top/safe-padding 제거 */
+    padding: 12px 18px;
     background: var(--bg-color);
-    border-top: 1px solid var(--gray-200);
 }
 .room-action {
     flex: 1 1 0; padding: 15px 12px; border-radius: 14px; cursor: pointer;
