@@ -570,14 +570,16 @@
                 <label>내용</label>
                 <textarea id="cl-content" placeholder="메모를 남겨보십시오" rows="3"></textarea>
             </div>
-            <div class="form-group">
-                <label>방문 여부</label>
+            <div class="form-group cl-visited-block">
                 <div class="cl-visited-row">
-                    <label class="cl-check-label">
-                        <input type="checkbox" id="cl-visited"> 다녀왔습니다
-                    </label>
-                    <div class="cl-visited-date-wrap">
-                        <span class="cl-visited-date-label">다녀온 날짜</span>
+                    <div class="cl-visited-col">
+                        <span class="cl-vlabel">방문 여부</span>
+                        <label class="cl-check-label">
+                            <input type="checkbox" id="cl-visited"> 다녀왔습니다
+                        </label>
+                    </div>
+                    <div class="cl-visited-col">
+                        <span class="cl-vlabel">다녀온 날짜</span>
                         <input type="date" id="cl-visited-date" disabled>
                     </div>
                 </div>
@@ -635,14 +637,16 @@
                 <label>내용</label>
                 <textarea id="cl-edit-content" rows="4" placeholder="메모"></textarea>
             </div>
-            <div class="form-group">
-                <label>방문 여부</label>
+            <div class="form-group cl-visited-block">
                 <div class="cl-visited-row">
-                    <label class="cl-check-label">
-                        <input type="checkbox" id="cl-edit-visited"> 다녀왔습니다
-                    </label>
-                    <div class="cl-visited-date-wrap">
-                        <span class="cl-visited-date-label">다녀온 날짜</span>
+                    <div class="cl-visited-col">
+                        <span class="cl-vlabel">방문 여부</span>
+                        <label class="cl-check-label">
+                            <input type="checkbox" id="cl-edit-visited"> 다녀왔습니다
+                        </label>
+                    </div>
+                    <div class="cl-visited-col">
+                        <span class="cl-vlabel">다녀온 날짜</span>
                         <input type="date" id="cl-edit-visited-date" disabled>
                     </div>
                 </div>

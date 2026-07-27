@@ -1910,26 +1910,28 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* [E] edit by smsong */
 
 /* ---- 방문 체크 + 날짜 ---- */
-/* [B] edit by smsong - '다녀왔습니다' 와 '다녀온 날짜'를 가로 반반 배치 */
-.cl-visited-row { display: flex; align-items: stretch; gap: 10px; }
-.cl-visited-row > * { flex: 1 1 0; min-width: 0; }
-.cl-visited-date-wrap { display: flex; flex-direction: column; gap: 5px; }
-.cl-visited-date-label { font-size: 0.78rem; font-weight: 600; color: var(--gray-500); padding-left: 2px; }
-.cl-visited-row input[type="date"] {
-    width: 100%; box-sizing: border-box; flex: 1;
-    padding: 12px 12px; border: 1px solid var(--gray-200); border-radius: 12px;
-    background: var(--gray-50); color: var(--gray-800); font-family: var(--font-main);
-    font-size: 0.92rem;
+/* [B] edit by smsong - '방문 여부'와 '다녀온 날짜'를 대칭 2칸으로.
+   각 칸은 [작은 라벨 + 입력부] 구조라 라벨/입력부 높이가 좌우 정확히 맞는다. */
+.cl-visited-row { display: flex; align-items: flex-start; gap: 10px; }
+.cl-visited-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cl-vlabel { font-size: 0.82rem; font-weight: 600; color: var(--gray-600); padding-left: 2px; }
+/* 좌우 입력부 공통 높이 (다녀왔습니다 박스 = 날짜 박스) */
+.cl-visited-col .cl-check-label,
+.cl-visited-col input[type="date"] {
+    height: 48px; box-sizing: border-box; width: 100%;
+    border: 1px solid var(--gray-200); border-radius: 12px;
+    background: var(--gray-50); font-family: var(--font-main); font-size: 0.92rem;
 }
-/* 체크박스(다녀왔습니다)를 날짜 라벨 높이만큼 아래로 맞춰 두 칸의 입력부가 같은 선에서 시작하게 */
-.cl-visited-row .cl-check-label { margin-top: 23px; }
+.cl-visited-col input[type="date"] {
+    padding: 0 12px; color: var(--gray-800);
+    line-height: 46px; /* iOS Safari 에서 날짜 텍스트가 위로 붙는 것 방지 */
+    -webkit-appearance: none; appearance: none;
+}
+.cl-visited-col input[type="date"]:disabled { opacity: 0.45; cursor: not-allowed; }
 /* [E] edit by smsong */
 .cl-check-label {
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: 100%; padding: 12px 14px;
-    border: 1px solid var(--gray-200); border-radius: 12px;
-    background: var(--gray-50); color: var(--gray-600);
-    font-size: 0.92rem; font-weight: 700; cursor: pointer; user-select: none;
+    color: var(--gray-600); font-weight: 700; cursor: pointer; user-select: none;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 .cl-check-label:hover { border-color: #9bd96a; }
@@ -1941,7 +1943,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     box-shadow: 0 0 0 4px rgba(142, 217, 79, 0.28);
 }
 .cl-check-label.checked::before { content: '✓'; font-weight: 800; }
-.cl-visited-row input[type="date"]:disabled { opacity: 0.45; cursor: not-allowed; }
 .cl-file-input { font-size: 0.85rem; }
 
 /* ---- 가볼곳 상세 ---- */
