@@ -3174,7 +3174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const submitBtn = memoryForm.querySelector('.submit-btn');
             submitBtn.disabled = true;
-            submitBtn.innerText = '기록하는 중...';
+            submitBtn.innerText = '생성 중...';
 
             const _dateVal = document.getElementById('memory-date').value;
             const memoryDTO = {
@@ -3190,8 +3190,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mgr = window._memCreateMgr;
             const files = mgr ? mgr.getNewFiles() : (selectedFile ? [selectedFile] : []);
-            if (!files.length) { showToast('사진을 1장 이상 추가해주십시오'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
-            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); submitBtn.disabled = false; submitBtn.innerText = '기록하기'; return; }
+            if (!files.length) { showToast('사진을 1장 이상 추가해주십시오'); submitBtn.disabled = false; submitBtn.innerText = '추억 생성'; return; }
+            if (files.length > 10) { showToast('이미지는 최대 10장까지 첨부할 수 있습니다'); submitBtn.disabled = false; submitBtn.innerText = '추억 생성'; return; }
             memoryDTO.mediaOrder = mgr ? mgr.getMediaOrder() : files.map(() => '$NEW$');
 
             const formData = new FormData();
@@ -3222,7 +3222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                 .finally(() => {
                     submitBtn.disabled = false;
-                    submitBtn.innerText = '기록하기';
+                    submitBtn.innerText = '추억 생성';
                 });
         });
     }
@@ -9001,7 +9001,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ov.innerHTML =
             '<div class="cw-card" role="dialog" aria-modal="true">' +
                 '<div class="cw-card-head">' +
-                    '<h3>' + (editing ? '일정 수정' : '일정 추가') + '</h3>' +
+                    '<h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ' + (editing ? '일정 수정' : '일정 추가') + '</h3>' +
                     '<button type="button" class="cw-x" aria-label="닫기">&times;</button>' +
                 '</div>' +
                 '<label class="cw-lb">날짜</label>' +
