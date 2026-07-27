@@ -116,7 +116,7 @@ button { font-family: inherit; }
 /* 헤더 안의 지도 컨트롤(토글 + 액션) — 지도 탭에서만 노출, 오른쪽 정렬 */
 .header-map-controls { display: none; align-items: center; gap: 8px; }
 .header-map-controls .map-fab { padding: 7px 11px; font-size: 0.72rem; box-shadow: 0 3px 9px rgba(176, 137, 104, 0.32); }
-body[data-active-tab="tab-map"] .header-map-controls { display: flex; margin-left: 0; }
+body[data-active-tab="tab-map"] .header-map-controls { display: none; margin-left: 0; }
 /* 지도 탭: 로그아웃만 숨김 (디데이는 다른 탭과 동일하게 중앙 표시) */
 body[data-active-tab="tab-map"] #btn-logout { display: none; }
 /* [B] edit by smsong - #1 알림 버튼은 모든 탭에서 상단 우측 표시 */
@@ -168,12 +168,12 @@ body.picking .navbar { z-index: 700; } /* 검색/추천 드롭다운이 지도 �
 
 /* 헤더 안의 타임라인 검색 버튼 — 타임라인 탭에서만 오른쪽에 노출 */
 .header-timeline-controls { display: none; align-items: center; position: relative; }
-body[data-active-tab="tab-timeline"] .header-timeline-controls { display: flex; margin-left: 0; }
+body[data-active-tab="tab-timeline"] .header-timeline-controls { display: none; margin-left: 0; }
 body[data-active-tab="tab-timeline"] #btn-logout { display: none; }
 
 /* 헤더 안의 가볼곳 검색 버튼 — 가볼곳 탭에서만 오른쪽에 노출 */
 .header-checklist-controls { display: none; align-items: center; position: relative; }
-body[data-active-tab="tab-checklist"] .header-checklist-controls { display: flex; margin-left: 0; }
+body[data-active-tab="tab-checklist"] .header-checklist-controls { display: none; margin-left: 0; }
 body[data-active-tab="tab-checklist"] #btn-logout { display: none; }
 /* 가볼곳 필터(카테고리+방문여부) — 검색 버튼으로 토글 */
 .cl-filter-wrap { animation: dropIn 0.28s var(--ease-soft); }

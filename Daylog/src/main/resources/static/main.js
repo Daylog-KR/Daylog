@@ -2384,7 +2384,8 @@ document.addEventListener('DOMContentLoaded', () => {
     var _btnChat = document.getElementById('btn-chat');
     if (_btnChat) _btnChat.addEventListener('click', (e) => {
         e.preventDefault();
-        showToast('채팅 기능은 준비 중입니다');
+        if (window.Daylog && typeof window.Daylog.openChat === 'function') window.Daylog.openChat();
+        else showToast('채팅 기능은 준비 중입니다');
     });
     // [E] edit by smsong
 
