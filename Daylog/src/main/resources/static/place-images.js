@@ -29,53 +29,53 @@
             // 가볼곳 사진 그리드의 '＋' 옆에 같은 크기(정사각형)로 놓이는 타일 버튼.
             //  .media-add 와 동일한 aspect-ratio / 모양을 맞춰 나란히 보이게 한다.
             '.pi-fetch{aspect-ratio:1/1;border-radius:12px;border:2px dashed var(--primary-light,#e6ccb2);' +
-                'background:var(--gray-50,#faf9f8);color:var(--primary,#b08968);cursor:pointer;' +
-                'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
-                'font-family:inherit;font-size:0.66rem;font-weight:700;line-height:1.15;text-align:center;padding:4px;}' +
+            'background:var(--gray-50,#faf9f8);color:var(--primary,#b08968);cursor:pointer;' +
+            'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
+            'font-family:inherit;font-size:0.66rem;font-weight:700;line-height:1.15;text-align:center;padding:4px;}' +
             '.pi-fetch:hover{background:var(--primary-light,#e6ccb2);}' +
             '.pi-fetch:active{transform:scale(.97);}' +
             '.pi-fetch svg{width:20px;height:20px;}' +
 
             '#pi-overlay{position:fixed;inset:0;z-index:2900;background:rgba(45,38,32,.52);' +
-                'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
+            'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
             '@media (min-width:600px){#pi-overlay{align-items:center;}}' +
             '#pi-card{width:100%;max-width:560px;max-height:88dvh;display:flex;flex-direction:column;' +
-                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
-                'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
+            'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
+            'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
             '@media (min-width:600px){#pi-card{border-radius:22px;}}' +
 
             '.pi-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
-                'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
+            'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#2e2b28);}' +
             '.pi-head .pi-q{font-size:0.8rem;color:var(--gray-500,#7a756e);font-weight:600;' +
-                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
             '.pi-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
-                'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
+            'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}' +
             '@media (min-width:480px){.pi-grid{grid-template-columns:repeat(4,1fr);}}' +
             '.pi-cell{position:relative;padding-top:100%;border-radius:12px;overflow:hidden;cursor:pointer;' +
-                'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
+            'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
             '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
             '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.22);}' +
             '.pi-no{position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;border-radius:50%;' +
-                'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
-                'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
-                'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
+            'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;' +
+            'background:rgba(255,255,255,.86);color:var(--gray-400,#a8a29a);' +
+            'box-shadow:0 1px 4px rgba(0,0,0,.18);}' +
             '.pi-cell.sel .pi-no{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.62rem;' +
-                'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
-                'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
 
             '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
             '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
 
             '.pi-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
-                'border-top:1px solid var(--gray-100,#f3f0ec);}' +
+            'border-top:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
-                'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
+            'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
             '.pi-btn.ghost{background:var(--gray-100,#f3f0ec);color:var(--gray-600,#5c5751);}' +
             '.pi-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-btn:disabled{opacity:.5;cursor:default;}' +
@@ -144,16 +144,16 @@
         ov.id = 'pi-overlay';
         ov.innerHTML =
             '<div id="pi-card" role="dialog" aria-modal="true" aria-label="장소 사진 가져오기">' +
-                '<div class="pi-head">' +
-                    '<h3>장소 사진</h3>' +
-                    '<span class="pi-q">' + esc(cfg.query || '') + '</span>' +
-                    '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
-                '</div>' +
-                '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
-                '<div class="pi-foot">' +
-                    '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
-                    '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
-                '</div>' +
+            '<div class="pi-head">' +
+            '<h3>장소 사진</h3>' +
+            '<span class="pi-q">' + esc(cfg.query || '') + '</span>' +
+            '<button type="button" class="pi-x" aria-label="닫기">&times;</button>' +
+            '</div>' +
+            '<div id="pi-body"><div class="pi-msg">사진을 찾는 중…</div></div>' +
+            '<div class="pi-foot">' +
+            '<button type="button" class="pi-btn ghost" id="pi-cancel">취소</button>' +
+            '<button type="button" class="pi-btn primary" id="pi-add" disabled>추가</button>' +
+            '</div>' +
             '</div>';
         document.body.appendChild(ov);
 
@@ -253,11 +253,11 @@
             picked.forEach(function (it, idx) {
                 seq = seq.then(function () {
                     return fetch(apiBase() + '/api/search/image-proxy?url=' + encodeURIComponent(it.url),
-                                 { headers: headers() })
+                        { headers: headers() })
                         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
                         .then(function (blob) {
                             files.push(new File([blob], 'place_' + Date.now() + '_' + idx + '.jpg',
-                                                { type: 'image/jpeg' }));
+                                { type: 'image/jpeg' }));
                         })
                         .catch(function () { /* 개별 실패는 건너뛴다 */ });
                 });
@@ -273,7 +273,7 @@
                 if (mgr) mgr.addFiles(files);
                 close();
                 toast(files.length + '장을 추가했어요' +
-                      (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
+                    (files.length < picked.length ? ' (일부는 가져오지 못했어요)' : ''));
             });
         });
     }
@@ -306,26 +306,29 @@
         grid._piBound = true;
         injectStyle();
 
-        // 렌더 직후 버튼을 그리드 마지막(＋ 다음)에 붙이는 함수
+        // 그리드 끝(＋ 다음)에 버튼을 붙인다. 이미 있으면 맨 끝으로만 옮긴다.
         function place() {
-            if (grid.querySelector('.pi-fetch')) return; // 중복 방지
+            var existing = grid.querySelector('.pi-fetch');
+            if (existing) {
+                if (existing !== grid.lastElementChild) grid.appendChild(existing); // 항상 맨 뒤 유지
+                return;
+            }
             grid.appendChild(makeBtn(cfg));
         }
 
-        // mgr 이 준비돼 있으면 render 를 래핑, 아니면 잠깐 뒤 재시도
-        (function hook(tries) {
-            var mgr = (typeof cfg.mgr === 'function') ? cfg.mgr() : cfg.mgr;
-            if (mgr && typeof mgr.render === 'function' && !mgr._piWrapped) {
-                mgr._piWrapped = true;
-                var orig = mgr.render;
-                mgr.render = function () { orig.apply(this, arguments); place(); };
-                mgr.render(); // 즉시 한 번
-            } else if ((!mgr || typeof mgr.render !== 'function') && tries > 0) {
-                setTimeout(function () { hook(tries - 1); }, 200);
-            } else {
-                place(); // 최후 폴백: 그냥 현재 그리드에 한 번 붙인다
-            }
-        })(10);
+        // 미디어 매니저의 render 는 클로저 내부 함수라 바깥에서 덮어도 reset/addFiles 가 부르는
+        //  원본까지는 못 바꾼다. 그래서 render 래핑 대신 그리드 변화를 감시해 버튼을 다시 붙인다.
+        //  (reset/추가/삭제/정렬로 그리드가 다시 그려질 때마다 재삽입 → 절대 사라지지 않는다)
+        var scheduled = false;
+        var mo = new MutationObserver(function () {
+            if (scheduled) return;
+            scheduled = true;
+            // childList 변경 도중 재삽입하면 옵저버가 또 도니, 다음 틱으로 미뤄 무한루프를 막는다.
+            requestAnimationFrame(function () { scheduled = false; place(); });
+        });
+        mo.observe(grid, { childList: true });
+
+        place(); // 최초 1회
     }
 
     function val(id) {
