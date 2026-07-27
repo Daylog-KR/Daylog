@@ -14,7 +14,6 @@ import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +32,7 @@ public class ChatService {
     private final RoomMemberRepository roomMemberRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
-
-    // 새 메시지 → 웹푸시 발송 연결점. 구현 빈이 없으면 푸시만 생략(선택 주입).
-    @Autowired(required = false)
-    private ChatPushSender chatPushSender;
+    private final WebPushService webPushService; // 기존 웹푸시 발송 서비스
 
     private static final int PAGE = 30;
 
@@ -178,7 +174,6 @@ public class ChatService {
     //  대상 = 방 멤버 − 발신자 − 채팅음소거자 − 지금 채팅방 접속중(excludeUids)
     //  excludeUids: WebSocket 핸들러가 넘겨주는 '현재 이 방 채팅에 붙어있는 uid'(있으면 굳이 푸시 안 함)
     public void notifyNewMessage(Long roomId, String senderUid, String content, Set<String> excludeUids) {
-        if (chatPushSender == null) return; // 어댑터 미구현 → 푸시 생략
         try {
             Set<String> muted = chatMutedUids(roomId);
             List<String> targets = new ArrayList<>();
@@ -198,7 +193,8 @@ public class ChatService {
             String body = (senderName != null ? senderName + ": " : "") + preview;
             String url = "/main.html?room=" + roomId;
 
-            chatPushSender.sendChatPush(targets, roomId, roomName, body, url);
+            // 여러 uid 에게 비동기 발송(본 요청 응답을 지연시키지 않음). 푸시 비활성/구독없음 시 자동 no-op.
+            webPushService.sendToUids(targets, roomName, body, url);
         } catch (Exception ignore) {
             // 푸시 실패가 채팅 전송을 막지 않도록 무시
         }
