@@ -5458,6 +5458,7 @@ function closeMemoryModal() {
     if (rt) rt.classList.add('hidden');
     const lm = document.getElementById('location-mode');
     if (lm) lm.classList.add('hidden');
+    if (window.Daylog && Daylog.placeImages) Daylog.placeImages.reset();
 }
 
 // ====== 가볼곳(체크리스트) 모달 ======
