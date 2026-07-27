@@ -337,30 +337,88 @@
             if (state.direct) subEl.textContent = '1:1 대화';
             else subEl.textContent = state.memberCount ? ('멤버 ' + state.memberCount + '명') : '';
         }
+        // [B] edit by smsong - 방이름/그 아래 텍스트 클릭 → 현재 방 멤버 리스트
+        if (titleEl) { titleEl.style.cursor = 'pointer'; titleEl.onclick = function () { openMemberList(); }; }
+        if (subEl) { subEl.style.cursor = 'pointer'; subEl.onclick = function () { openMemberList(); }; }
+
         if (avaEl) {
-            if (state.direct && state.peerProfileURL) {
-                avaEl.innerHTML = '<img src="' + esc(state.peerProfileURL) + '" alt="" referrerpolicy="no-referrer">';
+            // 헤더에 표시할 이미지: 1:1이면 상대 프로필, 그룹이면 방 대표 이미지
+            var headImg = state.direct ? state.peerProfileURL : state.roomImageURL;
+            if (headImg) {
+                avaEl.innerHTML = '<img src="' + esc(headImg) + '" alt="" referrerpolicy="no-referrer">';
                 avaEl.className = 'dchat-head-ava has-img';
-                avaEl.style.cursor = 'pointer';
-                avaEl.onclick = function () { if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title, profileURL: state.peerProfileURL }); };
             } else if (state.direct) {
                 avaEl.innerHTML = esc((state.title || '?').trim().charAt(0) || '?');
                 avaEl.className = 'dchat-head-ava ph';
-                avaEl.style.cursor = 'pointer';
-                avaEl.onclick = function () { if (state.peerUid) openPeerProfile(state.peerUid, { name: state.title }); };
             } else {
-                // 그룹 방: 방 대표 이미지가 있으면 썸네일, 없으면 사람 아이콘
-                if (state.roomImageURL) {
-                    avaEl.innerHTML = '<img src="' + esc(state.roomImageURL) + '" alt="" referrerpolicy="no-referrer">';
-                    avaEl.className = 'dchat-head-ava has-img';
-                } else {
-                    avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-                    avaEl.className = 'dchat-head-ava grp';
-                }
+                avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+                avaEl.className = 'dchat-head-ava grp';
+            }
+            // [B] edit by smsong - 왼쪽 썸네일 클릭 → 이미지 크게보기 (이미지 있을 때만)
+            if (headImg) {
+                avaEl.style.cursor = 'zoom-in';
+                avaEl.onclick = function () { viewImage(headImg, avaEl); };
+            } else {
                 avaEl.style.cursor = 'default';
                 avaEl.onclick = null;
             }
         }
+    }
+
+    // ===== [B] edit by smsong - 공용 이미지 크게보기 =====
+    //  · main.html 에선 체크리스트/추억과 '동일한' window.openLightbox 를 그대로 사용.
+    //  · rooms.html 처럼 main.js(=openLightbox)가 없는 페이지에선 자체 라이트박스로 폴백.
+    function injectLbStyle() {
+        if (document.getElementById('dlb-style')) return;
+        var css =
+            '#dlb-overlay{position:fixed;inset:0;z-index:10070;background:rgba(0,0,0,0.93);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s ease;overflow:hidden;touch-action:none;}' +
+            '#dlb-overlay.show{opacity:1;}' +
+            '#dlb-overlay img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;image-orientation:from-image;}' +
+            '#dlb-close{position:fixed;top:calc(12px + var(--safe-t,0px));right:16px;z-index:10071;width:42px;height:42px;border:none;border-radius:50%;background:rgba(255,255,255,0.16);color:#fff;font-size:1.7rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}';
+        var st = document.createElement('style'); st.id = 'dlb-style'; st.textContent = css; document.head.appendChild(st);
+    }
+    function fallbackLightbox(src) {
+        if (!src) return;
+        injectLbStyle();
+        var ov = document.createElement('div');
+        ov.id = 'dlb-overlay';
+        ov.innerHTML = '<button id="dlb-close" type="button" aria-label="닫기">&times;</button>' +
+            '<img src="' + esc(src) + '" alt="" referrerpolicy="no-referrer" draggable="false">';
+        document.body.appendChild(ov);
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+        var img = ov.querySelector('img');
+        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        ov.querySelector('#dlb-close').addEventListener('click', close);
+
+        // 핀치 줌 + (확대 시)드래그 + 더블탭 토글
+        var scale = 1, tx = 0, ty = 0, sDist = 0, sScale = 1, panning = false, px = 0, py = 0, ox = 0, oy = 0, lastTap = 0;
+        function apply() { img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+        function dist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+        img.addEventListener('touchstart', function (e) {
+            if (e.touches.length === 2) { sDist = dist(e.touches); sScale = scale; e.preventDefault(); }
+            else if (e.touches.length === 1 && scale > 1) { panning = true; px = e.touches[0].clientX; py = e.touches[0].clientY; ox = tx; oy = ty; }
+        }, { passive: false });
+        img.addEventListener('touchmove', function (e) {
+            if (e.touches.length === 2) { scale = Math.min(5, Math.max(1, sScale * (dist(e.touches) / (sDist || 1)))); apply(); e.preventDefault(); }
+            else if (panning && e.touches.length === 1) { tx = ox + (e.touches[0].clientX - px); ty = oy + (e.touches[0].clientY - py); apply(); e.preventDefault(); }
+        }, { passive: false });
+        img.addEventListener('touchend', function (e) {
+            if (e.touches.length === 0) {
+                panning = false;
+                if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; apply(); }
+                var now = Date.now();
+                if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); }
+                lastTap = now;
+            }
+        });
+        img.addEventListener('click', function (e) { e.stopPropagation(); }); // 이미지 탭으론 안 닫힘
+        img.addEventListener('dblclick', function (e) { e.preventDefault(); if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); });
+    }
+    function viewImage(src, originEl) {
+        if (!src) return;
+        if (typeof window.openLightbox === 'function') { try { window.openLightbox(src, originEl); return; } catch (e) {} }
+        fallbackLightbox(src);
     }
 
     // ===== [B] edit by smsong - 멤버 보기: 현재 채팅방 멤버 리스트 (모든 방 공통) =====
@@ -432,6 +490,14 @@
                         // [B] edit by smsong - 멤버 리스트는 '닫지 않고' 유지한다(프로필 위에 겹쳐 띄움).
                         //  → 프로필에서 '닫기'를 누르면 채팅방으로 나가지 않고 멤버 리스트로 돌아온다.
                         openPeerProfile(uid, { name: nm, profileURL: pf });
+                    });
+                });
+                // [B] edit by smsong - 멤버 프로필 썸네일 클릭 → 이미지 크게보기 (행 클릭보다 우선)
+                el.querySelectorAll('img.dml-ava').forEach(function (im) {
+                    im.style.cursor = 'zoom-in';
+                    im.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        viewImage(im.getAttribute('src'), im);
                     });
                 });
             })
@@ -587,8 +653,13 @@
         function setAvatar(url, nm) {
             var slot = document.getElementById('dpp-ava-slot');
             if (!slot) return;
-            if (url) slot.innerHTML = '<img class="dpp-ava" src="' + esc(url) + '" alt="" referrerpolicy="no-referrer">';
-            else slot.innerHTML = '<span class="dpp-ava-ph">' + esc((nm || '?').trim().charAt(0) || '?') + '</span>';
+            if (url) {
+                slot.innerHTML = '<img class="dpp-ava" src="' + esc(url) + '" alt="" referrerpolicy="no-referrer" style="cursor:zoom-in;">';
+                var im = slot.querySelector('img');
+                if (im) im.addEventListener('click', function () { viewImage(url, im); }); // [B] edit by smsong - 프로필 사진 크게보기
+            } else {
+                slot.innerHTML = '<span class="dpp-ava-ph">' + esc((nm || '?').trim().charAt(0) || '?') + '</span>';
+            }
         }
         setAvatar(hint.profileURL, hint.name);
 
@@ -888,6 +959,7 @@
     window.Daylog.openChat = openPanel;
     window.Daylog.openPeerProfile = openPeerProfile;   // [B] edit by smsong - 프로필 모달(멤버/댓글/채팅 공용)
     window.Daylog.startDirectChat = startDirectChat;   // [B] edit by smsong - 1:1 대화 시작
+    window.Daylog.viewImage = viewImage;               // [B] edit by smsong - 공용 이미지 크게보기(방/프로필 썸네일)
     window.Daylog.refreshChatBadge = refreshBadge;
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();

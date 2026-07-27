@@ -332,6 +332,22 @@ window.DaylogRoomImg = {
 })();
 // [E] edit by smsong
 
+// [B] edit by smsong - 방/프로필 썸네일 클릭 → 이미지 크게보기 (chat.js 의 Daylog.viewImage 사용).
+//  카드/행 자체 클릭(입장/채팅열기)보다 우선하도록 stopPropagation. 이미지가 실제로 있을 때만.
+function _bindThumbZoom(scopeEl) {
+    if (!scopeEl) return;
+    scopeEl.querySelectorAll('.room-thumb img, .rchat-ava-thumb img').forEach(function (im) {
+        if (im.getAttribute('data-zoom') === '1') return; // 중복 바인딩 방지
+        im.setAttribute('data-zoom', '1');
+        im.style.cursor = 'zoom-in';
+        im.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var url = im.getAttribute('data-full') || im.getAttribute('src');
+            if (window.Daylog && typeof window.Daylog.viewImage === 'function') window.Daylog.viewImage(url, im);
+        });
+    });
+}
+
 function esc(s) {
     return String(s == null ? '' : s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -607,6 +623,7 @@ function renderChatRooms(rooms) {
             }
         });
     });
+    _bindThumbZoom(listEl2); // [B] edit by smsong - 채팅 리스트 프로필/방 썸네일 클릭 확대
 }
 function setChatTabBadge(n) {
     const b = document.getElementById('rooms-chat-badge');
@@ -751,6 +768,7 @@ function renderRooms(rooms) {
 
         listEl.appendChild(card);
     });
+    _bindThumbZoom(listEl); // [B] edit by smsong - 방 썸네일 클릭 확대
 }
 
 // ===== 요청 대기중/거절된 방 렌더링 =====
@@ -830,6 +848,7 @@ function renderPendingRooms(rooms) {
 
         listEl.appendChild(card);
     });
+    _bindThumbZoom(listEl); // [B] edit by smsong - 방 썸네일 클릭 확대
 }
 
 // [B] edit by smsong - 거절된 방(또는 대기중 요청) 제거 → 서버 dismiss 후 목록 갱신
