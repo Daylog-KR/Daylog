@@ -281,9 +281,11 @@ public class ChatService {
             if (room == null) continue;
 
             ChatMessageEntity last = chatMessageRepository.findTop1ByRoomIdOrderByIdDesc(roomId).orElse(null);
+            boolean direct = isDirectRoom(room);
+            // [B] edit by smsong - 메시지 없는 1:1 방은 목록에 표시하지 않는다(첫 메시지가 생겨야 방이 뜬다)
+            if (direct && last == null) continue;
             long unread = unreadCount(roomId, uid);
             long members = roomMemberRepository.findByRoomId(roomId).size();
-            boolean direct = isDirectRoom(room);
 
             String title = room.getName();
             String image = room.getImageUrl();

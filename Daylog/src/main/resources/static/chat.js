@@ -377,7 +377,11 @@
             '#dlb-close{position:fixed;top:calc(12px + var(--safe-t,0px));right:16px;z-index:10071;width:42px;height:42px;border:none;border-radius:50%;background:rgba(255,255,255,0.16);color:#fff;font-size:1.7rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}';
         var st = document.createElement('style'); st.id = 'dlb-style'; st.textContent = css; document.head.appendChild(st);
     }
-    function fallbackLightbox(src) {
+    function _rectOf(el) {
+        var r = el.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height };
+    }
+    function fallbackLightbox(src, originEl) {
         if (!src) return;
         injectLbStyle();
         var ov = document.createElement('div');
@@ -385,40 +389,74 @@
         ov.innerHTML = '<button id="dlb-close" type="button" aria-label="닫기">&times;</button>' +
             '<img src="' + esc(src) + '" alt="" referrerpolicy="no-referrer" draggable="false">';
         document.body.appendChild(ov);
-        requestAnimationFrame(function () { ov.classList.add('show'); });
         var img = ov.querySelector('img');
-        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        var originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+
+        var scale = 1, tx = 0, ty = 0;
+        function apply(anim) { img.style.transition = anim ? 'transform .2s ease' : 'none'; img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+
+        // 썸네일 자리에서 확대되어 나타나는 연출 (체크리스트/추억 크게보기와 동일 컨셉)
+        function animateIn() {
+            var t = _rectOf(img);
+            if (!originRect || !t.w || !t.h) return;
+            var sc = Math.max(originRect.w / t.w, originRect.h / t.h);
+            var dx = originRect.cx - t.cx, dy = originRect.cy - t.cy;
+            img.style.transition = 'none';
+            img.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sc + ')';
+            img.style.borderRadius = '14px';
+            void img.offsetWidth;
+            img.style.transition = 'transform .32s cubic-bezier(.22,.61,.36,1), border-radius .32s ease';
+            requestAnimationFrame(function () { img.style.transform = 'translate(0,0) scale(1)'; img.style.borderRadius = '0'; });
+        }
+        if (img.complete && img.naturalWidth) animateIn();
+        else img.addEventListener('load', animateIn, { once: true });
+
+        function close() {
+            var t = _rectOf(img);
+            if (originRect && t.w && t.h && scale <= 1.02) {
+                var sc = Math.max(originRect.w / t.w, originRect.h / t.h);
+                var dx = originRect.cx - t.cx, dy = originRect.cy - t.cy;
+                img.style.transition = 'transform .28s cubic-bezier(.4,0,.2,1), border-radius .28s ease';
+                img.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sc + ')';
+                img.style.borderRadius = '14px';
+                ov.style.transition = 'opacity .28s ease'; ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 290);
+            } else {
+                ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200);
+            }
+        }
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         ov.querySelector('#dlb-close').addEventListener('click', close);
 
-        // 핀치 줌 + (확대 시)드래그 + 더블탭 토글
-        var scale = 1, tx = 0, ty = 0, sDist = 0, sScale = 1, panning = false, px = 0, py = 0, ox = 0, oy = 0, lastTap = 0;
-        function apply() { img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+        // 핀치 줌 + (확대 시)드래그 + 더블탭 토글 — 놓으면 원위치
+        var sDist = 0, sScale = 1, panning = false, px = 0, py = 0, ox = 0, oy = 0, lastTap = 0;
         function dist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
         img.addEventListener('touchstart', function (e) {
             if (e.touches.length === 2) { sDist = dist(e.touches); sScale = scale; e.preventDefault(); }
             else if (e.touches.length === 1 && scale > 1) { panning = true; px = e.touches[0].clientX; py = e.touches[0].clientY; ox = tx; oy = ty; }
         }, { passive: false });
         img.addEventListener('touchmove', function (e) {
-            if (e.touches.length === 2) { scale = Math.min(5, Math.max(1, sScale * (dist(e.touches) / (sDist || 1)))); apply(); e.preventDefault(); }
-            else if (panning && e.touches.length === 1) { tx = ox + (e.touches[0].clientX - px); ty = oy + (e.touches[0].clientY - py); apply(); e.preventDefault(); }
+            if (e.touches.length === 2) { scale = Math.min(5, Math.max(1, sScale * (dist(e.touches) / (sDist || 1)))); apply(false); e.preventDefault(); }
+            else if (panning && e.touches.length === 1) { tx = ox + (e.touches[0].clientX - px); ty = oy + (e.touches[0].clientY - py); apply(false); e.preventDefault(); }
         }, { passive: false });
         img.addEventListener('touchend', function (e) {
             if (e.touches.length === 0) {
                 panning = false;
-                if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; apply(); }
+                if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; apply(true); } // 놓으면 원위치
                 var now = Date.now();
-                if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); }
+                if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(true); }
                 lastTap = now;
             }
         });
-        img.addEventListener('click', function (e) { e.stopPropagation(); }); // 이미지 탭으론 안 닫힘
-        img.addEventListener('dblclick', function (e) { e.preventDefault(); if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); });
+        img.addEventListener('click', function (e) { e.stopPropagation(); });
+        img.addEventListener('dblclick', function (e) { e.preventDefault(); if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(true); });
     }
     function viewImage(src, originEl) {
         if (!src) return;
         if (typeof window.openLightbox === 'function') { try { window.openLightbox(src, originEl); return; } catch (e) {} }
-        fallbackLightbox(src);
+        fallbackLightbox(src, originEl);
     }
 
     // ===== [B] edit by smsong - 멤버 보기: 현재 채팅방 멤버 리스트 (모든 방 공통) =====
@@ -474,7 +512,8 @@
                     var ava = m.profileURL
                         ? '<img class="dml-ava" src="' + esc(m.profileURL) + '" alt="" referrerpolicy="no-referrer">'
                         : '<span class="dml-ava-ph">' + esc((m.displayName || '?').trim().charAt(0) || '?') + '</span>';
-                    var badge = m.owner ? '<span class="dml-badge">방장</span>' : '';
+                    // [B] edit by smsong - 1:1 방에서는 방장 배지 없이 '나'만 표시
+                    var badge = (m.owner && !state.direct) ? '<span class="dml-badge">방장</span>' : '';
                     if (m.me) badge += '<span class="dml-badge me">나</span>';
                     return '<button class="dml-row' + (m.me ? ' me' : '') + '" type="button" data-uid="' + esc(m.uid) +
                         '" data-name="' + nm + '" data-profile="' + esc(m.profileURL || '') + '" data-me="' + (m.me ? '1' : '') + '">' +
@@ -769,6 +808,48 @@
         pn.querySelector('.dchat-close').addEventListener('click', closePanel);
         var gear = document.getElementById('dchat-gear');
         if (gear) gear.addEventListener('click', openChatSettings); // [B] edit by smsong - 채팅방 설정
+
+        // [B] edit by smsong - iOS 카톡식: 왼쪽 가장자리에서 오른쪽으로 스와이프하면 뒤로(닫기)
+        (function () {
+            var startX = 0, startY = 0, dragging = false, active = false, w = 0;
+            pn.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) { active = false; return; }
+                var x = e.touches[0].clientX;
+                active = x <= 32; // 왼쪽 가장자리에서 시작한 것만(내부 스크롤/조작과 충돌 방지)
+                if (!active) return;
+                startX = x; startY = e.touches[0].clientY; dragging = false;
+                w = pn.offsetWidth || window.innerWidth;
+            }, { passive: true });
+            pn.addEventListener('touchmove', function (e) {
+                if (!active || e.touches.length !== 1) return;
+                var dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+                if (!dragging) {
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    if (Math.abs(dy) > Math.abs(dx)) { active = false; return; } // 세로 제스처면 취소
+                    dragging = true; pn.style.transition = 'none';
+                }
+                if (dx < 0) dx = 0; // 오른쪽으로만 따라감
+                pn.style.transform = 'translateX(' + dx + 'px)';
+                e.preventDefault();
+            }, { passive: false });
+            function endDrag(e) {
+                if (!active) return;
+                active = false;
+                if (!dragging) return;
+                dragging = false;
+                var dx = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientX - startX) : 0;
+                if (dx > w * 0.32) { // 충분히 밀면 닫기
+                    pn.style.transition = ''; pn.style.transform = '';
+                    closePanel();
+                } else { // 아니면 제자리로
+                    pn.style.transition = 'transform .22s cubic-bezier(.2,.8,.3,1)';
+                    pn.style.transform = 'translateX(0)';
+                    setTimeout(function () { pn.style.transition = ''; pn.style.transform = ''; }, 240);
+                }
+            }
+            pn.addEventListener('touchend', endDrag, { passive: true });
+            pn.addEventListener('touchcancel', endDrag, { passive: true });
+        })();
 
         var scroll = document.getElementById('dchat-scroll');
         scroll.addEventListener('scroll', function () { if (scroll.scrollTop < 40) loadMore(); });

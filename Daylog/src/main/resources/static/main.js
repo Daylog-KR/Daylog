@@ -6495,7 +6495,7 @@ function commentItemHtml(c, kind, targetId, isReply) {
         commentAvatarHtml(c) +
         '<div class="c-body">' +
         '<div class="c-meta">' +
-        '<span class="c-name">' + escapeHtml(commentAuthorName(c)) + '</span>' +
+        '<span class="c-name" data-uid="' + escapeHtml(c.ownerUid || '') + '" data-name="' + escapeHtml(commentAuthorName(c)) + '" data-profile="' + escapeHtml(c.ownerProfileURL || '') + '" onclick="onCommentAvatarClick(this)" style="cursor:pointer;">' + escapeHtml(commentAuthorName(c)) + '</span>' +
         '<span class="c-time">' + commentTimeLabel(c.createdAt) + '</span>' +
         '</div>' +
         '<div class="c-content" id="c-content-' + c.id + '">' + contentHtml + '</div>' +
@@ -6864,10 +6864,21 @@ function renderMemberModal(members, isCouple) {
         const card = document.createElement('div');
         card.className = 'mm-card';
         card.innerHTML =
-            `<div class="member-avatar">${avatar}</div>` +
-            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name">${escapeHtml(name)}</div></div>` +
+            `<div class="member-avatar mm-prof" data-uid="${escapeHtml(m.uid)}" data-name="${escapeHtml(name)}" data-profile="${escapeHtml(m.profileURL || '')}">${avatar}</div>` +
+            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name mm-prof" data-uid="${escapeHtml(m.uid)}" data-name="${escapeHtml(name)}" data-profile="${escapeHtml(m.profileURL || '')}">${escapeHtml(name)}</div></div>` +
             `<div class="mm-counts">${counts}</div>`;
         body.appendChild(card);
+    });
+    // [B] edit by smsong - 멤버 보기: 아바타/이름 클릭 → 상대 프로필 모달(1:1). 나는 사진 확대.
+    body.querySelectorAll('.mm-prof').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', () => {
+            const uid = el.getAttribute('data-uid');
+            const pf = el.getAttribute('data-profile');
+            if (uid && Daylog.currentUid && uid === Daylog.currentUid) { if (pf) openLightbox(pf, el); return; }
+            if (window.Daylog && typeof Daylog.openPeerProfile === 'function')
+                Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: pf });
+        });
     });
     body.querySelectorAll('.mm-count').forEach(btn => {
         btn.addEventListener('click', () => {
