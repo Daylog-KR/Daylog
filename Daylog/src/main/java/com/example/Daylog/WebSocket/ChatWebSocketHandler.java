@@ -54,7 +54,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
             switch (type) {
                 case "sub":  handleSub(session, uid, node.path("roomId").asLong(0)); break;
-                case "msg":  handleMsg(session, uid, node.path("roomId").asLong(0), node.path("content").asText("")); break;
+                case "msg":  handleMsg(session, uid, node.path("roomId").asLong(0), node.path("content").asText(""),
+                                       node.hasNonNull("replyToId") ? node.path("replyToId").asLong(0) : null); break;
                 case "read": handleRead(session, uid, node.path("roomId").asLong(0), node.path("lastId").asLong(0)); break;
                 default: break;
             }
@@ -70,10 +71,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         subsOf(session).add(roomId);
     }
 
-    private void handleMsg(WebSocketSession session, String uid, long roomId, String content) {
+    private void handleMsg(WebSocketSession session, String uid, long roomId, String content, Long replyToId) {
         if (roomId <= 0) return;
         // 구독 안 한 상태로 바로 보내는 경우도 허용(멤버십은 서비스가 검증)
-        ChatDTO.Message saved = chatService.send(roomId, uid, content); // 멤버 아니면 예외
+        ChatDTO.Message saved = chatService.send(roomId, uid, content, replyToId); // 멤버 아니면 예외
         // 발신자가 아직 이 방을 구독 안 했다면 등록(응답 수신용)
         roomSessions.computeIfAbsent(roomId, k -> Collections.newSetFromMap(new ConcurrentHashMap<>()))
                 .add(session);

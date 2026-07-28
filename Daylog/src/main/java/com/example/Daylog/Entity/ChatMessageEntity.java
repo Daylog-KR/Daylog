@@ -29,7 +29,10 @@ public class ChatMessageEntity {
     @Column(length = 2000)
     private String content;
 
-    // TEXT / SYSTEM (입장/퇴장 안내 등) / SHARE (추억·체크리스트 공유)
+    // [B] edit by smsong - 답장(카톡식): 이 메시지가 답장하는 원본 메시지 id (없으면 null)
+    private Long replyToId;
+
+    // TEXT / SYSTEM (입장/퇴장 안내 등) / SHARE (추억·체크리스트 공유) / IMAGE (사진)
     @Column(length = 16)
     private String type;
 

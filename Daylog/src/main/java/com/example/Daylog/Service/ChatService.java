@@ -215,6 +215,11 @@ public class ChatService {
     // ===== 전송 =====
     @Transactional
     public ChatDTO.Message send(Long roomId, String senderUid, String content) {
+        return send(roomId, senderUid, content, null);
+    }
+
+    // [B] edit by smsong - 답장 지원: replyToId 를 저장. (WebSocket 핸들러가 이 4-인자 버전을 호출)
+    public ChatDTO.Message send(Long roomId, String senderUid, String content, Long replyToId) {
         assertMember(senderUid, roomId);
         if (content == null) content = "";
         content = content.trim();
@@ -223,16 +228,48 @@ public class ChatService {
         }
         if (content.length() > 2000) content = content.substring(0, 2000);
 
+        // 답장 원본이 같은 방 메시지가 아니면 무시(안전)
+        Long safeReply = null;
+        if (replyToId != null) {
+            ChatMessageEntity orig = chatMessageRepository.findById(replyToId).orElse(null);
+            if (orig != null && roomId.equals(orig.getRoomId())) safeReply = replyToId;
+        }
+
         ChatMessageEntity saved = chatMessageRepository.save(ChatMessageEntity.builder()
                 .roomId(roomId)
                 .senderUid(senderUid)
                 .content(content)
                 .type("TEXT")
+                .replyToId(safeReply)
                 .build());
 
         // 보낸 사람은 자기 메시지를 읽은 것으로 간주 → 읽음 커서를 이 메시지로 전진
         markRead(roomId, senderUid, saved.getId());
 
+        return toMessage(saved, senderUid, new HashMap<>());
+    }
+
+    // [B] edit by smsong - 채팅 이미지 전송: IMAGE 타입 메시지(content=이미지 URL) 저장 후 반환
+    @Transactional
+    public ChatDTO.Message sendImage(Long roomId, String senderUid, String imageUrl, Long replyToId) {
+        assertMember(senderUid, roomId);
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지가 없습니다");
+        }
+        if (imageUrl.length() > 2000) imageUrl = imageUrl.substring(0, 2000);
+        Long safeReply = null;
+        if (replyToId != null) {
+            ChatMessageEntity orig = chatMessageRepository.findById(replyToId).orElse(null);
+            if (orig != null && roomId.equals(orig.getRoomId())) safeReply = replyToId;
+        }
+        ChatMessageEntity saved = chatMessageRepository.save(ChatMessageEntity.builder()
+                .roomId(roomId)
+                .senderUid(senderUid)
+                .content(imageUrl)
+                .type("IMAGE")
+                .replyToId(safeReply)
+                .build());
+        markRead(roomId, senderUid, saved.getId());
         return toMessage(saved, senderUid, new HashMap<>());
     }
 
@@ -340,6 +377,8 @@ public class ChatService {
     private String previewOf(ChatMessageEntity m) {
         if (m == null) return null;
         if ("SYSTEM".equals(m.getType())) return m.getContent();
+        if ("IMAGE".equals(m.getType())) return "사진";
+        if ("SHARE".equals(m.getType())) return ("MEMORY".equals(m.getShareKind()) ? "[추억] " : "[체크리스트] ") + (m.getShareTitle() == null ? "" : m.getShareTitle());
         String c = m.getContent() == null ? "" : m.getContent().replaceAll("\\s+", " ").trim();
         if (c.length() > 60) c = c.substring(0, 60) + "…";
         return c;
@@ -442,6 +481,18 @@ public class ChatService {
             RoomEntity sr = roomRepository.findById(m.getShareSrcRoomId()).orElse(null);
             if (sr != null) shareSrcRoomName = sr.getName();
         }
+        // [B] edit by smsong - 답장 원본 정보(발신자명 + 내용 미리보기)
+        String replyToName = null, replyToContent = null;
+        if (m.getReplyToId() != null) {
+            ChatMessageEntity orig = chatMessageRepository.findById(m.getReplyToId()).orElse(null);
+            if (orig != null) {
+                replyToName = orig.getSenderUid() == null ? "" : displayName(orig.getSenderUid());
+                if ("IMAGE".equals(orig.getType())) replyToContent = "사진";
+                else if ("SHARE".equals(orig.getType())) replyToContent = ("MEMORY".equals(orig.getShareKind()) ? "[추억] " : "[체크리스트] ") + (orig.getShareTitle() == null ? "" : orig.getShareTitle());
+                else replyToContent = orig.getContent();
+                if (replyToContent != null && replyToContent.length() > 120) replyToContent = replyToContent.substring(0, 120);
+            }
+        }
         return ChatDTO.Message.builder()
                 .id(m.getId())
                 .roomId(m.getRoomId())
@@ -452,6 +503,9 @@ public class ChatService {
                 .type(m.getType())
                 .createdAt(m.getCreatedAt() == null ? null : m.getCreatedAt().toString())
                 .mine(m.getSenderUid() != null && m.getSenderUid().equals(requesterUid))
+                .replyToId(m.getReplyToId())
+                .replyToName(replyToName)
+                .replyToContent(replyToContent)
                 .shareKind(m.getShareKind())
                 .shareRefId(m.getShareRefId())
                 .shareSrcRoomId(m.getShareSrcRoomId())

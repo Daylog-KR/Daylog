@@ -2,13 +2,16 @@ package com.example.Daylog.Controller;
 
 import com.example.Daylog.DTO.ChatDTO;
 import com.example.Daylog.Service.ChatService;
+import com.example.Daylog.Service.ChatImageStorage;
 import com.example.Daylog.WebSocket.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -23,6 +26,8 @@ public class ChatController {
 
     private final ChatService chatService;
     private final ChatWebSocketHandler chatWebSocketHandler; // [B] edit by smsong - 공유 실시간 브로드캐스트
+    @Autowired(required = false)
+    private ChatImageStorage chatImageStorage; // [B] edit by smsong - 채팅 이미지 저장(어댑터 없으면 비활성)
 
     private String uidOf(UserDetails ud) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
@@ -155,5 +160,29 @@ public class ChatController {
     }
     private static String _s(Object o) { return o == null ? null : String.valueOf(o); }
     private static Long _l(Object o) { if (o == null) return null; try { return Long.valueOf(String.valueOf(o)); } catch (Exception e) { return null; } }
+
+    // [B] edit by smsong - 채팅 이미지 전송: multipart 'image' 업로드 → IMAGE 메시지 저장 → 실시간 브로드캐스트
+    @PostMapping("/{roomId}/image")
+    public ResponseEntity<ChatDTO.Message> sendImage(@PathVariable("roomId") Long roomId,
+                                                     @RequestParam("image") MultipartFile image,
+                                                     @RequestParam(value = "replyToId", required = false) Long replyToId,
+                                                     @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        chatService.assertMember(uid, roomId);
+        if (chatImageStorage == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "이미지 저장이 설정되지 않았습니다(ChatImageStorage 어댑터 필요)");
+        }
+        if (image == null || image.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지가 없습니다");
+        }
+        String url;
+        try { url = chatImageStorage.store(roomId, image); }
+        catch (Exception e) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 저장 실패"); }
+
+        ChatDTO.Message saved = chatService.sendImage(roomId, uid, url, replyToId);
+        try { if (chatWebSocketHandler != null) chatWebSocketHandler.broadcastMessage(roomId, saved); } catch (Exception ignore) {}
+        try { chatService.notifyNewMessage(roomId, uid, "사진", null); } catch (Exception ignore) {}
+        return ResponseEntity.ok(saved);
+    }
 }
 // [E] edit by smsong

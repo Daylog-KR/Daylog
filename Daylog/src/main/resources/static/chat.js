@@ -53,7 +53,8 @@
         msgs: [],           // 오름차순 메시지 배열
         hasMore: false, loadingMore: false, oldestId: null,
         open: false, unread: 0,
-        title: '채팅', direct: false, peerUid: null, peerProfileURL: null, roomImageURL: null // [B] edit by smsong - 헤더용
+        title: '채팅', direct: false, peerUid: null, peerProfileURL: null, roomImageURL: null, // [B] edit by smsong - 헤더용
+        replyTo: null // [B] edit by smsong - 답장 대상 {id, name, content, type}
     };
     var ws = null, wsTimer = null, wsBackoff = 1000, subscribed = false;
 
@@ -135,6 +136,45 @@
             '<div class="dchat-share-title">' + esc(m.shareTitle || '(제목 없음)') + '</div>' +
         '</div>';
     }
+    // ===== [B] edit by smsong - 답장(카톡식) =====
+    function replyPreviewText(m) {
+        if (!m) return '';
+        if (m.type === 'SHARE') return (m.shareKind === 'MEMORY' ? '[추억] ' : '[체크리스트] ') + (m.shareTitle || '');
+        return (m.content || '').replace(/\s+/g, ' ').trim();
+    }
+    function setReplyTarget(m) {
+        if (!m || m.type === 'SYSTEM') return;
+        state.replyTo = {
+            id: m.id,
+            name: m.mine ? '나' : (m.senderName || '상대'),
+            content: replyPreviewText(m),
+            type: m.type
+        };
+        var bar = document.getElementById('dchat-reply-bar');
+        var toEl = document.getElementById('dchat-reply-to');
+        var snEl = document.getElementById('dchat-reply-snippet');
+        if (toEl) toEl.textContent = state.replyTo.name + '에게 답장';
+        if (snEl) snEl.textContent = state.replyTo.content || '(내용 없음)';
+        if (bar) bar.style.display = 'flex';
+        var input = document.getElementById('dchat-input');
+        if (input) input.focus();
+    }
+    function clearReplyTarget() {
+        state.replyTo = null;
+        var bar = document.getElementById('dchat-reply-bar');
+        if (bar) bar.style.display = 'none';
+    }
+    // 인용 박스 HTML (말풍선 위에 붙는 원본 미리보기). 서버가 내려준 reply 정보를 사용.
+    function replyQuoteHtml(m) {
+        if (!m || m.replyToId == null) return '';
+        var who = esc(m.replyToName || '상대');
+        var snip = esc((m.replyToContent || '').replace(/\s+/g, ' ').trim() || '(내용 없음)');
+        return '<div class="dchat-quote" data-target="' + esc(m.replyToId) + '">' +
+            '<span class="dchat-quote-who">' + who + '</span>' +
+            '<span class="dchat-quote-snip">' + snip + '</span>' +
+            '</div>';
+    }
+
     function messageRowHtml(m, showHead) {
         if (m.type === 'SYSTEM') {
             return '<div class="dchat-sys">' + esc(m.content) + '</div>';
@@ -177,7 +217,29 @@
                 '</div>' +
                 '</div>';
         }
-        var body = '<div class="dchat-bubble">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
+        // [B] edit by smsong - 이미지 메시지: content 에 이미지 URL. 클릭 시 크게보기.
+        if (m.type === 'IMAGE') {
+            var qI = replyQuoteHtml(m);
+            var imgBox = '<div class="dchat-imgmsg" data-full="' + esc(m.content) + '"><img src="' + esc(m.content) + '" alt="사진" referrerpolicy="no-referrer"></div>';
+            if (m.mine) {
+                return '<div class="dchat-row mine" data-id="' + m.id + '">' +
+                    '<div class="dchat-meta">' + cnt + time + '</div>' +
+                    '<div class="dchat-imgwrap">' + qI + imgBox + '</div>' +
+                    '</div>';
+            }
+            var avatarI = showHead ? avatarHtml(m) : '<span class="dchat-ava-spacer"></span>';
+            var nameLineI = showHead ? '<div class="dchat-name">' + esc(m.senderName || '알 수 없음') + '</div>' : '';
+            return '<div class="dchat-row other' + (showHead ? ' head' : '') + '" data-id="' + m.id + '"' +
+                ' data-uid="' + esc(m.senderUid || '') + '" data-name="' + esc(m.senderName || '') + '" data-profile="' + esc(m.senderProfileURL || '') + '">' +
+                '<div class="dchat-avacol">' + avatarI + '</div>' +
+                '<div class="dchat-othercol">' + nameLineI +
+                    '<div class="dchat-line"><div class="dchat-imgwrap">' + qI + imgBox + '</div><div class="dchat-meta">' + time + cnt + '</div></div>' +
+                '</div>' +
+                '</div>';
+        }
+        var quote = replyQuoteHtml(m);
+        var body = '<div class="dchat-bubble' + (quote ? ' has-quote' : '') + '">' + quote +
+            '<span class="dchat-btext">' + esc(m.content).replace(/\n/g, '<br>') + '</span></div>';
         var bubble = body;
         if (m.mine) {
             // 내 메시지: 오른쪽. 메타(안읽음수 + 시간)는 버블 왼쪽.
@@ -984,7 +1046,18 @@
                 '</div>' +
             '</div>' +
             '<div id="dchat-scroll" class="dchat-scroll"></div>' +
+            '<div id="dchat-reply-bar" class="dchat-reply-bar" style="display:none;">' +
+                '<div class="dchat-reply-info">' +
+                    '<div class="dchat-reply-to" id="dchat-reply-to"></div>' +
+                    '<div class="dchat-reply-snippet" id="dchat-reply-snippet"></div>' +
+                '</div>' +
+                '<button type="button" class="dchat-reply-x" id="dchat-reply-x" aria-label="답장 취소">&times;</button>' +
+            '</div>' +
             '<div class="dchat-inputbar">' +
+                '<button id="dchat-img-btn" class="dchat-imgbtn" type="button" aria-label="사진 보내기">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>' +
+                '</button>' +
+                '<input id="dchat-file" type="file" accept="image/*" style="display:none">' +
                 '<textarea id="dchat-input" rows="1" placeholder="메시지 입력" maxlength="2000"></textarea>' +
                 '<button id="dchat-send" class="dchat-send" type="button" aria-label="보내기">' +
                     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>' +
@@ -1047,6 +1120,13 @@
         scroll.addEventListener('scroll', function () { if (scroll.scrollTop < 40) loadMore(); });
         // [B] edit by smsong - 상대 아바타/이름 클릭 → 프로필 모달 (1:1 대화 시작 가능)
         scroll.addEventListener('click', function (e) {
+            // [B] edit by smsong - 이미지 메시지 클릭 → 크게보기
+            var imgEl = e.target.closest ? e.target.closest('.dchat-imgmsg') : null;
+            if (imgEl) {
+                var full = imgEl.getAttribute('data-full');
+                if (full) viewImage(full, imgEl.querySelector('img') || imgEl);
+                return;
+            }
             // [B] edit by smsong - 공유 카드 클릭 → 해당 방으로 이동 + 상세보기
             var shareEl = e.target.closest ? e.target.closest('.dchat-share') : null;
             if (shareEl) {
@@ -1070,13 +1150,28 @@
                 return;
             }
             var head = e.target.closest ? e.target.closest('.dchat-avacol, .dchat-name') : null;
-            if (!head) return;
-            var row = head.closest('.dchat-row.other');
-            if (!row) return;
-            var uid = row.getAttribute('data-uid');
-            var nm = row.getAttribute('data-name') || '';
-            var pf = row.getAttribute('data-profile') || '';
-            if (uid) openPeerProfile(uid, { name: nm, profileURL: pf });
+            if (head) {
+                var rowH = head.closest('.dchat-row.other');
+                if (rowH) {
+                    var uidH = rowH.getAttribute('data-uid');
+                    var nmH = rowH.getAttribute('data-name') || '';
+                    var pfH = rowH.getAttribute('data-profile') || '';
+                    if (uidH) openPeerProfile(uidH, { name: nmH, profileURL: pfH });
+                }
+                return;
+            }
+            // [B] edit by smsong - 인용 박스 클릭 → 원본 메시지로 스크롤 + 하이라이트
+            var q = e.target.closest ? e.target.closest('.dchat-quote') : null;
+            if (q) {
+                var tid = q.getAttribute('data-target');
+                var target = document.querySelector('.dchat-row[data-id="' + tid + '"]');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    target.classList.add('flash');
+                    setTimeout(function () { target.classList.remove('flash'); }, 1200);
+                }
+                return;
+            }
         });
 
         var input = document.getElementById('dchat-input');
@@ -1087,16 +1182,134 @@
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
         });
         sendBtn.addEventListener('click', doSend);
+
+        // [B] edit by smsong - 사진 보내기: 파일선택 → 방향보정/축소 → 업로드(REST). 서버가 IMAGE 메시지로 브로드캐스트.
+        var imgBtn = document.getElementById('dchat-img-btn');
+        var fileInput = document.getElementById('dchat-file');
+        if (imgBtn && fileInput) {
+            imgBtn.addEventListener('click', function () { fileInput.value = ''; fileInput.click(); });
+            fileInput.addEventListener('change', function () {
+                var f = fileInput.files && fileInput.files[0];
+                if (f) sendChatImage(f);
+            });
+        }
+        function normalizeChatImage(file) {
+            return new Promise(function (resolve) {
+                try {
+                    if (!file || !/^image\//.test(file.type) || /gif|svg/i.test(file.type) ||
+                        typeof createImageBitmap !== 'function') { resolve(file); return; }
+                    var opt = { imageOrientation: 'from-image' };
+                    createImageBitmap(file, opt).catch(function () { return createImageBitmap(file); }).then(function (bmp) {
+                        var MAX = 1600, w = bmp.width, h = bmp.height;
+                        if (Math.max(w, h) > MAX) { var s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+                        var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+                        cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+                        if (bmp.close) { try { bmp.close(); } catch (e) {} }
+                        cv.toBlob(function (blob) {
+                            if (!blob) { resolve(file); return; }
+                            resolve(new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }));
+                        }, 'image/jpeg', 0.9);
+                    }).catch(function () { resolve(file); });
+                } catch (e) { resolve(file); }
+            });
+        }
+        function sendChatImage(file) {
+            if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
+            toast('사진 보내는 중…');
+            normalizeChatImage(file).then(function (up) {
+                var fd = new FormData();
+                fd.append('image', up);
+                if (state.replyTo && state.replyTo.id != null) fd.append('replyToId', String(Number(state.replyTo.id)));
+                var rid = roomId();
+                fetch(API + '/api/chat/' + rid + '/image', { method: 'POST', headers: authHeaders(), body: fd })
+                    .then(function (r) {
+                        if (r.status === 501) { toast('이미지 전송이 아직 설정되지 않았어요'); return null; }
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(function (msg) {
+                        if (!msg) { return; }
+                        // 서버가 이 방에 실시간 브로드캐스트하므로(구독중인 내 소켓 포함) 여기서 직접 append 하지 않는다(중복 방지).
+                        clearReplyTarget();
+                    })
+                    .catch(function () { toast('사진 전송에 실패했어요'); });
+            });
+        }
+
+        // [B] edit by smsong - 답장 미리보기 바 닫기
+        var replyX = document.getElementById('dchat-reply-x');
+        if (replyX) replyX.addEventListener('click', clearReplyTarget);
+
+        // [B] edit by smsong - 카톡식 스와이프 답장: 메시지 행을 오른쪽으로 끌면 그 메시지에 답장
+        (function bindSwipeReply() {
+            var scrollEl = document.getElementById('dchat-scroll');
+            if (!scrollEl) return;
+            var startX = 0, startY = 0, curRow = null, dragging = false, decided = false, horiz = false;
+            var THRESH = 55;      // 이만큼 끌면 답장 확정
+            var MAX = 80;         // 시각적 최대 이동
+            function rowFrom(t) { return t && t.closest ? t.closest('.dchat-row[data-id]') : null; }
+            function onStart(x, y, t) {
+                curRow = rowFrom(t); dragging = !!curRow; decided = false; horiz = false;
+                startX = x; startY = y;
+            }
+            function onMove(x, y, e) {
+                if (!dragging || !curRow) return;
+                var dx = x - startX, dy = y - startY;
+                if (!decided) {
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    decided = true;
+                    horiz = Math.abs(dx) > Math.abs(dy);
+                    if (horiz) curRow.classList.add('swiping');
+                }
+                if (!horiz) { dragging = false; return; } // 세로 스크롤이면 답장 취소
+                if (dx < 0) dx = 0;               // 오른쪽으로만
+                var d = Math.min(dx, MAX);
+                curRow.style.transform = 'translateX(' + d + 'px)';
+                curRow.classList.toggle('will-reply', d >= THRESH);
+                if (e && e.cancelable) e.preventDefault(); // 가로 드래그 중 스크롤 방지
+            }
+            function onEnd() {
+                if (!curRow) { dragging = false; return; }
+                var willReply = curRow.classList.contains('will-reply');
+                var row = curRow;
+                row.classList.remove('swiping', 'will-reply');
+                row.style.transform = '';
+                if (willReply) {
+                    var id = row.getAttribute('data-id');
+                    var m = state.msgs.find(function (x) { return String(x.id) === String(id); });
+                    if (m) setReplyTarget(m);
+                }
+                curRow = null; dragging = false; decided = false; horiz = false;
+            }
+            // 터치
+            scrollEl.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) return;
+                onStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+            }, { passive: true });
+            scrollEl.addEventListener('touchmove', function (e) {
+                if (e.touches.length !== 1) return;
+                onMove(e.touches[0].clientX, e.touches[0].clientY, e);
+            }, { passive: false });
+            scrollEl.addEventListener('touchend', onEnd);
+            scrollEl.addEventListener('touchcancel', onEnd);
+            // 마우스(데스크톱)
+            var mouseDown = false;
+            scrollEl.addEventListener('mousedown', function (e) { mouseDown = true; onStart(e.clientX, e.clientY, e.target); });
+            window.addEventListener('mousemove', function (e) { if (mouseDown) onMove(e.clientX, e.clientY, e); });
+            window.addEventListener('mouseup', function () { if (mouseDown) { mouseDown = false; onEnd(); } });
+        })();
         function doSend() {
             var text = input.value.trim();
             if (!text) return;
-            if (!wsSend({ type: 'msg', roomId: Number(roomId()), content: text })) {
+            var payload = { type: 'msg', roomId: Number(roomId()), content: text };
+            if (state.replyTo && state.replyTo.id != null) payload.replyToId = Number(state.replyTo.id); // [B] edit by smsong
+            if (!wsSend(payload)) {
                 // 소켓 끊김 → 재연결 시도 후 REST 폴백은 생략(실시간 특성상), 안내만
                 wsConnect();
                 toast('연결이 끊겼어요. 잠시 후 다시 시도해주세요');
                 return;
             }
             input.value = ''; autoGrow(); input.focus();
+            clearReplyTarget(); // [B] edit by smsong - 전송하면 답장 상태 해제
         }
 
         // 소켓이 이미 열려 있으면 이 방을 명시적으로 구독(1:1 방으로 전환 시 필요)
@@ -1177,6 +1390,34 @@
             '.dchat-time{font-size:0.68rem;color:var(--gray-400);white-space:nowrap;}' +
             '.dchat-unread{font-size:0.68rem;font-weight:700;color:var(--primary-dark);white-space:nowrap;line-height:1;}' +
             // 입력바
+            // [B] edit by smsong - 답장 미리보기 바
+            '.dchat-reply-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--gray-50);border-top:1px solid var(--gray-100);}' +
+            '.dchat-reply-info{flex:1 1 auto;min-width:0;border-left:3px solid var(--primary);padding-left:9px;}' +
+            '.dchat-reply-to{font-size:0.78rem;font-weight:700;color:var(--primary-dark);}' +
+            '.dchat-reply-snippet{font-size:0.8rem;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.dchat-reply-x{flex:0 0 auto;border:none;background:transparent;font-size:1.4rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:0 4px;}' +
+            // 인용 박스(말풍선 안 상단)
+            '.dchat-bubble.has-quote{display:flex;flex-direction:column;gap:5px;}' +
+            '.dchat-quote{display:flex;flex-direction:column;gap:1px;padding:5px 9px;border-radius:9px;cursor:pointer;border-left:3px solid currentColor;opacity:0.92;}' +
+            '.dchat-row.other .dchat-quote{background:rgba(0,0,0,0.04);}' +
+            '.dchat-row.mine .dchat-quote{background:rgba(255,255,255,0.18);}' +
+            '.dchat-quote-who{font-size:0.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.dchat-quote-snip{font-size:0.76rem;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}' +
+            '.dchat-btext{display:block;}' +
+            // 스와이프 답장
+            '.dchat-row{transition:transform .18s cubic-bezier(.2,.8,.3,1);}' +
+            '.dchat-row.swiping{transition:none;}' +
+            '.dchat-row.will-reply{opacity:0.75;}' +
+            // 원본으로 점프 시 하이라이트
+            '.dchat-row.flash .dchat-bubble,.dchat-row.flash .dchat-share,.dchat-row.flash .dchat-sharewrap{animation:dchatFlash 1.1s ease;}' +
+            '@keyframes dchatFlash{0%,100%{box-shadow:0 0 0 0 rgba(176,137,104,0);}25%{box-shadow:0 0 0 4px rgba(176,137,104,0.45);}}' +
+            // [B] edit by smsong - 채팅 이미지 버튼 + 이미지 메시지
+            '.dchat-imgbtn{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;background:transparent;color:var(--gray-500);display:flex;align-items:center;justify-content:center;padding:0;}' +
+            '.dchat-imgbtn:active{background:var(--gray-100);}' +
+            '.dchat-imgwrap{display:inline-flex;flex-direction:column;gap:3px;max-width:200px;}' +
+            '.dchat-imgmsg{border-radius:14px;overflow:hidden;cursor:zoom-in;background:var(--gray-100);max-width:200px;line-height:0;}' +
+            '.dchat-imgmsg img{width:100%;max-width:200px;max-height:260px;object-fit:cover;display:block;image-orientation:from-image;}' +
+            '.dchat-row.mine .dchat-imgwrap{align-items:flex-end;}' +
             '.dchat-inputbar{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;padding-bottom:calc(10px + var(--safe-b,0px));' +
                 'background:var(--white);border-top:1px solid var(--gray-100);}' +
             '.dchat-inputbar textarea{flex:1 1 auto;resize:none;border:1px solid var(--gray-200);background:var(--bg-color);color:var(--gray-800);' +

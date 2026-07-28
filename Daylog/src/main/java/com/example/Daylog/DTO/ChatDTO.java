@@ -21,9 +21,14 @@ public class ChatDTO {
         private String senderName;      // 표시 이름(닉네임 우선, 없으면 name)
         private String senderProfileURL;
         private String content;
-        private String type;            // TEXT / SYSTEM / SHARE
+        private String type;            // TEXT / SYSTEM / SHARE / IMAGE
         private String createdAt;       // ISO 문자열
         private boolean mine;           // 요청자가 보낸 메시지인지
+        // [B] edit by smsong - 답장(카톡식) 인용 표시용
+        private Long replyToId;         // 원본 메시지 id
+        private String replyToName;     // 원본 발신자 표시 이름
+        private String replyToContent;  // 원본 내용 미리보기
+        // [B] edit by smsong - 이미지 메시지: content 에 이미지 URL 이 들어감(type=IMAGE)
         // [B] edit by smsong - 공유(전송) 카드용
         private String shareKind;       // CHECKLIST / MEMORY
         private Long shareRefId;
