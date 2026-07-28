@@ -1398,7 +1398,7 @@
             '.dchat-reply-x{flex:0 0 auto;border:none;background:transparent;font-size:1.4rem;line-height:1;color:var(--gray-400);cursor:pointer;padding:0 4px;}' +
             // 인용 박스(말풍선 안 상단)
             '.dchat-bubble.has-quote{display:flex;flex-direction:column;gap:5px;}' +
-            '.dchat-quote{display:flex;flex-direction:column;gap:1px;padding:5px 9px;border-radius:9px;cursor:pointer;border-left:3px solid currentColor;opacity:0.92;}' +
+            '.dchat-quote{display:flex;flex-direction:column;gap:1px;padding:5px 9px;border-radius:9px;cursor:pointer;opacity:0.92;}' +
             '.dchat-row.other .dchat-quote{background:rgba(0,0,0,0.04);}' +
             '.dchat-row.mine .dchat-quote{background:rgba(255,255,255,0.18);}' +
             '.dchat-quote-who{font-size:0.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
