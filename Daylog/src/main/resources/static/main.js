@@ -1216,8 +1216,8 @@ function renderRoomMembers(room) {
         el.addEventListener('click', function () {
             var puid = el.getAttribute('data-uid');
             if (!puid || puid === myUid) return;
-            if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
-                Daylog.openPeerProfile(puid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
+            if (window.Daylog && typeof window.Daylog.openPeerProfile === 'function') {
+                window.Daylog.openPeerProfile(puid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
             }
         });
     });
@@ -5632,9 +5632,9 @@ function openChecklistDetail(item, overModal) {
     }
     const clShare = document.getElementById('cl-detail-share'); // [B] edit by smsong - 전송
     if (clShare) clShare.addEventListener('click', () => {
-        if (window.Daylog && typeof Daylog.openShareSheet === 'function') {
+        if (window.Daylog && typeof window.Daylog.openShareSheet === 'function') {
             const imgs = mediaUrlsOf(item);
-            Daylog.openShareSheet({ kind: 'CHECKLIST', refId: item.id, srcRoomId: getRoomId(), title: item.title || '', image: (imgs && imgs[0]) || '' });
+            window.Daylog.openShareSheet({ kind: 'CHECKLIST', refId: item.id, srcRoomId: getRoomId(), title: item.title || '', image: (imgs && imgs[0]) || '' });
         } else if (typeof showToast === 'function') { showToast('전송 기능을 불러오지 못했어요 (새로고침 필요)'); }
     });
 
@@ -6235,9 +6235,9 @@ function openDetailModal(memory, overModal) {
     }
     const memShare = document.getElementById('detail-share'); // [B] edit by smsong - 전송
     if (memShare) memShare.addEventListener('click', () => {
-        if (window.Daylog && typeof Daylog.openShareSheet === 'function') {
+        if (window.Daylog && typeof window.Daylog.openShareSheet === 'function') {
             const imgs = mediaUrlsOf(memory);
-            Daylog.openShareSheet({ kind: 'MEMORY', refId: memory.id, srcRoomId: getRoomId(), title: memory.title || '', image: (imgs && imgs[0]) || '' });
+            window.Daylog.openShareSheet({ kind: 'MEMORY', refId: memory.id, srcRoomId: getRoomId(), title: memory.title || '', image: (imgs && imgs[0]) || '' });
         } else if (typeof showToast === 'function') { showToast('전송 기능을 불러오지 못했어요 (새로고침 필요)'); }
     });
 
@@ -6452,8 +6452,8 @@ function commentAvatarHtml(c) {
 function onCommentAvatarClick(el) {
     const uid = el.getAttribute('data-uid');
     if (!uid) return;
-    if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
-        Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
+    if (window.Daylog && typeof window.Daylog.openPeerProfile === 'function') {
+        window.Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
     } else if (typeof showToast === 'function') { showToast('프로필을 불러오지 못했어요 (새로고침 필요)'); }
 }
 // [B] edit by smsong - 작성자(추억/체크리스트) 아바타/이름 클릭 → 프로필 폼 (인라인 onclick 용, 재렌더에도 견고)
@@ -6461,8 +6461,8 @@ function onAuthorProfileClick(el) {
     if (!el) return;
     const uid = el.getAttribute('data-uid');
     if (!uid) return;
-    if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
-        Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name') || '', profileURL: el.getAttribute('data-profile') || '' });
+    if (window.Daylog && typeof window.Daylog.openPeerProfile === 'function') {
+        window.Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name') || '', profileURL: el.getAttribute('data-profile') || '' });
     } else if (typeof showToast === 'function') { showToast('프로필을 불러오지 못했어요 (새로고침 필요)'); }
 }
 
@@ -6876,8 +6876,8 @@ function renderMemberModal(members, isCouple) {
         el.style.cursor = 'pointer';
         el.addEventListener('click', () => {
             const uid = el.getAttribute('data-uid');
-            if (uid && window.Daylog && typeof Daylog.openPeerProfile === 'function')
-                Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
+            if (uid && window.Daylog && typeof window.Daylog.openPeerProfile === 'function')
+                window.Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
         });
     });
     body.querySelectorAll('.mm-count').forEach(btn => {

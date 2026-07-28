@@ -1190,6 +1190,20 @@
     window.Daylog.openShareSheet = openShareSheet;     // [B] edit by smsong - 추억/체크리스트 전송
     window.Daylog.refreshChatBadge = refreshBadge;
 
+    // [B] edit by smsong - ★중요★ main.js 는 window.Daylog 와 '별개인' const Daylog(전역 렉시컬) 를 쓴다.
+    //  main.js 의 onAuthorProfileClick 등은 그 const 를 참조하므로, 여기 window.Daylog 에만 붙이면
+    //  함수가 안 보여 "불러오지 못했어요" 가 떴다. 그 const 객체에도 동일 함수를 붙여 양쪽 모두 동작하게 한다.
+    try {
+        if (typeof Daylog !== 'undefined' && Daylog && Daylog !== window.Daylog) {
+            Daylog.openChat = openPanel;
+            Daylog.openPeerProfile = openPeerProfile;
+            Daylog.startDirectChat = startDirectChat;
+            Daylog.viewImage = viewImage;
+            Daylog.openShareSheet = openShareSheet;
+            Daylog.refreshChatBadge = refreshBadge;
+        }
+    } catch (e) { /* Daylog 가 아직 없거나 접근 불가하면 window.Daylog 로만 동작 */ }
+
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();
     else document.addEventListener('DOMContentLoaded', init);
 })();
