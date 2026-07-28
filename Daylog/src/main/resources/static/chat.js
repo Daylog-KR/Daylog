@@ -495,8 +495,8 @@
             '.dsh-cell{display:flex;flex-direction:column;align-items:center;gap:8px;border:none;background:transparent;cursor:pointer;font-family:inherit;padding:0;}' +
             '.dsh-cell:active{opacity:0.8;}' +
             '.dsh-cell-ava{position:relative;width:76px;height:76px;}' +
-            '.dsh-ava-inner{width:100%;height:100%;border-radius:50%;overflow:hidden;background:var(--gray-100);}' +
-            '.dsh-ava-inner img{width:100%;height:100%;object-fit:cover;image-orientation:from-image;}' +
+            '.dsh-ava-inner{display:block;width:76px;height:76px;border-radius:50%;overflow:hidden;background:var(--gray-100);}' +
+            '.dsh-ava-inner img{width:100%;height:100%;object-fit:cover;image-orientation:from-image;display:block;}' +
             '.dsh-ava-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--primary-dark);background:var(--primary-light);}' +
             '.dsh-check{position:absolute;right:0;bottom:0;width:24px;height:24px;border-radius:50%;background:var(--primary);border:2.5px solid var(--white);display:none;align-items:center;justify-content:center;z-index:2;}' +
             '.dsh-check svg{width:13px;height:13px;color:#fff;}' +
