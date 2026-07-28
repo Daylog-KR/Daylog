@@ -461,6 +461,36 @@ public class ChatService {
                 .build();
     }
 
+    // [B] edit by smsong - 전송 대상 사용자 검색: 나와 방을 공유하는 사람들 중 이름/닉네임 매칭.
+    //  (아직 1:1 방이 없어도 전송 시 방을 만들어 보낼 수 있게, 후보를 돌려준다)
+    public List<Map<String, Object>> userSearch(String myUid, String q) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (myUid == null || q == null) return out;
+        String needle = q.trim().toLowerCase();
+        if (needle.isEmpty()) return out;
+
+        Set<String> coUids = new LinkedHashSet<>();
+        for (RoomMemberEntity m : roomMemberRepository.findByUid(myUid)) {
+            for (String u : memberUids(m.getRoomId())) {
+                if (u != null && !u.equals(myUid)) coUids.add(u);
+            }
+        }
+        for (String uid : coUids) {
+            UserEntity u = userRepository.findByUid(uid).orElse(null);
+            if (u == null) continue;
+            String nick = u.getNickname() == null ? "" : u.getNickname();
+            String name = u.getName() == null ? "" : u.getName();
+            if (nick.toLowerCase().contains(needle) || name.toLowerCase().contains(needle)) {
+                Map<String, Object> mp = new LinkedHashMap<>();
+                mp.put("uid", uid);
+                mp.put("displayName", displayName(uid));
+                mp.put("profileURL", u.getProfileURL());
+                out.add(mp);
+            }
+        }
+        return out;
+    }
+
     // ===== [B] edit by smsong - 추억/체크리스트 공유(전송) =====
     //  여러 방에 카드 메시지를 저장하고(선택 시 내용 텍스트 포함), 각 방에 푸시 발송.
     @Transactional

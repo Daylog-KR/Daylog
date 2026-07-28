@@ -532,33 +532,44 @@
         function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 300); }
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
 
-        var selected = {};
+        var selectedRooms = {};   // roomId -> 1
+        var selectedPeers = {};   // peerUid -> 1 (아직 방이 없는 사용자)
         var allRooms = [];
+        var roomPeerSet = {};     // 이미 1:1 방이 있는 상대 uid (검색 중복 방지)
         var sendBtn = document.getElementById('dsh-send');
-        function updateBtn() { var n = Object.keys(selected).length; sendBtn.disabled = n === 0; sendBtn.textContent = n > 0 ? ('보내기 (' + n + ')') : '보내기'; }
+        function selCount() { return Object.keys(selectedRooms).length + Object.keys(selectedPeers).length; }
+        function updateBtn() { var n = selCount(); sendBtn.disabled = n === 0; sendBtn.textContent = n > 0 ? ('보내기 (' + n + ')') : '보내기'; }
 
-        function cellHtml(r) {
-            var ava = r.imageURL
-                ? '<img src="' + esc(r.imageURL) + '" referrerpolicy="no-referrer">'
-                : '<span class="dsh-ava-ph">' + esc((r.title || '?').trim().charAt(0) || '?') + '</span>';
-            return '<button type="button" class="dsh-cell' + (selected[r.roomId] ? ' sel' : '') + '" data-room="' + esc(r.roomId) + '">' +
+        function cellHtml(it) {
+            var isUser = (it.uid != null && it.roomId == null);
+            var img = it.imageURL || it.profileURL || '';
+            var nm = it.title || it.displayName || '채팅';
+            var ava = img
+                ? '<img src="' + esc(img) + '" referrerpolicy="no-referrer">'
+                : '<span class="dsh-ava-ph">' + esc((nm || '?').trim().charAt(0) || '?') + '</span>';
+            var selMap = isUser ? selectedPeers : selectedRooms;
+            var key = isUser ? it.uid : it.roomId;
+            var attr = isUser ? ('data-peer="' + esc(it.uid) + '"') : ('data-room="' + esc(it.roomId) + '"');
+            return '<button type="button" class="dsh-cell' + (selMap[key] ? ' sel' : '') + '" ' + attr + '>' +
                 '<span class="dsh-cell-ava">' +
                     '<span class="dsh-ava-inner">' + ava + '</span>' +
                     '<span class="dsh-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' +
                 '</span>' +
-                '<span class="dsh-cell-name">' + esc(r.title || '채팅') + '</span>' +
+                '<span class="dsh-cell-name">' + esc(nm) + '</span>' +
             '</button>';
         }
-        function renderGrid(list) {
+        function renderGrid(rooms, users) {
             var grid = document.getElementById('dsh-grid');
             if (!grid) return;
-            if (!list.length) { grid.innerHTML = '<div class="dsh-empty">전송할 채팅방이 없어요</div>'; return; }
-            grid.innerHTML = list.map(cellHtml).join('');
+            var items = (rooms || []).concat(users || []);
+            if (!items.length) { grid.innerHTML = '<div class="dsh-empty">전송할 대상이 없어요</div>'; return; }
+            grid.innerHTML = items.map(cellHtml).join('');
             grid.querySelectorAll('.dsh-cell').forEach(function (cell) {
                 cell.addEventListener('click', function () {
-                    var id = cell.getAttribute('data-room');
-                    if (selected[id]) { delete selected[id]; cell.classList.remove('sel'); }
-                    else { selected[id] = 1; cell.classList.add('sel'); }
+                    var peer = cell.getAttribute('data-peer');
+                    var room = cell.getAttribute('data-room');
+                    if (peer) { if (selectedPeers[peer]) { delete selectedPeers[peer]; cell.classList.remove('sel'); } else { selectedPeers[peer] = 1; cell.classList.add('sel'); } }
+                    else if (room) { if (selectedRooms[room]) { delete selectedRooms[room]; cell.classList.remove('sel'); } else { selectedRooms[room] = 1; cell.classList.add('sel'); } }
                     updateBtn();
                 });
             });
@@ -566,25 +577,44 @@
 
         fetch(API + '/api/chat/rooms', { headers: authHeaders() })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (rooms) { allRooms = rooms || []; renderGrid(allRooms); })
+            .then(function (rooms) {
+                allRooms = rooms || [];
+                allRooms.forEach(function (r) { if (r.peerUid) roomPeerSet[r.peerUid] = 1; });
+                renderGrid(allRooms, []);
+            })
             .catch(function () { var g = document.getElementById('dsh-grid'); if (g) g.innerHTML = '<div class="dsh-empty">불러오지 못했어요</div>'; });
 
         var q = document.getElementById('dsh-q');
+        var searchSeq = 0;
         if (q) q.addEventListener('input', function () {
-            var t = q.value.trim().toLowerCase();
-            renderGrid(!t ? allRooms : allRooms.filter(function (r) { return (r.title || '').toLowerCase().indexOf(t) >= 0; }));
+            var t = q.value.trim();
+            var tl = t.toLowerCase();
+            var rooms = !t ? allRooms : allRooms.filter(function (r) { return (r.title || '').toLowerCase().indexOf(tl) >= 0; });
+            if (!t) { renderGrid(rooms, []); return; }
+            var seq = ++searchSeq;
+            renderGrid(rooms, []); // 방 먼저 즉시 표시
+            // 이름/닉네임으로 사용자 검색 → 방 없는 사람도 후보로(전송 시 1:1 방 생성)
+            fetch(API + '/api/chat/user-search?q=' + encodeURIComponent(t), { headers: authHeaders() })
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (users) {
+                    if (seq !== searchSeq) return; // 최신 검색 결과만 반영
+                    users = (users || []).filter(function (u) { return u && u.uid && !roomPeerSet[u.uid]; });
+                    renderGrid(rooms, users);
+                })
+                .catch(function () {});
         });
 
         sendBtn.addEventListener('click', function () {
-            var ids = Object.keys(selected).map(Number);
-            if (!ids.length) return;
+            var roomIds = Object.keys(selectedRooms).map(Number);
+            var peerUids = Object.keys(selectedPeers);
+            if (!roomIds.length && !peerUids.length) return;
             sendBtn.disabled = true; sendBtn.textContent = '보내는 중…';
             var msgEl = document.getElementById('dsh-msg');
             var msg = msgEl ? msgEl.value : '';
             fetch(API + '/api/chat/share', {
                 method: 'POST',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-                body: JSON.stringify({ roomIds: ids, kind: payload.kind, refId: payload.refId, srcRoomId: payload.srcRoomId, title: payload.title, image: payload.image, content: msg })
+                body: JSON.stringify({ roomIds: roomIds, peerUids: peerUids, kind: payload.kind, refId: payload.refId, srcRoomId: payload.srcRoomId, title: payload.title, image: payload.image, content: msg })
             }).then(function (r) { return r.ok ? r.json() : null; })
               .then(function (d) { toast(d ? '전송했어요' : '전송에 실패했어요'); close(); refreshBadge(); if (typeof window.Daylog.onChatClosed === 'function') { try { window.Daylog.onChatClosed(); } catch (e) {} } })
               .catch(function () { toast('전송에 실패했어요'); sendBtn.disabled = false; updateBtn(); });

@@ -110,8 +110,17 @@ public class ChatController {
         return ResponseEntity.ok(Map.of("muted", now));
     }
 
-    // [B] edit by smsong - 추억/체크리스트를 여러 채팅방에 전송(공유)
-    //  body: { roomIds:[..], kind:"CHECKLIST"|"MEMORY", refId, srcRoomId, title, image, content }
+    // [B] edit by smsong - 전송 대상 사용자 검색(이름/닉네임)
+    @GetMapping("/user-search")
+    public ResponseEntity<List<Map<String, Object>>> userSearch(@RequestParam("q") String q,
+                                                                @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        return ResponseEntity.ok(chatService.userSearch(uid, q));
+    }
+
+    // [B] edit by smsong - 추억/체크리스트를 여러 채팅방/사용자에 전송(공유)
+    //  body: { roomIds:[..], peerUids:[..], kind, refId, srcRoomId, title, image, content }
+    //  peerUids 는 1:1 방이 없어도 전송 시 방을 생성/재사용해서 보낸다.
     @PostMapping("/share")
     public ResponseEntity<Map<String, Object>> share(@RequestBody Map<String, Object> body,
                                                      @AuthenticationPrincipal UserDetails ud) {
@@ -120,6 +129,16 @@ public class ChatController {
         Object rid = body.get("roomIds");
         if (rid instanceof List<?> l) {
             for (Object o : l) { try { roomIds.add(Long.valueOf(String.valueOf(o))); } catch (Exception ignore) {} }
+        }
+        // 사용자(peerUids) → 1:1 방 생성/재사용 후 대상 방에 합침
+        Object pu = body.get("peerUids");
+        if (pu instanceof List<?> l) {
+            for (Object o : l) {
+                String peer = o == null ? null : String.valueOf(o);
+                if (peer == null || peer.isBlank()) continue;
+                try { Long rid2 = chatService.getOrCreateDirectRoom(uid, peer); if (rid2 != null && !roomIds.contains(rid2)) roomIds.add(rid2); }
+                catch (Exception ignore) {}
+            }
         }
         List<ChatDTO.Message> sent = chatService.shareToRooms(uid, roomIds,
                 _s(body.get("kind")), _l(body.get("refId")), _l(body.get("srcRoomId")),
