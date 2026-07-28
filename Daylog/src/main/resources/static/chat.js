@@ -500,7 +500,7 @@
             '.dsh-ava-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--primary-dark);background:var(--primary-light);}' +
             '.dsh-check{position:absolute;right:0;bottom:0;width:24px;height:24px;border-radius:50%;background:var(--primary);border:2.5px solid var(--white);display:none;align-items:center;justify-content:center;z-index:2;}' +
             '.dsh-check svg{width:13px;height:13px;color:#fff;}' +
-            '.dsh-cell.sel .dsh-ava-inner{box-shadow:0 0 0 2px var(--white), 0 0 0 4px var(--primary);}' +
+            '.dsh-cell.sel .dsh-ava-inner{outline:2.5px solid var(--primary);outline-offset:2px;}' +
             '.dsh-cell.sel .dsh-ava-inner img{filter:brightness(0.9);}' +
             '.dsh-cell.sel .dsh-check{display:flex;}' +
             '.dsh-cell-name{font-size:0.82rem;color:var(--gray-700);max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}' +
