@@ -281,9 +281,11 @@ public class ChatService {
             if (room == null) continue;
 
             ChatMessageEntity last = chatMessageRepository.findTop1ByRoomIdOrderByIdDesc(roomId).orElse(null);
+            boolean direct = isDirectRoom(room);
+            // [B] edit by smsong - 메시지 없는 1:1 방은 목록에 표시하지 않는다(첫 메시지가 생겨야 방이 뜬다)
+            if (direct && last == null) continue;
             long unread = unreadCount(roomId, uid);
             long members = roomMemberRepository.findByRoomId(roomId).size();
-            boolean direct = isDirectRoom(room);
 
             String title = room.getName();
             String image = room.getImageUrl();
@@ -435,6 +437,11 @@ public class ChatService {
                 profile = u.getProfileURL();
             }
         }
+        String shareSrcRoomName = null;
+        if ("SHARE".equals(m.getType()) && m.getShareSrcRoomId() != null) {
+            RoomEntity sr = roomRepository.findById(m.getShareSrcRoomId()).orElse(null);
+            if (sr != null) shareSrcRoomName = sr.getName();
+        }
         return ChatDTO.Message.builder()
                 .id(m.getId())
                 .roomId(m.getRoomId())
@@ -445,7 +452,45 @@ public class ChatService {
                 .type(m.getType())
                 .createdAt(m.getCreatedAt() == null ? null : m.getCreatedAt().toString())
                 .mine(m.getSenderUid() != null && m.getSenderUid().equals(requesterUid))
+                .shareKind(m.getShareKind())
+                .shareRefId(m.getShareRefId())
+                .shareSrcRoomId(m.getShareSrcRoomId())
+                .shareSrcRoomName(shareSrcRoomName)
+                .shareTitle(m.getShareTitle())
+                .shareImage(m.getShareImage())
                 .build();
+    }
+
+    // ===== [B] edit by smsong - 추억/체크리스트 공유(전송) =====
+    //  여러 방에 카드 메시지를 저장하고(선택 시 내용 텍스트 포함), 각 방에 푸시 발송.
+    @Transactional
+    public void shareToRooms(String senderUid, List<Long> roomIds, String kind, Long refId,
+                             Long srcRoomId, String title, String image, String content) {
+        if (roomIds == null || roomIds.isEmpty()) return;
+        String k = "MEMORY".equalsIgnoreCase(kind) ? "MEMORY" : "CHECKLIST";
+        String text = content == null ? "" : content.trim();
+        if (text.length() > 2000) text = text.substring(0, 2000);
+        String ttl = title == null ? "" : (title.length() > 300 ? title.substring(0, 300) : title);
+        String img = image == null ? null : (image.length() > 1000 ? image.substring(0, 1000) : image);
+
+        for (Long roomId : roomIds) {
+            if (roomId == null || !isMember(senderUid, roomId)) continue;
+            ChatMessageEntity saved = chatMessageRepository.save(ChatMessageEntity.builder()
+                    .roomId(roomId)
+                    .senderUid(senderUid)
+                    .content(text)                 // 카드 아래 표시할 내용(있으면)
+                    .type("SHARE")
+                    .shareKind(k)
+                    .shareRefId(refId)
+                    .shareSrcRoomId(srcRoomId)
+                    .shareTitle(ttl)
+                    .shareImage(img)
+                    .build());
+            markRead(roomId, senderUid, saved.getId());
+            // 접속중 여부와 무관하게 발송(전송은 명시적 행동이라 대상 전원에게)
+            String body = (k.equals("MEMORY") ? "[추억] " : "[체크리스트] ") + (ttl.isEmpty() ? "공유" : ttl);
+            try { notifyNewMessage(roomId, senderUid, body, null); } catch (Exception ignore) {}
+        }
     }
 }
 // [E] edit by smsong

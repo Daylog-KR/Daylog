@@ -21,9 +21,16 @@ public class ChatDTO {
         private String senderName;      // 표시 이름(닉네임 우선, 없으면 name)
         private String senderProfileURL;
         private String content;
-        private String type;            // TEXT / SYSTEM
+        private String type;            // TEXT / SYSTEM / SHARE
         private String createdAt;       // ISO 문자열
         private boolean mine;           // 요청자가 보낸 메시지인지
+        // [B] edit by smsong - 공유(전송) 카드용
+        private String shareKind;       // CHECKLIST / MEMORY
+        private Long shareRefId;
+        private Long shareSrcRoomId;
+        private String shareSrcRoomName;
+        private String shareTitle;
+        private String shareImage;
     }
 
     // 히스토리 응답: 메시지 목록 + 방 멤버 uid + 각 멤버의 마지막 읽은 id

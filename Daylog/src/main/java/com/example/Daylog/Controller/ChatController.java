@@ -107,5 +107,24 @@ public class ChatController {
         boolean now = chatService.setChatMuted(roomId, uid, muted);
         return ResponseEntity.ok(Map.of("muted", now));
     }
+
+    // [B] edit by smsong - 추억/체크리스트를 여러 채팅방에 전송(공유)
+    //  body: { roomIds:[..], kind:"CHECKLIST"|"MEMORY", refId, srcRoomId, title, image, content }
+    @PostMapping("/share")
+    public ResponseEntity<Map<String, Object>> share(@RequestBody Map<String, Object> body,
+                                                     @AuthenticationPrincipal UserDetails ud) {
+        String uid = uidOf(ud);
+        List<Long> roomIds = new java.util.ArrayList<>();
+        Object rid = body.get("roomIds");
+        if (rid instanceof List<?> l) {
+            for (Object o : l) { try { roomIds.add(Long.valueOf(String.valueOf(o))); } catch (Exception ignore) {} }
+        }
+        chatService.shareToRooms(uid, roomIds,
+                _s(body.get("kind")), _l(body.get("refId")), _l(body.get("srcRoomId")),
+                _s(body.get("title")), _s(body.get("image")), _s(body.get("content")));
+        return ResponseEntity.ok(Map.of("ok", true, "count", roomIds.size()));
+    }
+    private static String _s(Object o) { return o == null ? null : String.valueOf(o); }
+    private static Long _l(Object o) { if (o == null) return null; try { return Long.valueOf(String.valueOf(o)); } catch (Exception e) { return null; } }
 }
 // [E] edit by smsong

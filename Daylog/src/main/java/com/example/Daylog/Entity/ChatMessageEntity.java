@@ -29,9 +29,19 @@ public class ChatMessageEntity {
     @Column(length = 2000)
     private String content;
 
-    // TEXT / SYSTEM (입장/퇴장 안내 등)
+    // TEXT / SYSTEM (입장/퇴장 안내 등) / SHARE (추억·체크리스트 공유)
     @Column(length = 16)
     private String type;
+
+    // [B] edit by smsong - 공유(전송) payload: type=SHARE 일 때 사용
+    @Column(length = 16)
+    private String shareKind;        // CHECKLIST / MEMORY
+    private Long shareRefId;         // 원본 추억/체크리스트 id
+    private Long shareSrcRoomId;     // 원본이 속한 방 id (클릭 시 이동)
+    @Column(length = 300)
+    private String shareTitle;       // 제목
+    @Column(length = 1000)
+    private String shareImage;       // 대표 이미지 URL
 
     private LocalDateTime createdAt;
 

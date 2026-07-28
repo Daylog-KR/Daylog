@@ -5604,8 +5604,8 @@ function openChecklistDetail(item, overModal) {
         '</div>' +
         '<h2 class="dtl-title">' + escapeHtml(item.title || '') + '</h2>' +
         '<div class="detail-author dtl-author">' +
-        '<div class="da-avatar" id="cl-author-avatar" data-uid="' + escapeHtml(item.ownerUid || '') + '" data-name="' + escapeHtml(authorName || '') + '" data-profile="' + escapeHtml(authorPhoto || '') + '" onclick="onAuthorProfileClick(this)" style="cursor:pointer;background-image:url(\'' + authorPhoto + '\')"></div>' +
-        '<span class="da-name" data-uid="' + escapeHtml(item.ownerUid || '') + '" data-name="' + escapeHtml(authorName || '') + '" data-profile="' + escapeHtml(authorPhoto || '') + '" onclick="onAuthorProfileClick(this)" style="cursor:pointer;">' + escapeHtml(authorName || '작성자') + '</span>' +
+        '<div class="da-avatar" id="cl-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
+        '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
         '</div>' +
         plannedHtml +   // [B][E] edit by smsong - #31 갈 예정일 + 알림
         (item.content ? '<div class="dtl-text"><p>' + contentHtml + '</p></div>' : '') +
@@ -5624,23 +5624,16 @@ function openChecklistDetail(item, overModal) {
 
     const headerActions = document.getElementById('cl-detail-header-actions');
     if (headerActions) {
-        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만. 전송은 누구나.
+        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만
         headerActions.innerHTML =
-            '<button type="button" class="detail-edit-btn" id="cl-detail-share" title="전송"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>' +
             (canManage ? '<button type="button" class="detail-edit-btn" id="cl-detail-edit-open" title="수정">' + icon('edit',16) + '</button>' : '') +
             (canTrashObject(item) ? '<button type="button" class="detail-trash-btn" id="cl-detail-del-open" title="휴지통">' + icon('trash',16) + '</button>' : '');
     }
-    const clShare = document.getElementById('cl-detail-share'); // [B] edit by smsong - 전송
-    if (clShare) clShare.addEventListener('click', () => {
-        if (window.Daylog && typeof Daylog.openShareSheet === 'function') {
-            const imgs = mediaUrlsOf(item);
-            Daylog.openShareSheet({ kind: 'CHECKLIST', refId: item.id, srcRoomId: getRoomId(), title: item.title || '', image: (imgs && imgs[0]) || '' });
-        } else if (typeof showToast === 'function') { showToast('전송 기능을 불러오지 못했어요 (새로고침 필요)'); }
-    });
 
     bindCarousel(document.getElementById('cl-detail-view'), _clUrls);
     Daylog._fitDetailStage(document.getElementById('cl-detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
-    const av = document.getElementById('cl-author-avatar'); // [B] edit by smsong - 클릭은 인라인 onclick(onAuthorProfileClick) 로 처리
+    const av = document.getElementById('cl-author-avatar');
+    if (av) av.addEventListener('click', () => openLightbox(authorPhoto, av));
     const locEl = document.getElementById('cl-detail-loc');
     if (locEl && item.lat != null && item.lng != null) {
         locEl.addEventListener('click', () => Daylog.focusChecklistOnMap && Daylog.focusChecklistOnMap(item));
@@ -5690,11 +5683,6 @@ function enterChecklistEdit(item) {
         const urls = mediaUrlsOf(item);
         window._clEditMgr.reset(urls.map(u => ({ kind: 'url', url: u })));
     }
-
-    // [B] edit by smsong - 수정 시에도 생성과 동일하게 네이버 '장소 사진'이 동작하도록 편집용 장소 지정.
-    //  (편집 그리드 cl-edit-media-grid 에 아래 DOMContentLoaded 에서 attach 해두고, query 가 이 값을 읽는다)
-    window._clEditPlace = item.placeName || item.title || '';
-    window._clEditRegion = item.address || '';
 
     document.getElementById('cl-edit-title').value = item.title || '';
     document.getElementById('cl-edit-content').value = item.content || '';
@@ -6190,8 +6178,8 @@ function openDetailModal(memory, overModal) {
     const authorPhoto = (author && author.profileURL) ? author.profileURL : DEFAULT_AVATAR;
     const authorHtml =
         '<div class="detail-author">' +
-        '<div class="da-avatar" id="detail-author-avatar" data-uid="' + escapeHtml(memory.ownerUid || '') + '" data-name="' + escapeHtml(authorName || '') + '" data-profile="' + escapeHtml(authorPhoto || '') + '" onclick="onAuthorProfileClick(this)" style="cursor:pointer;background-image:url(\'' + authorPhoto + '\')"></div>' +
-        '<span class="da-name" data-uid="' + escapeHtml(memory.ownerUid || '') + '" data-name="' + escapeHtml(authorName || '') + '" data-profile="' + escapeHtml(authorPhoto || '') + '" onclick="onAuthorProfileClick(this)" style="cursor:pointer;">' + escapeHtml(authorName || '작성자') + '</span>' +
+        '<div class="da-avatar" id="detail-author-avatar" style="background-image:url(\'' + authorPhoto + '\')"></div>' +
+        '<span class="da-name">' + escapeHtml(authorName || '작성자') + '</span>' +
         '</div>';
 
     // [B] edit by smsong - #7 몰입형 상세: 무대(사진) → 종이(글·댓글)
@@ -6227,19 +6215,11 @@ function openDetailModal(memory, overModal) {
     // 헤더 영역: (소유자만) 수정/휴지통 버튼을 '추억 상세' 위치에 작게 배치
     const headerActions = document.getElementById('detail-header-actions');
     if (headerActions) {
-        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만. 전송은 누구나.
+        // [smsong] 수정은 소유자/커플, 휴지통 이동은 작성자(소유자)만
         headerActions.innerHTML =
-            '<button type="button" class="detail-edit-btn" id="detail-share" title="전송"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>' +
             (canManage ? '<button type="button" class="detail-edit-btn" id="detail-edit-open" title="수정">' + icon('edit',16) + '</button>' : '') +
             (canTrashObject(memory) ? '<button type="button" class="detail-trash-btn" id="detail-trash-open" title="휴지통">' + icon('trash',16) + '</button>' : '');
     }
-    const memShare = document.getElementById('detail-share'); // [B] edit by smsong - 전송
-    if (memShare) memShare.addEventListener('click', () => {
-        if (window.Daylog && typeof Daylog.openShareSheet === 'function') {
-            const imgs = mediaUrlsOf(memory);
-            Daylog.openShareSheet({ kind: 'MEMORY', refId: memory.id, srcRoomId: getRoomId(), title: memory.title || '', image: (imgs && imgs[0]) || '' });
-        } else if (typeof showToast === 'function') { showToast('전송 기능을 불러오지 못했어요 (새로고침 필요)'); }
-    });
 
     applyDetailLocation(memory);
 
@@ -6256,7 +6236,8 @@ function openDetailModal(memory, overModal) {
     Daylog._fitDetailStage(document.getElementById('detail-view')); // [B] edit by smsong - #7 사진 비율에 맞춰 무대 높이
 
     // 작성자 프로필 클릭 → 확대 (실제 사진/기본 이미지 모두)
-    const da = document.getElementById('detail-author-avatar'); // [B] edit by smsong - 클릭은 인라인 onclick(onAuthorProfileClick) 로 처리
+    const da = document.getElementById('detail-author-avatar');
+    if (da) da.addEventListener('click', () => openLightbox(authorPhoto, da));
 
     const eo = document.getElementById('detail-edit-open');
     if (eo) eo.addEventListener('click', () => enterDetailEdit(memory));
@@ -6448,22 +6429,15 @@ function commentAvatarHtml(c) {
         'data-photo="' + src + '" data-uid="' + escapeHtml(uid) + '" data-name="' + escapeHtml(c.ownerName || '') + '" ' +
         'data-profile="' + escapeHtml(c.ownerProfileURL || '') + '" onclick="onCommentAvatarClick(this)"></div>';
 }
-// [B] edit by smsong - 댓글 아바타/이름 클릭 핸들러: 본인 포함 무조건 프로필 폼(폼 이미지에서만 확대)
+// [B] edit by smsong - 댓글 아바타 클릭 핸들러
 function onCommentAvatarClick(el) {
     const uid = el.getAttribute('data-uid');
-    if (!uid) return;
-    if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
+    if (uid && Daylog.currentUid && uid !== Daylog.currentUid &&
+        window.Daylog && typeof Daylog.openPeerProfile === 'function') {
         Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
-    } else if (typeof showToast === 'function') { showToast('프로필을 불러오지 못했어요 (새로고침 필요)'); }
-}
-// [B] edit by smsong - 작성자(추억/체크리스트) 아바타/이름 클릭 → 프로필 폼 (인라인 onclick 용, 재렌더에도 견고)
-function onAuthorProfileClick(el) {
-    if (!el) return;
-    const uid = el.getAttribute('data-uid');
-    if (!uid) return;
-    if (window.Daylog && typeof Daylog.openPeerProfile === 'function') {
-        Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name') || '', profileURL: el.getAttribute('data-profile') || '' });
-    } else if (typeof showToast === 'function') { showToast('프로필을 불러오지 못했어요 (새로고침 필요)'); }
+    } else {
+        openLightbox(el.getAttribute('data-photo'), el);
+    }
 }
 
 function commentItemHtml(c, kind, targetId, isReply) {
@@ -6497,7 +6471,7 @@ function commentItemHtml(c, kind, targetId, isReply) {
         commentAvatarHtml(c) +
         '<div class="c-body">' +
         '<div class="c-meta">' +
-        '<span class="c-name" data-uid="' + escapeHtml(c.ownerUid || '') + '" data-name="' + escapeHtml(commentAuthorName(c)) + '" data-profile="' + escapeHtml(c.ownerProfileURL || '') + '" onclick="onCommentAvatarClick(this)" style="cursor:pointer;">' + escapeHtml(commentAuthorName(c)) + '</span>' +
+        '<span class="c-name">' + escapeHtml(commentAuthorName(c)) + '</span>' +
         '<span class="c-time">' + commentTimeLabel(c.createdAt) + '</span>' +
         '</div>' +
         '<div class="c-content" id="c-content-' + c.id + '">' + contentHtml + '</div>' +
@@ -6866,19 +6840,10 @@ function renderMemberModal(members, isCouple) {
         const card = document.createElement('div');
         card.className = 'mm-card';
         card.innerHTML =
-            `<div class="member-avatar mm-prof" data-uid="${escapeHtml(m.uid)}" data-name="${escapeHtml(name)}" data-profile="${escapeHtml(m.profileURL || '')}">${avatar}</div>` +
-            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name mm-prof" data-uid="${escapeHtml(m.uid)}" data-name="${escapeHtml(name)}" data-profile="${escapeHtml(m.profileURL || '')}">${escapeHtml(name)}</div></div>` +
+            `<div class="member-avatar">${avatar}</div>` +
+            `<div class="mm-info"><div class="member-role-badge role-${roleCls}">${roleLabel}</div><div class="mm-name">${escapeHtml(name)}</div></div>` +
             `<div class="mm-counts">${counts}</div>`;
         body.appendChild(card);
-    });
-    // [B] edit by smsong - 멤버 보기: 아바타/이름 클릭 → 프로필 폼(본인 포함). 확대는 폼 이미지에서만.
-    body.querySelectorAll('.mm-prof').forEach(el => {
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', () => {
-            const uid = el.getAttribute('data-uid');
-            if (uid && window.Daylog && typeof Daylog.openPeerProfile === 'function')
-                Daylog.openPeerProfile(uid, { name: el.getAttribute('data-name'), profileURL: el.getAttribute('data-profile') });
-        });
     });
     body.querySelectorAll('.mm-count').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -8544,18 +8509,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // [B][E] edit by smsong - #44 그리드 아래에 '장소 사진 가져오기' 버튼 부착
     if (window.Daylog && Daylog.placeImages) Daylog.placeImages.mount();
-    // [B] edit by smsong - 체크리스트 '수정' 그리드에도 장소 사진 버튼 부착(생성과 동일)
-    if (window.Daylog && Daylog.placeImages && typeof Daylog.placeImages.attach === 'function') {
-        Daylog.placeImages.attach({
-            gridId: 'cl-edit-media-grid',
-            mgr: function () { return window._clEditMgr; },
-            query: function () {
-                var t = (document.getElementById('cl-edit-title') || {}).value || '';
-                return (t && t.trim()) || window._clEditPlace || '';
-            },
-            region: function () { return window._clEditRegion || ''; }
-        });
-    }
 
     // 상세 수정 폼
     const detailEditForm = document.getElementById('detail-edit-form');
@@ -10033,36 +9986,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return false;   // 처리할 게 없다 → nav.js 가 '한 번 더 누르면 종료' 안내
     };
-})();
-// [E] edit by smsong
-
-// [B] edit by smsong - 채팅 공유 카드 클릭 진입: ?open=checklist:ID / memory:ID 이면 데이터 로드 후 상세 열기
-(function () {
-    'use strict';
-    try {
-        var p = new URLSearchParams(location.search || '');
-        var open = p.get('open');
-        if (!open) return;
-        var idx = open.indexOf(':');
-        if (idx < 0) return;
-        var kind = open.slice(0, idx), id = open.slice(idx + 1);
-        if (!id) return;
-        var tries = 0;
-        var timer = setInterval(function () {
-            tries++;
-            var found = null;
-            if (kind === 'memory') {
-                found = (window.Daylog && Daylog.memories || []).find(function (x) { return String(x.id) === String(id); });
-                if (found && typeof openDetailModal === 'function') openDetailModal(found);
-            } else {
-                found = (window.Daylog && Daylog.checklists || []).find(function (x) { return String(x.id) === String(id); });
-                if (found && typeof openChecklistDetail === 'function') openChecklistDetail(found);
-            }
-            if (found || tries > 40) {
-                clearInterval(timer);
-                try { p.delete('open'); var q = p.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
-            }
-        }, 300);
-    } catch (e) {}
 })();
 // [E] edit by smsong
