@@ -332,9 +332,6 @@ public class RoomService {
     @Transactional
     public void markAcceptSeen(Long roomId, String uid) {
         permissionService.markAcceptSeen(uid, roomId);
-        // [B] edit by smsong - 승인된 멤버가 최초로 입장(수락 안내 확인)할 때 카톡식 '입장' 안내.
-        //  프론트는 welcomeSeen 플래그로 이 호출을 1회만 하므로 중복되지 않는다.
-        postRoomSystem(roomId, nick(uid) + "님이 입장했습니다");
     }
     // [E] edit by smsong
 

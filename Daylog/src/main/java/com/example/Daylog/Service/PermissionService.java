@@ -9,6 +9,8 @@ import com.example.Daylog.Repository.PermissionRepository;
 import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
+import com.example.Daylog.DTO.ChatDTO;
+import com.example.Daylog.WebSocket.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,9 @@ public class PermissionService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final NotificationService notificationService; // [B] edit by smsong - 알림함 저장 + 웹푸시
+    // [B] edit by smsong - 승인 순간 카톡식 '입장' 시스템 메시지용
+    private final ChatService chatService;
+    private final ChatWebSocketHandler chatWebSocketHandler;
 
     // ===== 관리자(=방장) 판별 =====
     public boolean isOwner(Long roomId, String uid) {
@@ -221,6 +226,11 @@ public class PermissionService {
             // 승인: 아직 멤버가 아니면 지금 멤버로 등록 → '내가 속한 방'에 노출
             if (!roomMemberRepository.existsByRoomIdAndUid(roomId, targetUid)) {
                 roomMemberRepository.save(RoomMemberEntity.builder().roomId(roomId).uid(targetUid).build());
+                // [B] edit by smsong - 승인(입장)하는 순간 바로 카톡식 '입장했습니다' 안내 + 실시간 표시
+                try {
+                    ChatDTO.Message sys = chatService.postSystem(roomId, pushName(targetUid) + "님이 입장했습니다");
+                    if (sys != null && chatWebSocketHandler != null) chatWebSocketHandler.broadcastMessage(roomId, sys);
+                } catch (Exception ignore) {}
             }
             e.setRejectReason(null); e.setRejectSeen(false); e.setKicked(false);
             e.setAcceptSeen(false); // [B] edit by smsong - 수락됨: rooms 최초 진입 시 1회 안내 대상으로 표시
