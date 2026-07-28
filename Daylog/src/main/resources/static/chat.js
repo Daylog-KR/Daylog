@@ -142,14 +142,42 @@
         var time = '<span class="dchat-time">' + clock(m.createdAt) + '</span>';
         var cnt = countTag(m);
         // [B] edit by smsong - 공유(전송) 메시지: 카드(위) + 내용(아래) 순 (인스타그램식)
-        var body;
+        //   메타(시간/읽음)는 카드 폭이 아니라 '마지막 버블(내용 텍스트, 없으면 카드)' 옆에 붙는다.
         if (m.type === 'SHARE') {
-            body = '<div class="dchat-sharewrap">' + shareCardHtml(m) +
-                (m.content ? '<div class="dchat-bubble dchat-share-text">' + esc(m.content).replace(/\n/g, '<br>') + '</div>' : '') +
+            var metaMine = '<div class="dchat-meta">' + cnt + time + '</div>';
+            var metaOther = '<div class="dchat-meta">' + time + cnt + '</div>';
+            var card = shareCardHtml(m);
+            // 마지막 줄: 내용 텍스트가 있으면 그 버블 + 메타, 없으면 카드 + 메타
+            var lastInner, topPart;
+            if (m.content) {
+                topPart = card;
+                var textBubble = '<div class="dchat-bubble dchat-share-text">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
+                lastInner = textBubble;
+            } else {
+                topPart = '';
+                lastInner = card;
+            }
+            if (m.mine) {
+                var lastLineM = '<div class="dchat-line dchat-shareline">' + metaMine + lastInner + '</div>';
+                return '<div class="dchat-row mine share" data-id="' + m.id + '">' +
+                    '<div class="dchat-sharewrap">' + topPart + lastLineM + '</div>' +
+                    '</div>';
+            }
+            var avatarS = showHead ? avatarHtml(m) : '<span class="dchat-ava-spacer"></span>';
+            var nameLineS = showHead ? '<div class="dchat-name">' + esc(m.senderName || '알 수 없음') + '</div>' : '';
+            var lastLineO = '<div class="dchat-line dchat-shareline">' + lastInner + metaOther + '</div>';
+            return '<div class="dchat-row other share' + (showHead ? ' head' : '') + '" data-id="' + m.id + '"' +
+                ' data-uid="' + esc(m.senderUid || '') + '"' +
+                ' data-name="' + esc(m.senderName || '') + '"' +
+                ' data-profile="' + esc(m.senderProfileURL || '') + '">' +
+                '<div class="dchat-avacol">' + avatarS + '</div>' +
+                '<div class="dchat-othercol">' +
+                    nameLineS +
+                    '<div class="dchat-sharewrap">' + topPart + lastLineO + '</div>' +
+                '</div>' +
                 '</div>';
-        } else {
-            body = '<div class="dchat-bubble">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
         }
+        var body = '<div class="dchat-bubble">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
         var bubble = body;
         if (m.mine) {
             // 내 메시지: 오른쪽. 메타(안읽음수 + 시간)는 버블 왼쪽.
@@ -1027,7 +1055,11 @@
                 var src = shareEl.getAttribute('data-srcroom');
                 if (src && ref) {
                     var openv = (kind === 'MEMORY' ? 'memory' : 'checklist') + ':' + ref;
-                    location.href = '/main.html?room=' + encodeURIComponent(src) + '&open=' + encodeURIComponent(openv);
+                    // [B] edit by smsong - 상세를 닫으면 이 채팅방으로 돌아오도록 backchat 전달
+                    var backRoom = roomId();
+                    try { if (backRoom) sessionStorage.setItem('backToChatRoom', String(backRoom)); } catch (e2) {}
+                    location.href = '/main.html?room=' + encodeURIComponent(src) + '&open=' + encodeURIComponent(openv) +
+                        (backRoom ? '&backchat=' + encodeURIComponent(backRoom) : '');
                 }
                 return;
             }
@@ -1117,10 +1149,11 @@
             '.dchat-sharewrap{display:flex;flex-direction:column;gap:4px;max-width:240px;}' +
             '.dchat-row.mine .dchat-sharewrap{align-items:flex-end;}' +
             // [B] edit by smsong - 상대(other) 공유 카드의 내용 버블도 내용 크기에 맞게(기본 stretch → flex-start).
-            //   이게 없으면 상대쪽 텍스트가 항상 카드 폭(220px)만큼 늘어난다.
             '.dchat-row.other .dchat-sharewrap{align-items:flex-start;}' +
-            '.dchat-share-text{align-self:flex-start;}' +
-            '.dchat-row.mine .dchat-share-text{align-self:flex-end;}' +
+            // 마지막 줄: [내용/카드] + [메타] 가로 배치. 메타가 카드 폭이 아니라 그 요소 옆에 붙는다.
+            '.dchat-shareline{display:flex;align-items:flex-end;gap:6px;min-width:0;max-width:100%;}' +
+            '.dchat-row.mine .dchat-shareline{flex-direction:row;justify-content:flex-end;}' +
+            '.dchat-shareline .dchat-share-text{align-self:auto;}' +
             '.dchat-share{width:220px;max-width:100%;border:1px solid var(--gray-200);border-radius:16px;overflow:hidden;background:var(--white);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);}' +
             '.dchat-share:active{transform:scale(0.99);}' +
             '.dchat-share-top{font-size:0.74rem;font-weight:700;color:var(--gray-500);padding:8px 11px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +

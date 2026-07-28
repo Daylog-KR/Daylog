@@ -10047,22 +10047,47 @@ document.addEventListener('DOMContentLoaded', () => {
         if (idx < 0) return;
         var kind = open.slice(0, idx), id = open.slice(idx + 1);
         if (!id) return;
+        // [B] edit by smsong - 상세를 닫으면 이 채팅방으로 복귀 (채팅 카드에서 진입한 경우)
+        var backchat = p.get('backchat');
+        try { if (!backchat) backchat = sessionStorage.getItem('backToChatRoom'); } catch (e0) {}
         var tries = 0;
         var timer = setInterval(function () {
             tries++;
-            var found = null;
+            var found = null, modalEl = null;
             if (kind === 'memory') {
                 found = (window.Daylog && Daylog.memories || []).find(function (x) { return String(x.id) === String(id); });
-                if (found && typeof openDetailModal === 'function') openDetailModal(found);
+                if (found && typeof openDetailModal === 'function') { openDetailModal(found); modalEl = document.getElementById('detail-modal'); }
             } else {
                 found = (window.Daylog && Daylog.checklists || []).find(function (x) { return String(x.id) === String(id); });
-                if (found && typeof openChecklistDetail === 'function') openChecklistDetail(found);
+                if (found && typeof openChecklistDetail === 'function') { openChecklistDetail(found); modalEl = document.getElementById('checklist-detail-modal'); }
             }
             if (found || tries > 40) {
                 clearInterval(timer);
-                try { p.delete('open'); var q = p.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
+                try { p.delete('open'); p.delete('backchat'); var q = p.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
+                // 상세가 열렸고 복귀할 채팅이 있으면, 상세가 닫히는 순간 채팅을 다시 연다
+                if (found && backchat && modalEl) armReturnToChat(modalEl, backchat);
             }
         }, 300);
     } catch (e) {}
+
+    // 상세 모달이 hidden 처리(닫힘)되는 걸 1회 감지 → 채팅 복귀
+    function armReturnToChat(modalEl, roomId) {
+        var done = false;
+        function fire() {
+            if (done) return;
+            done = true;
+            try { sessionStorage.removeItem('backToChatRoom'); } catch (e) {}
+            setTimeout(function () {
+                if (window.Daylog && typeof Daylog.openChat === 'function') Daylog.openChat(String(roomId));
+            }, 180);
+        }
+        // 모달이 hidden 클래스를 얻으면 닫힌 것으로 간주
+        var mo = new MutationObserver(function () {
+            if (modalEl.classList.contains('hidden')) { mo.disconnect(); fire(); }
+        });
+        mo.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
+        // 안전장치: 모달이 이미 닫혀있다면 즉시
+        if (modalEl.classList.contains('hidden')) { mo.disconnect(); fire(); }
+    }
 })();
 // [E] edit by smsong
