@@ -10047,9 +10047,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (idx < 0) return;
         var kind = open.slice(0, idx), id = open.slice(idx + 1);
         if (!id) return;
+
+        // [B] edit by smsong - 공유 항목이 속한 방(src)으로 스코프 전환.
+        //   현재 방과 다르면 selectedRoomId 를 그 방으로 바꾸고 1회 리로드한다.
+        //   → 그 방 멤버가 아니면 데이터 로드에서 서버가 403 을 주고 접근 차단 화면이 뜬다.
+        var srcRoom = p.get('room');
+        if (srcRoom && String(srcRoom) !== String(localStorage.getItem('selectedRoomId'))) {
+            try {
+                localStorage.setItem('selectedRoomId', String(srcRoom));
+                // 리로드해도 open/backchat/backpage 파라미터는 URL 에 남아있어 상세 열기/복귀가 이어진다.
+                if (!sessionStorage.getItem('sharedRoomSwitched')) {
+                    sessionStorage.setItem('sharedRoomSwitched', '1');
+                    location.reload();
+                    return;
+                }
+            } catch (eSw) {}
+        }
+        try { sessionStorage.removeItem('sharedRoomSwitched'); } catch (eR) {}
+
         // [B] edit by smsong - 상세를 닫으면 이 채팅방으로 복귀 (채팅 카드에서 진입한 경우)
         var backchat = p.get('backchat');
-        try { if (!backchat) backchat = sessionStorage.getItem('backToChatRoom'); } catch (e0) {}
+        var backpage = p.get('backpage');
+        try {
+            if (!backchat) backchat = sessionStorage.getItem('backToChatRoom');
+            if (!backpage) backpage = sessionStorage.getItem('backToChatPage');
+        } catch (e0) {}
         var tries = 0;
         var timer = setInterval(function () {
             tries++;
@@ -10063,30 +10085,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (found || tries > 40) {
                 clearInterval(timer);
-                try { p.delete('open'); p.delete('backchat'); var q = p.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
+                try { p.delete('open'); p.delete('backchat'); p.delete('backpage'); var q = p.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
                 // 상세가 열렸고 복귀할 채팅이 있으면, 상세가 닫히는 순간 채팅을 다시 연다
-                if (found && backchat && modalEl) armReturnToChat(modalEl, backchat);
+                if (found && backchat && modalEl) armReturnToChat(modalEl, backchat, backpage);
             }
         }, 300);
     } catch (e) {}
 
     // 상세 모달이 hidden 처리(닫힘)되는 걸 1회 감지 → 채팅 복귀
-    function armReturnToChat(modalEl, roomId) {
+    function armReturnToChat(modalEl, roomId, backpage) {
         var done = false;
         function fire() {
             if (done) return;
             done = true;
-            try { sessionStorage.removeItem('backToChatRoom'); } catch (e) {}
+            try { sessionStorage.removeItem('backToChatRoom'); sessionStorage.removeItem('backToChatPage'); } catch (e) {}
+            // rooms 에서 왔으면 rooms.html 로 정확히 복귀하며 그 채팅을 연다
+            if (backpage === 'rooms') {
+                location.href = '/rooms.html?chat=' + encodeURIComponent(roomId);
+                return;
+            }
             setTimeout(function () {
                 if (window.Daylog && typeof Daylog.openChat === 'function') Daylog.openChat(String(roomId));
             }, 180);
         }
-        // 모달이 hidden 클래스를 얻으면 닫힌 것으로 간주
         var mo = new MutationObserver(function () {
             if (modalEl.classList.contains('hidden')) { mo.disconnect(); fire(); }
         });
         mo.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
-        // 안전장치: 모달이 이미 닫혀있다면 즉시
         if (modalEl.classList.contains('hidden')) { mo.disconnect(); fire(); }
     }
 })();

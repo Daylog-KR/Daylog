@@ -1055,11 +1055,17 @@
                 var src = shareEl.getAttribute('data-srcroom');
                 if (src && ref) {
                     var openv = (kind === 'MEMORY' ? 'memory' : 'checklist') + ':' + ref;
-                    // [B] edit by smsong - 상세를 닫으면 이 채팅방으로 돌아오도록 backchat 전달
+                    // [B] edit by smsong - 상세를 닫으면 이 채팅방으로 돌아오도록 backchat + 원래 페이지 전달
                     var backRoom = roomId();
-                    try { if (backRoom) sessionStorage.setItem('backToChatRoom', String(backRoom)); } catch (e2) {}
+                    var backPage = (location.pathname.indexOf('rooms.html') >= 0) ? 'rooms' : 'main';
+                    try {
+                        if (backRoom) {
+                            sessionStorage.setItem('backToChatRoom', String(backRoom));
+                            sessionStorage.setItem('backToChatPage', backPage);
+                        }
+                    } catch (e2) {}
                     location.href = '/main.html?room=' + encodeURIComponent(src) + '&open=' + encodeURIComponent(openv) +
-                        (backRoom ? '&backchat=' + encodeURIComponent(backRoom) : '');
+                        (backRoom ? '&backchat=' + encodeURIComponent(backRoom) + '&backpage=' + backPage : '');
                 }
                 return;
             }

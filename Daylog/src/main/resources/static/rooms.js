@@ -1591,11 +1591,26 @@ if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'E
 //  단, 채팅 알림으로 들어온 경우(chat=1)엔 마지막 방 자동 이동을 건너뛰고 방 목록에 머문다.
 //  (chat.js 가 이어서 해당 방 채팅 패널을 자동으로 연다)
 var __chatEntry = false;
-try { __chatEntry = new URLSearchParams(location.search || '').get('chat') === '1'; } catch (e) {}
+var __chatRoomId = null; // [B] edit by smsong - ?chat=<roomId> 로 특정 방 채팅 바로 열기(상세→채팅 복귀)
+try {
+    var __cv = new URLSearchParams(location.search || '').get('chat');
+    __chatEntry = (__cv === '1');
+    if (__cv && /^\d+$/.test(__cv)) { __chatRoomId = __cv; __chatEntry = true; }
+} catch (e) {}
 if (validSession) {
     if (__chatEntry) {
         loadRooms(); loadMe();
         try { setView('chat'); } catch (e) {}   // 패널 닫으면 채팅 목록이 보이도록
+        // 특정 방으로 복귀한 경우 그 방 채팅 패널을 바로 연다
+        if (__chatRoomId) {
+            var __openTry = function (n) {
+                if (window.Daylog && typeof window.Daylog.openChat === 'function') { window.Daylog.openChat(__chatRoomId); return; }
+                if (n > 0) setTimeout(function () { __openTry(n - 1); }, 200); // chat.js 로드 대기
+            };
+            setTimeout(function () { __openTry(15); }, 300);
+        }
+        // URL 정리 (뒤로가기/새로고침 시 재오픈 방지)
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
     } else if (!tryAutoEnterLastRoom()) {
         loadRooms(); loadMe();
     }
