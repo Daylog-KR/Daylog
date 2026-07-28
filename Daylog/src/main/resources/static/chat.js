@@ -124,13 +124,33 @@
         if (n <= 0) return '';
         return '<span class="dchat-unread">' + n + '</span>';
     }
+    function shareCardHtml(m) {
+        var kindLabel = (m.shareKind === 'MEMORY') ? '추억' : '체크리스트';
+        var img = m.shareImage
+            ? '<div class="dchat-share-img"><img src="' + esc(m.shareImage) + '" alt="" referrerpolicy="no-referrer"></div>'
+            : '<div class="dchat-share-img dchat-share-noimg">' + kindLabel + '</div>';
+        return '<div class="dchat-share" role="button" data-kind="' + esc(m.shareKind || '') + '" data-ref="' + esc(m.shareRefId == null ? '' : m.shareRefId) + '" data-srcroom="' + esc(m.shareSrcRoomId == null ? '' : m.shareSrcRoomId) + '">' +
+            '<div class="dchat-share-top">' + esc(m.shareSrcRoomName || '방') + ' · ' + kindLabel + '</div>' +
+            img +
+            '<div class="dchat-share-title">' + esc(m.shareTitle || '(제목 없음)') + '</div>' +
+        '</div>';
+    }
     function messageRowHtml(m, showHead) {
         if (m.type === 'SYSTEM') {
             return '<div class="dchat-sys">' + esc(m.content) + '</div>';
         }
         var time = '<span class="dchat-time">' + clock(m.createdAt) + '</span>';
         var cnt = countTag(m);
-        var bubble = '<div class="dchat-bubble">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
+        // [B] edit by smsong - 공유(전송) 메시지: 카드(위) + 내용(아래) 순 (인스타그램식)
+        var body;
+        if (m.type === 'SHARE') {
+            body = '<div class="dchat-sharewrap">' + shareCardHtml(m) +
+                (m.content ? '<div class="dchat-bubble dchat-share-text">' + esc(m.content).replace(/\n/g, '<br>') + '</div>' : '') +
+                '</div>';
+        } else {
+            body = '<div class="dchat-bubble">' + esc(m.content).replace(/\n/g, '<br>') + '</div>';
+        }
+        var bubble = body;
         if (m.mine) {
             // 내 메시지: 오른쪽. 메타(안읽음수 + 시간)는 버블 왼쪽.
             return '<div class="dchat-row mine" data-id="' + m.id + '">' +
@@ -377,7 +397,11 @@
             '#dlb-close{position:fixed;top:calc(12px + var(--safe-t,0px));right:16px;z-index:10071;width:42px;height:42px;border:none;border-radius:50%;background:rgba(255,255,255,0.16);color:#fff;font-size:1.7rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}';
         var st = document.createElement('style'); st.id = 'dlb-style'; st.textContent = css; document.head.appendChild(st);
     }
-    function fallbackLightbox(src) {
+    function _rectOf(el) {
+        var r = el.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height };
+    }
+    function fallbackLightbox(src, originEl) {
         if (!src) return;
         injectLbStyle();
         var ov = document.createElement('div');
@@ -385,40 +409,158 @@
         ov.innerHTML = '<button id="dlb-close" type="button" aria-label="닫기">&times;</button>' +
             '<img src="' + esc(src) + '" alt="" referrerpolicy="no-referrer" draggable="false">';
         document.body.appendChild(ov);
-        requestAnimationFrame(function () { ov.classList.add('show'); });
         var img = ov.querySelector('img');
-        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        var originRect = (originEl && originEl.getBoundingClientRect) ? _rectOf(originEl) : null;
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+
+        var scale = 1, tx = 0, ty = 0;
+        function apply(anim) { img.style.transition = anim ? 'transform .2s ease' : 'none'; img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+
+        // 썸네일 자리에서 확대되어 나타나는 연출 (체크리스트/추억 크게보기와 동일 컨셉)
+        function animateIn() {
+            var t = _rectOf(img);
+            if (!originRect || !t.w || !t.h) return;
+            var sc = Math.max(originRect.w / t.w, originRect.h / t.h);
+            var dx = originRect.cx - t.cx, dy = originRect.cy - t.cy;
+            img.style.transition = 'none';
+            img.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sc + ')';
+            img.style.borderRadius = '14px';
+            void img.offsetWidth;
+            img.style.transition = 'transform .32s cubic-bezier(.22,.61,.36,1), border-radius .32s ease';
+            requestAnimationFrame(function () { img.style.transform = 'translate(0,0) scale(1)'; img.style.borderRadius = '0'; });
+        }
+        if (img.complete && img.naturalWidth) animateIn();
+        else img.addEventListener('load', animateIn, { once: true });
+
+        function close() {
+            var t = _rectOf(img);
+            if (originRect && t.w && t.h && scale <= 1.02) {
+                var sc = Math.max(originRect.w / t.w, originRect.h / t.h);
+                var dx = originRect.cx - t.cx, dy = originRect.cy - t.cy;
+                img.style.transition = 'transform .28s cubic-bezier(.4,0,.2,1), border-radius .28s ease';
+                img.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sc + ')';
+                img.style.borderRadius = '14px';
+                ov.style.transition = 'opacity .28s ease'; ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 290);
+            } else {
+                ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200);
+            }
+        }
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         ov.querySelector('#dlb-close').addEventListener('click', close);
 
-        // 핀치 줌 + (확대 시)드래그 + 더블탭 토글
-        var scale = 1, tx = 0, ty = 0, sDist = 0, sScale = 1, panning = false, px = 0, py = 0, ox = 0, oy = 0, lastTap = 0;
-        function apply() { img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+        // 핀치 줌 + (확대 시)드래그 + 더블탭 토글 — 놓으면 원위치
+        var sDist = 0, sScale = 1, panning = false, px = 0, py = 0, ox = 0, oy = 0, lastTap = 0;
         function dist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
         img.addEventListener('touchstart', function (e) {
             if (e.touches.length === 2) { sDist = dist(e.touches); sScale = scale; e.preventDefault(); }
             else if (e.touches.length === 1 && scale > 1) { panning = true; px = e.touches[0].clientX; py = e.touches[0].clientY; ox = tx; oy = ty; }
         }, { passive: false });
         img.addEventListener('touchmove', function (e) {
-            if (e.touches.length === 2) { scale = Math.min(5, Math.max(1, sScale * (dist(e.touches) / (sDist || 1)))); apply(); e.preventDefault(); }
-            else if (panning && e.touches.length === 1) { tx = ox + (e.touches[0].clientX - px); ty = oy + (e.touches[0].clientY - py); apply(); e.preventDefault(); }
+            if (e.touches.length === 2) { scale = Math.min(5, Math.max(1, sScale * (dist(e.touches) / (sDist || 1)))); apply(false); e.preventDefault(); }
+            else if (panning && e.touches.length === 1) { tx = ox + (e.touches[0].clientX - px); ty = oy + (e.touches[0].clientY - py); apply(false); e.preventDefault(); }
         }, { passive: false });
         img.addEventListener('touchend', function (e) {
             if (e.touches.length === 0) {
                 panning = false;
-                if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; apply(); }
+                if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; apply(true); } // 놓으면 원위치
                 var now = Date.now();
-                if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); }
+                if (now - lastTap < 300) { if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(true); }
                 lastTap = now;
             }
         });
-        img.addEventListener('click', function (e) { e.stopPropagation(); }); // 이미지 탭으론 안 닫힘
-        img.addEventListener('dblclick', function (e) { e.preventDefault(); if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(); });
+        img.addEventListener('click', function (e) { e.stopPropagation(); });
+        img.addEventListener('dblclick', function (e) { e.preventDefault(); if (scale > 1) { scale = 1; tx = 0; ty = 0; } else { scale = 2; } apply(true); });
     }
     function viewImage(src, originEl) {
         if (!src) return;
         if (typeof window.openLightbox === 'function') { try { window.openLightbox(src, originEl); return; } catch (e) {} }
-        fallbackLightbox(src);
+        fallbackLightbox(src, originEl);
+    }
+
+    // ===== [B] edit by smsong - 추억/체크리스트 전송(공유) 시트 =====
+    function injectShareStyle() {
+        if (document.getElementById('dsh-style')) return;
+        var css =
+            '#dsh-overlay{position:fixed;inset:0;z-index:10052;background:rgba(45,38,32,0.5);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;}' +
+            '#dsh-overlay.show{opacity:1;}' +
+            '.dsh-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);}' +
+            '#dsh-overlay.show .dsh-sheet{transform:translateY(0);}' +
+            '.dsh-head{text-align:center;padding:2px 16px 10px;border-bottom:1px solid var(--gray-100);}' +
+            '.dsh-title{font-size:1rem;font-weight:800;color:var(--gray-800);}' +
+            '.dsh-sub{font-size:0.82rem;color:var(--gray-500);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.dsh-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;flex:1 1 auto;min-height:120px;}' +
+            '.dsh-row{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:14px;cursor:pointer;}' +
+            '.dsh-row:active{background:var(--gray-50);}' +
+            '.dsh-avawrap{width:42px;height:42px;border-radius:14px;overflow:hidden;flex-shrink:0;background:var(--gray-100);display:flex;align-items:center;justify-content:center;}' +
+            '.dsh-avawrap img{width:100%;height:100%;object-fit:cover;image-orientation:from-image;}' +
+            '.dsh-ava-ph{font-weight:700;color:var(--primary-dark);background:var(--primary-light);width:100%;height:100%;display:flex;align-items:center;justify-content:center;}' +
+            '.dsh-name{flex:1 1 auto;min-width:0;font-size:0.96rem;font-weight:600;color:var(--gray-800);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            '.dsh-chk{width:20px;height:20px;flex-shrink:0;accent-color:var(--primary);}' +
+            '.dsh-compose{padding:8px 14px 6px;border-top:1px solid var(--gray-100);}' +
+            '.dsh-compose input{width:100%;border:1px solid var(--gray-200);border-radius:20px;padding:10px 14px;font-size:0.95rem;font-family:inherit;background:var(--gray-50);color:var(--gray-800);}' +
+            '.dsh-send{margin:8px 14px 0;padding:14px;border:none;border-radius:14px;background:var(--primary);color:#fff;font-family:inherit;font-size:0.98rem;font-weight:700;cursor:pointer;}' +
+            '.dsh-send:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default;}';
+        var st = document.createElement('style'); st.id = 'dsh-style'; st.textContent = css; document.head.appendChild(st);
+    }
+    function openShareSheet(payload) {
+        if (!payload || payload.refId == null) return;
+        if (!loggedIn()) { toast('로그인이 필요해요'); return; }
+        injectShareStyle();
+        var ov = document.createElement('div');
+        ov.id = 'dsh-overlay';
+        ov.innerHTML =
+            '<div class="dsh-sheet" role="dialog" aria-modal="true">' +
+                '<div class="dml-handle"></div>' +
+                '<div class="dsh-head"><div class="dsh-title">전송</div><div class="dsh-sub">' + esc(payload.title || '') + '</div></div>' +
+                '<div class="dsh-list" id="dsh-list"><div class="dml-empty">불러오는 중…</div></div>' +
+                '<div class="dsh-compose"><input id="dsh-msg" type="text" placeholder="메시지 입력 (선택)" maxlength="2000"></div>' +
+                '<button class="dsh-send" id="dsh-send" type="button" disabled>전송</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+        requestAnimationFrame(function () { ov.classList.add('show'); });
+        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 300); }
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+
+        var selected = {};
+        var sendBtn = document.getElementById('dsh-send');
+        function updateBtn() { var n = Object.keys(selected).length; sendBtn.disabled = n === 0; sendBtn.textContent = n > 0 ? ('전송 (' + n + ')') : '전송'; }
+
+        fetch(API + '/api/chat/rooms', { headers: authHeaders() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (rooms) {
+                var el = document.getElementById('dsh-list');
+                if (!el) return;
+                if (!rooms || !rooms.length) { el.innerHTML = '<div class="dml-empty">전송할 채팅방이 없어요</div>'; return; }
+                el.innerHTML = rooms.map(function (r) {
+                    var ava = r.imageURL
+                        ? '<img src="' + esc(r.imageURL) + '" referrerpolicy="no-referrer">'
+                        : '<span class="dsh-ava-ph">' + esc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+                    return '<label class="dsh-row"><span class="dsh-avawrap">' + ava + '</span>' +
+                        '<span class="dsh-name">' + esc(r.title || '채팅') + '</span>' +
+                        '<input type="checkbox" class="dsh-chk" value="' + esc(r.roomId) + '"></label>';
+                }).join('');
+                el.querySelectorAll('.dsh-chk').forEach(function (chk) {
+                    chk.addEventListener('change', function () { if (chk.checked) selected[chk.value] = 1; else delete selected[chk.value]; updateBtn(); });
+                });
+            })
+            .catch(function () { var el = document.getElementById('dsh-list'); if (el) el.innerHTML = '<div class="dml-empty">불러오지 못했어요</div>'; });
+
+        sendBtn.addEventListener('click', function () {
+            var ids = Object.keys(selected).map(Number);
+            if (!ids.length) return;
+            sendBtn.disabled = true; sendBtn.textContent = '전송 중…';
+            var msgEl = document.getElementById('dsh-msg');
+            var msg = msgEl ? msgEl.value : '';
+            fetch(API + '/api/chat/share', {
+                method: 'POST',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+                body: JSON.stringify({ roomIds: ids, kind: payload.kind, refId: payload.refId, srcRoomId: payload.srcRoomId, title: payload.title, image: payload.image, content: msg })
+            }).then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (d) { toast(d ? '전송했어요' : '전송에 실패했어요'); close(); refreshBadge(); if (typeof window.Daylog.onChatClosed === 'function') { try { window.Daylog.onChatClosed(); } catch (e) {} } })
+              .catch(function () { toast('전송에 실패했어요'); sendBtn.disabled = false; updateBtn(); });
+        });
     }
 
     // ===== [B] edit by smsong - 멤버 보기: 현재 채팅방 멤버 리스트 (모든 방 공통) =====
@@ -427,8 +569,8 @@
         var css =
             '#dml-overlay{position:fixed;inset:0;z-index:10050;background:rgba(45,38,32,0.5);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;}' +
             '#dml-overlay.show{opacity:1;}' +
-            '.dml-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:74vh;display:flex;flex-direction:column;transform:translateY(18px);transition:transform .24s cubic-bezier(.2,.8,.3,1);}' +
-            '#dml-overlay.show .dml-sheet{transform:none;}' +
+            '.dml-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:74vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);will-change:transform;}' +
+            '#dml-overlay.show .dml-sheet{transform:translateY(0);}' +
             '.dml-handle{width:38px;height:4px;border-radius:2px;background:var(--gray-200);margin:8px auto 6px;}' +
             '.dml-title{font-size:0.98rem;font-weight:700;color:var(--gray-800);text-align:center;padding:4px 16px 10px;border-bottom:1px solid var(--gray-100);}' +
             '.dml-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;min-height:60px;}' +
@@ -458,7 +600,7 @@
             '</div>';
         document.body.appendChild(ov);
         requestAnimationFrame(function () { ov.classList.add('show'); });
-        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+        function close() { ov.classList.remove('show'); setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 300); }
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         document.getElementById('dml-close').addEventListener('click', close);
 
@@ -474,7 +616,8 @@
                     var ava = m.profileURL
                         ? '<img class="dml-ava" src="' + esc(m.profileURL) + '" alt="" referrerpolicy="no-referrer">'
                         : '<span class="dml-ava-ph">' + esc((m.displayName || '?').trim().charAt(0) || '?') + '</span>';
-                    var badge = m.owner ? '<span class="dml-badge">방장</span>' : '';
+                    // [B] edit by smsong - 1:1 방에서는 방장 배지 없이 '나'만 표시
+                    var badge = (m.owner && !state.direct) ? '<span class="dml-badge">방장</span>' : '';
                     if (m.me) badge += '<span class="dml-badge me">나</span>';
                     return '<button class="dml-row' + (m.me ? ' me' : '') + '" type="button" data-uid="' + esc(m.uid) +
                         '" data-name="' + nm + '" data-profile="' + esc(m.profileURL || '') + '" data-me="' + (m.me ? '1' : '') + '">' +
@@ -487,17 +630,9 @@
                         var uid = row.getAttribute('data-uid');
                         var nm = row.getAttribute('data-name') || '';
                         var pf = row.getAttribute('data-profile') || '';
-                        // [B] edit by smsong - 멤버 리스트는 '닫지 않고' 유지한다(프로필 위에 겹쳐 띄움).
-                        //  → 프로필에서 '닫기'를 누르면 채팅방으로 나가지 않고 멤버 리스트로 돌아온다.
+                        // [B] edit by smsong - 아바타/이름 어디를 눌러도 상대 프로필 모달을 연다(확대는 그 모달 안에서).
+                        //  멤버 리스트는 '닫지 않고' 유지 → 프로필 '닫기' 시 멤버 리스트로 복귀.
                         openPeerProfile(uid, { name: nm, profileURL: pf });
-                    });
-                });
-                // [B] edit by smsong - 멤버 프로필 썸네일 클릭 → 이미지 크게보기 (행 클릭보다 우선)
-                el.querySelectorAll('img.dml-ava').forEach(function (im) {
-                    im.style.cursor = 'zoom-in';
-                    im.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        viewImage(im.getAttribute('src'), im);
                     });
                 });
             })
@@ -627,7 +762,7 @@
     // 이미 알고 있는 정보(이름/프로필)를 넘기면 즉시 표시하고, uid 로 최신 프로필을 보강한다.
     function openPeerProfile(uid, hint) {
         if (!uid) return;
-        if (uid === myUid()) { toast('나 자신과는 대화할 수 없어요'); return; }
+        var isSelf = (uid === myUid()); // [B] edit by smsong - 본인도 프로필 폼은 뜨되 '1:1 대화하기'만 숨김
         injectProfileStyle();
         closePeerProfile();
         hint = hint || {};
@@ -640,10 +775,11 @@
                 '<div class="dpp-name" id="dpp-name">' + esc(hint.name || '사용자') + '</div>' +
                 '<div class="dpp-sub" id="dpp-sub"></div>' +
                 '<div class="dpp-actions">' +
+                    (isSelf ? '' :
                     '<button class="dpp-btn primary" id="dpp-chat" type="button">' +
                         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
                         '1:1 대화하기' +
-                    '</button>' +
+                    '</button>') +
                     '<button class="dpp-btn ghost" id="dpp-close" type="button">닫기</button>' +
                 '</div>' +
             '</div>';
@@ -665,7 +801,8 @@
 
         ov.addEventListener('click', function (e) { if (e.target === ov) closePeerProfile(); });
         document.getElementById('dpp-close').addEventListener('click', closePeerProfile);
-        document.getElementById('dpp-chat').addEventListener('click', function () { startDirectChat(uid); });
+        var chatBtn = document.getElementById('dpp-chat');
+        if (chatBtn) chatBtn.addEventListener('click', function () { startDirectChat(uid); });
 
         // 최신 프로필 보강
         fetch(API + '/api/chat/peer/' + encodeURIComponent(uid), { headers: authHeaders() })
@@ -728,10 +865,13 @@
         if (_oldOv && _oldOv.parentNode) _oldOv.parentNode.removeChild(_oldOv);
         if (_oldPn && _oldPn.parentNode) _oldPn.parentNode.removeChild(_oldPn);
         // [B] edit by smsong - 새 채팅을 열 때(예: 멤버 프로필 → 1:1 대화하기) 남아있는 관련 모달들도 정리
-        ['dml-overlay', 'dcs-overlay', 'dpp-overlay'].forEach(function (id) {
+        ['dml-overlay', 'dcs-overlay', 'dpp-overlay', 'dlb-overlay'].forEach(function (id) {
             var e = document.getElementById(id);
             if (e && e.parentNode) e.parentNode.removeChild(e);
         });
+        // 메인(main.js)의 라이트박스가 열려 있거나 '지연 애니메이션' 대기 중이면 확실히 닫는다
+        //  → 프로필 사진을 확대로 잘못 열었다가 채팅 진입 후 뒤늦게 떠오르던 문제 차단.
+        if (typeof window.closeLightbox === 'function') { try { window.closeLightbox(); } catch (e) {} }
         // 특정 방(1:1 등) 지정 시 활성 방으로. 없으면 현재 선택된 방.
         activeRoomId = (targetRoomId && String(targetRoomId)) || null;
         if (!roomId()) { toast('먼저 방을 선택해주세요'); return; }
@@ -775,10 +915,64 @@
         var gear = document.getElementById('dchat-gear');
         if (gear) gear.addEventListener('click', openChatSettings); // [B] edit by smsong - 채팅방 설정
 
+        // [B] edit by smsong - iOS 카톡식: 왼쪽 가장자리에서 오른쪽으로 스와이프하면 뒤로(닫기)
+        (function () {
+            var startX = 0, startY = 0, dragging = false, active = false, w = 0;
+            pn.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) { active = false; return; }
+                var x = e.touches[0].clientX;
+                active = x <= 32; // 왼쪽 가장자리에서 시작한 것만(내부 스크롤/조작과 충돌 방지)
+                if (!active) return;
+                startX = x; startY = e.touches[0].clientY; dragging = false;
+                w = pn.offsetWidth || window.innerWidth;
+            }, { passive: true });
+            pn.addEventListener('touchmove', function (e) {
+                if (!active || e.touches.length !== 1) return;
+                var dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+                if (!dragging) {
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    if (Math.abs(dy) > Math.abs(dx)) { active = false; return; } // 세로 제스처면 취소
+                    dragging = true; pn.style.transition = 'none';
+                }
+                if (dx < 0) dx = 0; // 오른쪽으로만 따라감
+                pn.style.transform = 'translateX(' + dx + 'px)';
+                e.preventDefault();
+            }, { passive: false });
+            function endDrag(e) {
+                if (!active) return;
+                active = false;
+                if (!dragging) return;
+                dragging = false;
+                var dx = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientX - startX) : 0;
+                if (dx > w * 0.32) { // 충분히 밀면 닫기
+                    pn.style.transition = ''; pn.style.transform = '';
+                    closePanel();
+                } else { // 아니면 제자리로
+                    pn.style.transition = 'transform .22s cubic-bezier(.2,.8,.3,1)';
+                    pn.style.transform = 'translateX(0)';
+                    setTimeout(function () { pn.style.transition = ''; pn.style.transform = ''; }, 240);
+                }
+            }
+            pn.addEventListener('touchend', endDrag, { passive: true });
+            pn.addEventListener('touchcancel', endDrag, { passive: true });
+        })();
+
         var scroll = document.getElementById('dchat-scroll');
         scroll.addEventListener('scroll', function () { if (scroll.scrollTop < 40) loadMore(); });
         // [B] edit by smsong - 상대 아바타/이름 클릭 → 프로필 모달 (1:1 대화 시작 가능)
         scroll.addEventListener('click', function (e) {
+            // [B] edit by smsong - 공유 카드 클릭 → 해당 방으로 이동 + 상세보기
+            var shareEl = e.target.closest ? e.target.closest('.dchat-share') : null;
+            if (shareEl) {
+                var kind = shareEl.getAttribute('data-kind');
+                var ref = shareEl.getAttribute('data-ref');
+                var src = shareEl.getAttribute('data-srcroom');
+                if (src && ref) {
+                    var openv = (kind === 'MEMORY' ? 'memory' : 'checklist') + ':' + ref;
+                    location.href = '/main.html?room=' + encodeURIComponent(src) + '&open=' + encodeURIComponent(openv);
+                }
+                return;
+            }
             var head = e.target.closest ? e.target.closest('.dchat-avacol, .dchat-name') : null;
             if (!head) return;
             var row = head.closest('.dchat-row.other');
@@ -861,6 +1055,18 @@
             '.dchat-line{display:flex;align-items:flex-end;gap:6px;min-width:0;}' +
             // 버블
             '.dchat-bubble{font-size:0.95rem;line-height:1.45;padding:9px 12px;border-radius:16px;word-break:break-word;white-space:pre-wrap;max-width:100%;}' +
+            // [B] edit by smsong - 공유(전송) 카드 (인스타 DM식)
+            '.dchat-sharewrap{display:flex;flex-direction:column;gap:4px;max-width:240px;}' +
+            '.dchat-row.mine .dchat-sharewrap{align-items:flex-end;}' +
+            '.dchat-share{width:220px;max-width:100%;border:1px solid var(--gray-200);border-radius:16px;overflow:hidden;background:var(--white);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);}' +
+            '.dchat-share:active{transform:scale(0.99);}' +
+            '.dchat-share-top{font-size:0.74rem;font-weight:700;color:var(--gray-500);padding:8px 11px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.dchat-share-img{width:100%;aspect-ratio:1/1;background:var(--gray-100);}' +
+            '.dchat-share-img img{width:100%;height:100%;object-fit:cover;display:block;image-orientation:from-image;}' +
+            '.dchat-share-noimg{display:flex;align-items:center;justify-content:center;color:var(--primary-dark);font-weight:700;background:var(--primary-light);}' +
+            '.dchat-share-title{font-size:0.9rem;font-weight:600;color:var(--gray-800);padding:9px 11px;line-height:1.35;}' +
+            '.dchat-share-text{background:var(--white);color:var(--gray-800);border:1px solid var(--gray-100);}' +
+            '.dchat-row.mine .dchat-share-text{background:var(--primary);color:#fff;border:none;}' +
             '.dchat-row.other .dchat-bubble{background:var(--white);color:var(--gray-800);border:1px solid var(--gray-100);border-top-left-radius:5px;}' +
             '.dchat-row.mine .dchat-bubble{background:var(--primary);color:#fff;border-top-right-radius:5px;max-width:82%;box-shadow:0 1px 2px rgba(176,137,104,0.25);}' +
             // 메타(시간 + 안읽음수)
@@ -936,6 +1142,27 @@
         });
         window.addEventListener('focus', function () { if (!ws || ws.readyState > 1) wsConnect(); });
 
+        // [B] edit by smsong - 안드로이드/브라우저 뒤로가기: 채팅 오버레이들을 위→아래 순으로 등록.
+        //  nav.js 가 뒤로가기마다 '최상단 레이어 하나'만 닫아 준다.
+        //  (기존엔 채팅 오버레이가 등록되지 않아 뒤로가기가 엉뚱하게 동작했다)
+        if (window.DaylogNav && typeof window.DaylogNav.registerProvider === 'function') {
+            function _closeOv(id) {
+                var ov = document.getElementById(id);
+                if (!ov) return;
+                ov.classList.remove('show');
+                setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 220);
+            }
+            window.DaylogNav.registerProvider(function () {
+                var layers = [];
+                if (document.getElementById('dlb-overlay')) layers.push({ name: 'dlb', close: function () { _closeOv('dlb-overlay'); } });
+                if (document.getElementById('dpp-overlay')) layers.push({ name: 'dpp', close: closePeerProfile });
+                if (document.getElementById('dml-overlay')) layers.push({ name: 'dml', close: function () { _closeOv('dml-overlay'); } });
+                if (document.getElementById('dcs-overlay')) layers.push({ name: 'dcs', close: function () { _closeOv('dcs-overlay'); } });
+                if (document.getElementById('dchat-panel')) layers.push({ name: 'dchat', close: closePanel });
+                return layers; // 위(라이트박스) → 아래(패널)
+            });
+        }
+
         // [B] edit by smsong - 채팅 푸시 클릭 진입: URL 에 chat=1 이면 해당 방 채팅을 바로 연다.
         //  (웹푸시 url = /main.html?room={id}&chat=1 → sw.js 가 이 주소로 이동 → 여기서 패널 오픈)
         try {
@@ -960,6 +1187,7 @@
     window.Daylog.openPeerProfile = openPeerProfile;   // [B] edit by smsong - 프로필 모달(멤버/댓글/채팅 공용)
     window.Daylog.startDirectChat = startDirectChat;   // [B] edit by smsong - 1:1 대화 시작
     window.Daylog.viewImage = viewImage;               // [B] edit by smsong - 공용 이미지 크게보기(방/프로필 썸네일)
+    window.Daylog.openShareSheet = openShareSheet;     // [B] edit by smsong - 추억/체크리스트 전송
     window.Daylog.refreshChatBadge = refreshBadge;
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();
