@@ -485,22 +485,28 @@
         var css =
             '#dsh-overlay{position:fixed;inset:0;z-index:10052;background:rgba(45,38,32,0.5);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;}' +
             '#dsh-overlay.show{opacity:1;}' +
-            '.dsh-sheet{width:100%;max-width:460px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(10px + var(--safe-b,0px));max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);}' +
+            '.dsh-sheet{width:100%;max-width:480px;background:var(--white);border-radius:22px 22px 0 0;padding:8px 0 calc(12px + var(--safe-b,0px));height:82vh;max-height:82vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);}' +
             '#dsh-overlay.show .dsh-sheet{transform:translateY(0);}' +
-            '.dsh-head{text-align:center;padding:2px 16px 10px;border-bottom:1px solid var(--gray-100);}' +
-            '.dsh-title{font-size:1rem;font-weight:800;color:var(--gray-800);}' +
-            '.dsh-sub{font-size:0.82rem;color:var(--gray-500);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-            '.dsh-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 8px;flex:1 1 auto;min-height:120px;}' +
-            '.dsh-row{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:14px;cursor:pointer;}' +
-            '.dsh-row:active{background:var(--gray-50);}' +
-            '.dsh-avawrap{width:42px;height:42px;border-radius:14px;overflow:hidden;flex-shrink:0;background:var(--gray-100);display:flex;align-items:center;justify-content:center;}' +
-            '.dsh-avawrap img{width:100%;height:100%;object-fit:cover;image-orientation:from-image;}' +
-            '.dsh-ava-ph{font-weight:700;color:var(--primary-dark);background:var(--primary-light);width:100%;height:100%;display:flex;align-items:center;justify-content:center;}' +
-            '.dsh-name{flex:1 1 auto;min-width:0;font-size:0.96rem;font-weight:600;color:var(--gray-800);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-            '.dsh-chk{width:20px;height:20px;flex-shrink:0;accent-color:var(--primary);}' +
-            '.dsh-compose{padding:8px 14px 6px;border-top:1px solid var(--gray-100);}' +
-            '.dsh-compose input{width:100%;border:1px solid var(--gray-200);border-radius:20px;padding:10px 14px;font-size:0.95rem;font-family:inherit;background:var(--gray-50);color:var(--gray-800);}' +
-            '.dsh-send{margin:8px 14px 0;padding:14px;border:none;border-radius:14px;background:var(--primary);color:#fff;font-family:inherit;font-size:0.98rem;font-weight:700;cursor:pointer;}' +
+            '.dsh-searchbar{padding:6px 16px 12px;}' +
+            '.dsh-search{display:flex;align-items:center;gap:8px;background:var(--gray-100);border-radius:12px;padding:11px 14px;}' +
+            '.dsh-search svg{flex-shrink:0;color:var(--gray-400);}' +
+            '.dsh-search input{flex:1 1 auto;min-width:0;border:none;background:transparent;font-size:0.98rem;font-family:inherit;color:var(--gray-800);outline:none;}' +
+            '.dsh-grid{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:repeat(3,1fr);gap:18px 6px;padding:10px 14px 14px;align-content:start;}' +
+            '.dsh-cell{display:flex;flex-direction:column;align-items:center;gap:8px;border:none;background:transparent;cursor:pointer;font-family:inherit;padding:0;}' +
+            '.dsh-cell:active{opacity:0.8;}' +
+            '.dsh-cell-ava{position:relative;width:76px;height:76px;border-radius:50%;overflow:hidden;background:var(--gray-100);}' +
+            '.dsh-cell-ava img{width:100%;height:100%;object-fit:cover;image-orientation:from-image;}' +
+            '.dsh-ava-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--primary-dark);background:var(--primary-light);}' +
+            '.dsh-check{position:absolute;right:1px;bottom:1px;width:24px;height:24px;border-radius:50%;background:var(--primary);border:2.5px solid var(--white);display:none;align-items:center;justify-content:center;}' +
+            '.dsh-check svg{width:13px;height:13px;color:#fff;}' +
+            '.dsh-cell.sel .dsh-cell-ava{outline:2.5px solid var(--primary);outline-offset:2px;}' +
+            '.dsh-cell.sel .dsh-cell-ava img{filter:brightness(0.9);}' +
+            '.dsh-cell.sel .dsh-check{display:flex;}' +
+            '.dsh-cell-name{font-size:0.82rem;color:var(--gray-700);max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}' +
+            '.dsh-empty{grid-column:1/-1;padding:30px;text-align:center;color:var(--gray-400);font-size:0.92rem;}' +
+            '.dsh-compose{padding:6px 18px 2px;border-top:1px solid var(--gray-100);}' +
+            '.dsh-compose input{width:100%;border:none;background:transparent;padding:11px 2px;font-size:0.98rem;font-family:inherit;color:var(--gray-800);outline:none;}' +
+            '.dsh-send{margin:6px 16px 0;padding:15px;border:none;border-radius:14px;background:var(--primary);color:#fff;font-family:inherit;font-size:1rem;font-weight:800;cursor:pointer;}' +
             '.dsh-send:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default;}';
         var st = document.createElement('style'); st.id = 'dsh-style'; st.textContent = css; document.head.appendChild(st);
     }
@@ -513,10 +519,12 @@
         ov.innerHTML =
             '<div class="dsh-sheet" role="dialog" aria-modal="true">' +
                 '<div class="dml-handle"></div>' +
-                '<div class="dsh-head"><div class="dsh-title">전송</div><div class="dsh-sub">' + esc(payload.title || '') + '</div></div>' +
-                '<div class="dsh-list" id="dsh-list"><div class="dml-empty">불러오는 중…</div></div>' +
-                '<div class="dsh-compose"><input id="dsh-msg" type="text" placeholder="메시지 입력 (선택)" maxlength="2000"></div>' +
-                '<button class="dsh-send" id="dsh-send" type="button" disabled>전송</button>' +
+                '<div class="dsh-searchbar"><div class="dsh-search">' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>' +
+                    '<input id="dsh-q" type="text" placeholder="검색"></div></div>' +
+                '<div class="dsh-grid" id="dsh-grid"><div class="dsh-empty">불러오는 중…</div></div>' +
+                '<div class="dsh-compose"><input id="dsh-msg" type="text" placeholder="메시지 작성..." maxlength="2000"></div>' +
+                '<button class="dsh-send" id="dsh-send" type="button" disabled>보내기</button>' +
             '</div>';
         document.body.appendChild(ov);
         requestAnimationFrame(function () { ov.classList.add('show'); });
@@ -524,33 +532,51 @@
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
 
         var selected = {};
+        var allRooms = [];
         var sendBtn = document.getElementById('dsh-send');
-        function updateBtn() { var n = Object.keys(selected).length; sendBtn.disabled = n === 0; sendBtn.textContent = n > 0 ? ('전송 (' + n + ')') : '전송'; }
+        function updateBtn() { var n = Object.keys(selected).length; sendBtn.disabled = n === 0; sendBtn.textContent = n > 0 ? ('보내기 (' + n + ')') : '보내기'; }
+
+        function cellHtml(r) {
+            var ava = r.imageURL
+                ? '<img src="' + esc(r.imageURL) + '" referrerpolicy="no-referrer">'
+                : '<span class="dsh-ava-ph">' + esc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+            return '<button type="button" class="dsh-cell' + (selected[r.roomId] ? ' sel' : '') + '" data-room="' + esc(r.roomId) + '">' +
+                '<span class="dsh-cell-ava">' + ava +
+                    '<span class="dsh-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' +
+                '</span>' +
+                '<span class="dsh-cell-name">' + esc(r.title || '채팅') + '</span>' +
+            '</button>';
+        }
+        function renderGrid(list) {
+            var grid = document.getElementById('dsh-grid');
+            if (!grid) return;
+            if (!list.length) { grid.innerHTML = '<div class="dsh-empty">전송할 채팅방이 없어요</div>'; return; }
+            grid.innerHTML = list.map(cellHtml).join('');
+            grid.querySelectorAll('.dsh-cell').forEach(function (cell) {
+                cell.addEventListener('click', function () {
+                    var id = cell.getAttribute('data-room');
+                    if (selected[id]) { delete selected[id]; cell.classList.remove('sel'); }
+                    else { selected[id] = 1; cell.classList.add('sel'); }
+                    updateBtn();
+                });
+            });
+        }
 
         fetch(API + '/api/chat/rooms', { headers: authHeaders() })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (rooms) {
-                var el = document.getElementById('dsh-list');
-                if (!el) return;
-                if (!rooms || !rooms.length) { el.innerHTML = '<div class="dml-empty">전송할 채팅방이 없어요</div>'; return; }
-                el.innerHTML = rooms.map(function (r) {
-                    var ava = r.imageURL
-                        ? '<img src="' + esc(r.imageURL) + '" referrerpolicy="no-referrer">'
-                        : '<span class="dsh-ava-ph">' + esc((r.title || '?').trim().charAt(0) || '?') + '</span>';
-                    return '<label class="dsh-row"><span class="dsh-avawrap">' + ava + '</span>' +
-                        '<span class="dsh-name">' + esc(r.title || '채팅') + '</span>' +
-                        '<input type="checkbox" class="dsh-chk" value="' + esc(r.roomId) + '"></label>';
-                }).join('');
-                el.querySelectorAll('.dsh-chk').forEach(function (chk) {
-                    chk.addEventListener('change', function () { if (chk.checked) selected[chk.value] = 1; else delete selected[chk.value]; updateBtn(); });
-                });
-            })
-            .catch(function () { var el = document.getElementById('dsh-list'); if (el) el.innerHTML = '<div class="dml-empty">불러오지 못했어요</div>'; });
+            .then(function (rooms) { allRooms = rooms || []; renderGrid(allRooms); })
+            .catch(function () { var g = document.getElementById('dsh-grid'); if (g) g.innerHTML = '<div class="dsh-empty">불러오지 못했어요</div>'; });
+
+        var q = document.getElementById('dsh-q');
+        if (q) q.addEventListener('input', function () {
+            var t = q.value.trim().toLowerCase();
+            renderGrid(!t ? allRooms : allRooms.filter(function (r) { return (r.title || '').toLowerCase().indexOf(t) >= 0; }));
+        });
 
         sendBtn.addEventListener('click', function () {
             var ids = Object.keys(selected).map(Number);
             if (!ids.length) return;
-            sendBtn.disabled = true; sendBtn.textContent = '전송 중…';
+            sendBtn.disabled = true; sendBtn.textContent = '보내는 중…';
             var msgEl = document.getElementById('dsh-msg');
             var msg = msgEl ? msgEl.value : '';
             fetch(API + '/api/chat/share', {
