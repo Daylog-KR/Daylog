@@ -177,7 +177,7 @@
 
     function messageRowHtml(m, showHead) {
         if (m.type === 'SYSTEM') {
-            return '<div class="dchat-sys">' + esc(m.content) + '</div>';
+            return '<div class="dchat-sys"><span>' + esc(m.content) + '</span></div>';
         }
         var time = '<span class="dchat-time">' + clock(m.createdAt) + '</span>';
         var cnt = countTag(m);
@@ -1348,7 +1348,8 @@
             '.dchat-empty{margin:auto;color:var(--gray-400);font-size:0.92rem;text-align:center;}' +
             '.dchat-daysep{text-align:center;margin:14px 0 10px;}' +
             '.dchat-daysep span{display:inline-block;background:var(--gray-100);color:var(--gray-500);font-size:0.72rem;padding:4px 12px;border-radius:12px;}' +
-            '.dchat-sys{text-align:center;color:var(--gray-400);font-size:0.78rem;margin:6px 0;}' +
+            '.dchat-sys{text-align:center;margin:10px 0;}' +
+            '.dchat-sys span{display:inline-block;background:var(--gray-100);color:var(--gray-500);font-size:0.76rem;font-weight:500;padding:5px 13px;border-radius:13px;max-width:82%;line-height:1.4;}' +
             // 공통 row
             '.dchat-row{display:flex;align-items:flex-end;gap:8px;margin:2px 0;max-width:100%;}' +
             '.dchat-row.mine{justify-content:flex-end;}' +

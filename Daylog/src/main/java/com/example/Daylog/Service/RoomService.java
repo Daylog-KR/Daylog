@@ -4,6 +4,8 @@ import com.example.Daylog.DTO.RoomDTO;
 import com.example.Daylog.Entity.RoomEntity;
 import com.example.Daylog.Entity.RoomMemberEntity;
 import com.example.Daylog.Entity.UserEntity;
+import com.example.Daylog.DTO.ChatDTO;
+import com.example.Daylog.WebSocket.ChatWebSocketHandler;
 import com.example.Daylog.Repository.RoomMemberRepository;
 import com.example.Daylog.Repository.RoomRepository;
 import com.example.Daylog.Repository.UserRepository;
@@ -38,6 +40,9 @@ public class RoomService {
     private final Storage storage; // [smsong] 방 대표 이미지 GCS 업로드
     // [B] edit by smsong - 멤버십 변동 시 방 권한행 동기화(강퇴/탈퇴/삭제/재입장) 위해 주입
     private final PermissionService permissionService;
+    // [B] edit by smsong - 카톡식 입장/퇴장 시스템 메시지용
+    private final ChatService chatService;
+    private final ChatWebSocketHandler chatWebSocketHandler;
     // [E] edit by smsong
 
     // [smsong] GCS 설정 (MemoryService/ChecklistService 와 동일 프로퍼티)
@@ -227,6 +232,20 @@ public class RoomService {
         deleteMediaQuietly(imageUrl); // [smsong] 방 삭제 시 대표 이미지(원본+썸네일) GCS 정리
     }
 
+    // [B] edit by smsong - 카톡식 입장/퇴장 시스템 메시지 저장 + 실시간 브로드캐스트
+    private void postRoomSystem(Long roomId, String text) {
+        try {
+            ChatDTO.Message msg = chatService.postSystem(roomId, text);
+            if (msg != null && chatWebSocketHandler != null) chatWebSocketHandler.broadcastMessage(roomId, msg);
+        } catch (Exception ignore) { /* 안내 실패가 본 동작을 막지 않도록 */ }
+    }
+    private String nick(String uid) {
+        UserEntity u = userRepository.findByUid(uid).orElse(null);
+        if (u == null) return "사용자";
+        if (u.getNickname() != null && !u.getNickname().isBlank()) return u.getNickname();
+        return (u.getName() != null && !u.getName().isBlank()) ? u.getName() : "사용자";
+    }
+
     // ===== 방 나가기 (멤버 스스로 탈퇴, 방장은 불가 → 삭제 사용) =====
     @Transactional
     public void leaveRoom(Long roomId, String uid) {
@@ -235,10 +254,12 @@ public class RoomService {
         if (room.getOwnerUid().equals(uid)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 나갈 수 없습니다. 방을 삭제하세요");
         }
+        String who = nick(uid);
         roomMemberRepository.deleteByRoomIdAndUid(roomId, uid);
         // [B] edit by smsong - 스스로 나간 멤버도 권한 회수 → 재입장 시 방장 승인부터 다시
         permissionService.revokeMembership(roomId, uid);
         // [E] edit by smsong
+        postRoomSystem(roomId, who + "님이 나갔습니다"); // [B] edit by smsong - 카톡식 안내
     }
 
     // ===== 멤버 강퇴 (방장만) =====
@@ -253,9 +274,11 @@ public class RoomService {
         if (room.getOwnerUid().equals(targetUid)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "방장은 내보낼 수 없습니다");
         }
+        String who = nick(targetUid);
         roomMemberRepository.deleteByRoomIdAndUid(roomId, targetUid);
         // 강퇴된 멤버 권한 회수 + 강퇴 사유 저장 → 재입장 시 방장 승인부터 다시, rooms 진입 시 사유 안내 1회
         permissionService.kickMembership(roomId, targetUid, reason);
+        postRoomSystem(roomId, who + "님이 탈퇴되었습니다"); // [B] edit by smsong - 카톡식 안내
     }
     // [E] edit by smsong
 
@@ -309,6 +332,9 @@ public class RoomService {
     @Transactional
     public void markAcceptSeen(Long roomId, String uid) {
         permissionService.markAcceptSeen(uid, roomId);
+        // [B] edit by smsong - 승인된 멤버가 최초로 입장(수락 안내 확인)할 때 카톡식 '입장' 안내.
+        //  프론트는 welcomeSeen 플래그로 이 호출을 1회만 하므로 중복되지 않는다.
+        postRoomSystem(roomId, nick(uid) + "님이 입장했습니다");
     }
     // [E] edit by smsong
 

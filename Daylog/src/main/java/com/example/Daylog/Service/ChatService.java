@@ -249,6 +249,21 @@ public class ChatService {
         return toMessage(saved, senderUid, new HashMap<>());
     }
 
+    // [B] edit by smsong - 시스템 메시지(카톡식 입장/퇴장 안내) 저장. senderUid=null, type=SYSTEM.
+    //  RoomService(강퇴/나가기/입장 승인)에서 호출 → 반환된 메시지를 WS 로 브로드캐스트하면 실시간 표시.
+    @Transactional
+    public ChatDTO.Message postSystem(Long roomId, String text) {
+        if (roomId == null || text == null || text.isBlank()) return null;
+        if (text.length() > 2000) text = text.substring(0, 2000);
+        ChatMessageEntity saved = chatMessageRepository.save(ChatMessageEntity.builder()
+                .roomId(roomId)
+                .senderUid(null)
+                .content(text)
+                .type("SYSTEM")
+                .build());
+        return toMessage(saved, null, new HashMap<>());
+    }
+
     // [B] edit by smsong - 채팅 이미지 전송: IMAGE 타입 메시지(content=이미지 URL) 저장 후 반환
     @Transactional
     public ChatDTO.Message sendImage(Long roomId, String senderUid, String imageUrl, Long replyToId) {
