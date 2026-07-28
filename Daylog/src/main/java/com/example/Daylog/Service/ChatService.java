@@ -464,14 +464,16 @@ public class ChatService {
     // ===== [B] edit by smsong - 추억/체크리스트 공유(전송) =====
     //  여러 방에 카드 메시지를 저장하고(선택 시 내용 텍스트 포함), 각 방에 푸시 발송.
     @Transactional
-    public void shareToRooms(String senderUid, List<Long> roomIds, String kind, Long refId,
+    public List<ChatDTO.Message> shareToRooms(String senderUid, List<Long> roomIds, String kind, Long refId,
                              Long srcRoomId, String title, String image, String content) {
-        if (roomIds == null || roomIds.isEmpty()) return;
+        List<ChatDTO.Message> results = new ArrayList<>();
+        if (roomIds == null || roomIds.isEmpty()) return results;
         String k = "MEMORY".equalsIgnoreCase(kind) ? "MEMORY" : "CHECKLIST";
         String text = content == null ? "" : content.trim();
         if (text.length() > 2000) text = text.substring(0, 2000);
         String ttl = title == null ? "" : (title.length() > 300 ? title.substring(0, 300) : title);
         String img = image == null ? null : (image.length() > 1000 ? image.substring(0, 1000) : image);
+        Map<String, UserEntity> cache = new HashMap<>();
 
         for (Long roomId : roomIds) {
             if (roomId == null || !isMember(senderUid, roomId)) continue;
@@ -487,10 +489,12 @@ public class ChatService {
                     .shareImage(img)
                     .build());
             markRead(roomId, senderUid, saved.getId());
+            results.add(toMessage(saved, senderUid, cache)); // 컨트롤러가 실시간 브로드캐스트에 사용
             // 접속중 여부와 무관하게 발송(전송은 명시적 행동이라 대상 전원에게)
             String body = (k.equals("MEMORY") ? "[추억] " : "[체크리스트] ") + (ttl.isEmpty() ? "공유" : ttl);
             try { notifyNewMessage(roomId, senderUid, body, null); } catch (Exception ignore) {}
         }
+        return results;
     }
 }
 // [E] edit by smsong

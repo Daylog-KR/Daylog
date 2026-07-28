@@ -2,6 +2,7 @@ package com.example.Daylog.Controller;
 
 import com.example.Daylog.DTO.ChatDTO;
 import com.example.Daylog.Service.ChatService;
+import com.example.Daylog.WebSocket.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import java.util.Map;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ChatWebSocketHandler chatWebSocketHandler; // [B] edit by smsong - 공유 실시간 브로드캐스트
 
     private String uidOf(UserDetails ud) {
         if (ud == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
@@ -119,10 +121,18 @@ public class ChatController {
         if (rid instanceof List<?> l) {
             for (Object o : l) { try { roomIds.add(Long.valueOf(String.valueOf(o))); } catch (Exception ignore) {} }
         }
-        chatService.shareToRooms(uid, roomIds,
+        List<ChatDTO.Message> sent = chatService.shareToRooms(uid, roomIds,
                 _s(body.get("kind")), _l(body.get("refId")), _l(body.get("srcRoomId")),
                 _s(body.get("title")), _s(body.get("image")), _s(body.get("content")));
-        return ResponseEntity.ok(Map.of("ok", true, "count", roomIds.size()));
+        // [B] edit by smsong - 열려 있는 채팅에 실시간 반영
+        if (chatWebSocketHandler != null && sent != null) {
+            for (ChatDTO.Message m : sent) {
+                if (m != null && m.getRoomId() != null) {
+                    try { chatWebSocketHandler.broadcastMessage(m.getRoomId(), m); } catch (Exception ignore) {}
+                }
+            }
+        }
+        return ResponseEntity.ok(Map.of("ok", true, "count", (sent == null ? 0 : sent.size())));
     }
     private static String _s(Object o) { return o == null ? null : String.valueOf(o); }
     private static Long _l(Object o) { if (o == null) return null; try { return Long.valueOf(String.valueOf(o)); } catch (Exception e) { return null; } }

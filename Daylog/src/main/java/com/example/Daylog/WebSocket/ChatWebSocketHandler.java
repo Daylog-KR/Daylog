@@ -115,6 +115,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         broadcast(roomId, out);
     }
 
+    // [B] edit by smsong - 외부(REST 공유 등)에서 특정 방에 메시지를 실시간 브로드캐스트
+    public void broadcastMessage(long roomId, ChatDTO.Message message) {
+        Map<String, Object> out = new HashMap<>();
+        out.put("type", "msg");
+        out.put("message", message);
+        broadcast(roomId, out);
+    }
+
     private void broadcast(long roomId, Object payload) {
         Set<WebSocketSession> set = roomSessions.get(roomId);
         if (set == null || set.isEmpty()) return;
