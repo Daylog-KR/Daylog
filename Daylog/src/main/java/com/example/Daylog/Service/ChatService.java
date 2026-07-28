@@ -521,7 +521,13 @@ public class ChatService {
             markRead(roomId, senderUid, saved.getId());
             results.add(toMessage(saved, senderUid, cache)); // 컨트롤러가 실시간 브로드캐스트에 사용
             // 접속중 여부와 무관하게 발송(전송은 명시적 행동이라 대상 전원에게)
-            String body = (k.equals("MEMORY") ? "[추억] " : "[체크리스트] ") + (ttl.isEmpty() ? "공유" : ttl);
+            //  [B] edit by smsong - 함께 작성한 내용이 있으면 푸시 본문에도 덧붙인다.
+            //   예) "[추억] 롯데월드 어드벤처 · 오늘 진짜 재밌었어!"
+            String label = k.equals("MEMORY") ? "[추억] " : "[체크리스트] ";
+            String head = label + (ttl.isEmpty() ? "공유" : ttl);
+            String note = text.replaceAll("\\s+", " ").trim();
+            if (note.length() > 80) note = note.substring(0, 80) + "…";
+            String body = note.isEmpty() ? head : (head + " · " + note);
             try { notifyNewMessage(roomId, senderUid, body, null); } catch (Exception ignore) {}
         }
         return results;

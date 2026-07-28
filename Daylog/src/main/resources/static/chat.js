@@ -1116,6 +1116,11 @@
             // [B] edit by smsong - 공유(전송) 카드 (인스타 DM식)
             '.dchat-sharewrap{display:flex;flex-direction:column;gap:4px;max-width:240px;}' +
             '.dchat-row.mine .dchat-sharewrap{align-items:flex-end;}' +
+            // [B] edit by smsong - 상대(other) 공유 카드의 내용 버블도 내용 크기에 맞게(기본 stretch → flex-start).
+            //   이게 없으면 상대쪽 텍스트가 항상 카드 폭(220px)만큼 늘어난다.
+            '.dchat-row.other .dchat-sharewrap{align-items:flex-start;}' +
+            '.dchat-share-text{align-self:flex-start;}' +
+            '.dchat-row.mine .dchat-share-text{align-self:flex-end;}' +
             '.dchat-share{width:220px;max-width:100%;border:1px solid var(--gray-200);border-radius:16px;overflow:hidden;background:var(--white);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);}' +
             '.dchat-share:active{transform:scale(0.99);}' +
             '.dchat-share-top{font-size:0.74rem;font-weight:700;color:var(--gray-500);padding:8px 11px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
