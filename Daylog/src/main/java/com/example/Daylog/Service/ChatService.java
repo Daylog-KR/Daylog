@@ -334,8 +334,9 @@ public class ChatService {
 
             ChatMessageEntity last = chatMessageRepository.findTop1ByRoomIdOrderByIdDesc(roomId).orElse(null);
             boolean direct = isDirectRoom(room);
-            // [B] edit by smsong - 메시지 없는 1:1 방은 목록에 표시하지 않는다(첫 메시지가 생겨야 방이 뜬다)
-            if (direct && last == null) continue;
+            // [B] edit by smsong - 메시지가 하나도 없는 방(방 생성 직후 등)은 채팅 목록에 표시하지 않는다.
+            //  1:1이든 일반 방이든 '첫 채팅(입장 안내 포함 어떤 메시지든)'이 생겨야 목록에 뜬다.
+            if (last == null) continue;
             long unread = unreadCount(roomId, uid);
             long members = roomMemberRepository.findByRoomId(roomId).size();
 
