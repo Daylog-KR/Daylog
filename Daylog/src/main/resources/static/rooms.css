@@ -101,6 +101,9 @@ html, body {
 /* [B] edit by smsong - 하단 네비 (main.html 스타일). 방 3분류 + 채팅 */
 .rooms-bottom-nav {
     flex: 0 0 auto;
+    /* [B] edit by smsong - main.html 하단바(--bottom-nav-height:68px)와 높이 통일 → 방↔메인 이동 시 높이 차이 없음 */
+    height: calc(68px + var(--safe-bottom, 0px));
+    box-sizing: border-box;
     display: flex; justify-content: space-around; align-items: center;
     background: var(--white); border-top: 1px solid var(--gray-200);
     padding-bottom: var(--safe-bottom, 0px);

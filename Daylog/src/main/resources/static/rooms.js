@@ -208,6 +208,32 @@ const modalCancel = document.getElementById('room-modal-cancel');
 const pasteRow = document.getElementById('room-paste-row');   // [B] edit by smsong
 const pasteBtn = document.getElementById('room-modal-paste'); // [B] edit by smsong
 const typeRow = document.getElementById('room-type-row');
+// [B] edit by smsong - 방 코드 재생성 UI
+const codeRow = document.getElementById('room-code-row');
+const codeValueEl = document.getElementById('room-code-value');
+const codeRefreshBtn = document.getElementById('room-code-refresh');
+if (codeRefreshBtn) codeRefreshBtn.addEventListener('click', async () => {
+    if (!renameTarget || !renameTarget.id) return;
+    if (!confirm('방 코드를 새로 만들까요?\n기존 코드로는 더 이상 입장할 수 없어요.')) return;
+    codeRefreshBtn.disabled = true;
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${renameTarget.id}/code`, {
+            method: 'POST', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid })
+        });
+        if (!res.ok) throw new Error('fail');
+        const room = await res.json();
+        const newCode = room.inviteCode || '';
+        renameTarget.inviteCode = newCode;
+        if (codeValueEl) codeValueEl.textContent = newCode || '-';
+        showToast('새 코드를 만들었어요');
+        loadRooms(); // 목록의 복사 코드도 갱신
+    } catch (e) {
+        showToast('코드 재생성에 실패했어요');
+    } finally {
+        codeRefreshBtn.disabled = false;
+    }
+});
 const ddayRow = document.getElementById('room-dday-row');
 const ddayInput = document.getElementById('room-dday-input');
 // [smsong] 상단 탭
@@ -568,6 +594,18 @@ async function loadChatRooms() {
         if (emptyEl2) { emptyEl2.textContent = '채팅을 불러오지 못했어요.'; emptyEl2.style.display = 'block'; }
     }
 }
+// [B] edit by smsong - 카톡식 단체방 썸네일 합성(멤버 이미지 1~4)
+function _chatAvaComposite(imgs) {
+    const n = Math.min(imgs.length, 4);
+    let cells = '';
+    for (let i = 0; i < n; i++) {
+        const u = imgs[i];
+        cells += u
+            ? '<span class="rchat-cell"><img src="' + _chatEsc(u) + '" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'"></span>'
+            : '<span class="rchat-cell rchat-cell-ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5z"/></svg></span>';
+    }
+    return '<span class="rchat-ava rchat-grid rchat-grid-' + n + '">' + cells + '</span>';
+}
 function renderChatRooms(rooms) {
     const listEl2 = document.getElementById('rooms-chat-list');
     const emptyEl2 = document.getElementById('rooms-chat-empty');
@@ -586,10 +624,10 @@ function renderChatRooms(rooms) {
         const muteIcon = r.muted ? '<span class="rchat-mute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span>' : '';
         const unread = (r.unreadCount > 0) ? ('<span class="rchat-unread">' + (r.unreadCount > 99 ? '99+' : r.unreadCount) + '</span>') : '';
         let ava;
-        // [B] edit by smsong - main.html 타임라인/체크리스트와 동일한 견고 로드 방식 적용:
-        //  원본 이미지(방향 정상) + 기본 opacity:1 + onerror 폴백 + 캐시 sweep(DaylogRoomImg)
-        //  → "가끔 로드돼도 안 보이는" 문제 방지. 회전은 원본+image-orientation 으로 해결.
-        if (r.imageURL) {
+        // [B] edit by smsong - 카톡식 단체방 썸네일: 멤버 이미지 최대 4개 합성. 1:1/이미지 있으면 기존 단일.
+        if (!r.direct && Array.isArray(r.memberImages) && r.memberImages.length) {
+            ava = _chatAvaComposite(r.memberImages);
+        } else if (r.imageURL) {
             ava = '<div class="rchat-ava rchat-ava-thumb"><img src="' + _chatEsc(r.imageURL) + '" data-full="' + _chatEsc(r.imageURL) + '" alt="" decoding="sync" referrerpolicy="no-referrer" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,\'\')"></div>';
         } else {
             ava = '<span class="rchat-ava rchat-ava-ph">' + _chatEsc((r.title || '?').trim().charAt(0) || '?') + '</span>';
@@ -1024,6 +1062,7 @@ function openRenameModal(r) {
     setDdayRowOpen(false); // [B] edit by smsong - #6
     if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 이름 수정 시 대표 이미지도 변경 가능
     resetRoomImagePicker(r.imageUrl || r.thumbnailUrl || '');
+    if (codeRow) { codeRow.style.display = 'flex'; if (codeValueEl) codeValueEl.textContent = r.inviteCode || '-'; } // [B] edit by smsong - 방 코드 표시
     if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong
     modalEl.classList.remove('hidden');
     setTimeout(() => { modalInput.focus(); modalInput.select(); }, 50);
@@ -1032,6 +1071,7 @@ function openRenameModal(r) {
 function closeModal() {
     modalEl.classList.add('hidden'); modalMode = null; renameTarget = null;
     resetRoomImagePicker(''); // [smsong] 닫을 때 이미지 선택 초기화
+    if (codeRow) codeRow.style.display = 'none'; // [B] edit by smsong - 방 코드 행 숨김
 }
 
 // [B] edit by smsong - 클립보드의 복사한 코드를 입력창에 붙여넣기

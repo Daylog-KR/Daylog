@@ -2323,14 +2323,13 @@ html, body { -webkit-font-smoothing: antialiased; }
 .hdr-filter-pop .cl-filter-bar:last-child { margin-bottom: 0; }
 
 /* ===== 지도 몰입 모드: 지도 탭에서 화면 터치 시 헤더/하단바 숨김 (네이버 지도 앱 스타일) ===== */
-/* [B] edit by smsong - 딱딱한 display:none 대신 부드러운 슬라이드(올라가고/내려가며 사라지고 내려오고/올라옴) */
-.navbar { transition: height 0.34s cubic-bezier(.4,0,.2,1), opacity 0.24s ease, padding 0.34s cubic-bezier(.4,0,.2,1), border-color 0.2s ease; }
+/* [B] edit by smsong - 헤더는 '위로 슥' 슬라이드, 하단바는 '아래로 슥' 슬라이드 (map 은 화면 고정이라 뒤가 채워짐) */
+.navbar { transition: transform 0.34s cubic-bezier(.4,0,.2,1), opacity 0.26s ease; will-change: transform; }
 .bottom-nav { transition: transform 0.36s cubic-bezier(.34,1.1,.5,1), opacity 0.26s ease; will-change: transform; }
 body[data-active-tab="tab-map"] .container { transition: height 0.34s cubic-bezier(.4,0,.2,1); }
 
 body.map-immersive .navbar {
-    height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
-    border-bottom-color: transparent; overflow: hidden; pointer-events: none;
+    transform: translateY(-100%); opacity: 0; pointer-events: none;
 }
 body.map-immersive .bottom-nav {
     transform: translateY(110%); opacity: 0; pointer-events: none;
