@@ -343,6 +343,17 @@ public class ChatService {
             String title = room.getName();
             String image = room.getImageUrl();
             String peerUid = null;
+            // [B] edit by smsong - 단체방: 멤버 프로필 이미지 최대 4개(카톡식 썸네일)
+            List<String> memberImages = null;
+            if (!direct) {
+                memberImages = new ArrayList<>();
+                for (String mUid : memberUids(roomId)) {
+                    if (mUid == null) continue;
+                    UserEntity mu = userRepository.findByUid(mUid).orElse(null);
+                    memberImages.add(mu != null ? mu.getProfileURL() : null);
+                    if (memberImages.size() >= 4) break;
+                }
+            }
 
             // 1:1 방이면 제목/이미지를 상대방 기준으로 (다음 단계 대비)
             if (direct) {
@@ -370,6 +381,7 @@ public class ChatService {
                     .unreadCount(unread)
                     .memberCount(members)
                     .muted(mutedRoomKeys.contains(String.valueOf(roomId)))
+                    .memberImages(memberImages)
                     .build());
         }
 

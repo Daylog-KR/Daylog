@@ -132,6 +132,17 @@ public class RoomController {
         return ResponseEntity.ok(roomService.renameRoom(roomId, uid, body.get("name")));
     }
 
+    // [B] edit by smsong - 방 초대 코드 재생성 (방장만)
+    @PostMapping("/{roomId}/code")
+    public ResponseEntity<RoomDTO> regenerateCode(@PathVariable("roomId") Long roomId,
+                                                  @RequestBody(required = false) Map<String, String> body,
+                                                  @AuthenticationPrincipal UserDetails ud) {
+        String uid = (body != null) ? body.get("uid") : null;
+        if (uid == null && ud != null) uid = ud.getUsername();
+        verify(uid, ud);
+        return ResponseEntity.ok(roomService.regenerateInviteCode(roomId, uid));
+    }
+
     // [B] edit by smsong - 방 대표 이미지 변경 (방장만) — multipart, part명 'mediaData'
     @PostMapping(value = "/{roomId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<RoomDTO> uploadRoomImage(@PathVariable("roomId") Long roomId,

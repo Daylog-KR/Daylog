@@ -134,6 +134,24 @@ html, body {
 }
 .rchat-item:active { background: var(--gray-50); }
 .rchat-ava { width: 50px; height: 50px; border-radius: 18px; object-fit: cover; flex-shrink: 0; background: var(--gray-100); }
+/* [B] edit by smsong - 카톡식 단체방 썸네일(멤버 이미지 1~4 합성) */
+.rchat-grid { display: grid; overflow: hidden; background: var(--gray-200); gap: 1.5px; }
+.rchat-grid .rchat-cell { overflow: hidden; background: var(--gray-100); display: flex; align-items: center; justify-content: center; }
+.rchat-grid .rchat-cell img { width: 100%; height: 100%; object-fit: cover; display: block; image-orientation: from-image; }
+.rchat-grid .rchat-cell-ph { color: var(--gray-300); }
+.rchat-grid .rchat-cell-ph svg { width: 60%; height: 60%; }
+.rchat-grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.rchat-grid-2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.rchat-grid-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.rchat-grid-3 .rchat-cell:nth-child(3) { grid-column: 1 / span 2; }
+.rchat-grid-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+/* [B] edit by smsong - 방 수정 모달: 방 코드 + 재생성 */
+.room-code-row { display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; background: var(--gray-50); border-radius: 12px; }
+.room-code-meta { flex: 1 1 auto; min-width: 0; }
+.room-code-label { font-size: 0.76rem; color: var(--gray-500); }
+.room-code-value { font-size: 1.1rem; font-weight: 800; letter-spacing: 2px; color: var(--gray-800); font-family: monospace; }
+.room-code-refresh { flex: 0 0 auto; width: 40px; height: 40px; border: none; border-radius: 10px; background: var(--white); color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform .3s ease; }
+.room-code-refresh:active { transform: rotate(-180deg); }
 /* [B] edit by smsong - 채팅 리스트 아바타: main.html 썸네일과 동일 방식(원본+견고 로드). 회전 방지 */
 .rchat-ava-thumb { overflow: hidden; position: relative; }
 .rchat-ava-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 1; image-orientation: from-image; }

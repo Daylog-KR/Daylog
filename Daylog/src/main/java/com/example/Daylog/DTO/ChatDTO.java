@@ -81,6 +81,8 @@ public class ChatDTO {
         private long unreadCount;      // 내가 안 읽은 메시지 수
         private long memberCount;      // 방 멤버 수
         private boolean muted;         // 이 방 채팅 알림을 껐는지
+        // [B] edit by smsong - 카톡식 단체방 썸네일: 멤버 프로필 이미지(최대 4, null 은 기본 아바타)
+        private List<String> memberImages;
     }
 }
 // [E] edit by smsong

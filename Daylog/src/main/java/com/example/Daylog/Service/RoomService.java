@@ -128,6 +128,19 @@ public class RoomService {
         return RoomDTO.from(room, ownerUid, roomMemberRepository.countByRoomId(room.getId()));
     }
 
+    // [B] edit by smsong - 방 초대 코드 재생성 (방장만). 새 유니크 코드로 교체.
+    @Transactional
+    public RoomDTO regenerateInviteCode(Long roomId, String ownerUid) {
+        RoomEntity room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다"));
+        if (!room.getOwnerUid().equals(ownerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "방장만 코드를 재생성할 수 있습니다");
+        }
+        room.setInviteCode(generateUniqueCode());
+        roomRepository.save(room);
+        return RoomDTO.from(room, ownerUid, roomMemberRepository.countByRoomId(room.getId()));
+    }
+
     // ===== 디데이(만난 날짜) 설정 (방장만) =====
     @Transactional
     public RoomDTO setDday(Long roomId, String ownerUid, String since) {
