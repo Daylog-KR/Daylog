@@ -1507,8 +1507,20 @@
             });
         }
 
+        // [B] edit by smsong - 알림 클릭 시 SW 가 넘겨준 목적지 URL 로 이 창을 이동(정확한 방으로).
+        //  (sw.js 가 열린 창에 {type:'OPEN_URL', url} 을 postMessage → 여기서 location.href 로 이동)
+        try {
+            if (navigator.serviceWorker) {
+                navigator.serviceWorker.addEventListener('message', function (e) {
+                    if (e && e.data && e.data.type === 'OPEN_URL' && e.data.url) {
+                        try { location.href = e.data.url; } catch (x) {}
+                    }
+                });
+            }
+        } catch (e) {}
+
         // [B] edit by smsong - 채팅 푸시 클릭 진입: URL 에 chat=1 이면 해당 방 채팅을 바로 연다.
-        //  (웹푸시 url = /main.html?room={id}&chat=1 → sw.js 가 이 주소로 이동 → 여기서 패널 오픈)
+        //  (웹푸시 url = /rooms.html?chat=1&room={id} → sw.js 가 이 주소로 이동 → 여기서 패널 오픈)
         try {
             var qs = new URLSearchParams(location.search || '');
             if (qs.get('chat') === '1') {

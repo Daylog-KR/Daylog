@@ -30,20 +30,29 @@ self.addEventListener('push', function (event) {
     event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// 알림 클릭 → 앱 열기(있으면 포커스, 없으면 새 창)
+// 알림 클릭 → 앱 열기(있으면 '정확히 이 URL 로 이동' + 포커스, 없으면 새 창)
+//  [B] edit by smsong - 기존엔 navigate 실패 시 그냥 focus 만 해서 '처음 열린 방'에 머물렀다(채팅 알림이 특정 방으로만 이동).
+//   → 열린 창에 목적지 URL 을 postMessage 로 넘겨 앱이 스스로 이동하게 하고(location.href), navigate 도 병행 시도해 확실히 해당 방으로 간다.
 self.addEventListener('notificationclick', function (event) {
     event.notification.close();
     var url = (event.notification.data && event.notification.data.url) || '/';
+    var absUrl;
+    try { absUrl = new URL(url, self.location.origin).href; } catch (e) { absUrl = url; }
+
     event.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
             for (var i = 0; i < list.length; i++) {
                 var client = list[i];
                 if ('focus' in client) {
-                    try { if ('navigate' in client) client.navigate(url); } catch (e) {}
+                    // (1) 앱에게 목적지 URL 을 알려 스스로 이동(가장 확실 — navigate 미지원/실패 대비)
+                    try { client.postMessage({ type: 'OPEN_URL', url: url }); } catch (e) {}
+                    // (2) navigate 도 병행 시도(메시지 처리가 안 되는 예외 상황 대비)
+                    try { if ('navigate' in client) client.navigate(absUrl); } catch (e) {}
                     return client.focus();
                 }
             }
-            if (self.clients.openWindow) return self.clients.openWindow(url);
+            // 열린 창이 없으면 새 창
+            if (self.clients.openWindow) return self.clients.openWindow(absUrl);
         })
     );
 });
