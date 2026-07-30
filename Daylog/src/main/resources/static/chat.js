@@ -5,6 +5,7 @@
 //    → '읽은 수'로 바꾸려면 아래 COUNT_MODE 를 'read' 로만 바꾸면 됨(서버 변경 불필요).
 (function () {
     'use strict';
+    try { console.log('%c[Daylog chat.js] v1.1.6 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
 
     var API = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || '';
     var COUNT_MODE = 'unread'; // 'unread'(카톡 기본) | 'read'
@@ -1089,13 +1090,15 @@
         // [B] edit by smsong - iOS 카톡식: 왼쪽 가장자리에서 오른쪽으로 스와이프하면 뒤로(닫기)
         (function () {
             var startX = 0, startY = 0, dragging = false, active = false, w = 0;
+            var ovEl = null;
             pn.addEventListener('touchstart', function (e) {
                 if (e.touches.length !== 1) { active = false; return; }
                 var x = e.touches[0].clientX;
-                active = x <= 32; // 왼쪽 가장자리에서 시작한 것만(내부 스크롤/조작과 충돌 방지)
+                active = x <= 44; // 왼쪽 가장자리에서 시작한 것만(내부 스크롤/조작과 충돌 방지)
                 if (!active) return;
                 startX = x; startY = e.touches[0].clientY; dragging = false;
                 w = pn.offsetWidth || window.innerWidth;
+                ovEl = document.getElementById('dchat-overlay');
             }, { passive: true });
             pn.addEventListener('touchmove', function (e) {
                 if (!active || e.touches.length !== 1) return;
@@ -1104,9 +1107,11 @@
                     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
                     if (Math.abs(dy) > Math.abs(dx)) { active = false; return; } // 세로 제스처면 취소
                     dragging = true; pn.style.transition = 'none';
+                    if (ovEl) ovEl.style.transition = 'none';
                 }
                 if (dx < 0) dx = 0; // 오른쪽으로만 따라감
                 pn.style.transform = 'translateX(' + dx + 'px)';
+                if (ovEl) ovEl.style.opacity = String(Math.max(0, 1 - dx / w)); // 끌수록 배경 옅어짐
                 e.preventDefault();
             }, { passive: false });
             function endDrag(e) {
@@ -1115,13 +1120,23 @@
                 if (!dragging) return;
                 dragging = false;
                 var dx = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientX - startX) : 0;
-                if (dx > w * 0.32) { // 충분히 밀면 닫기
-                    pn.style.transition = ''; pn.style.transform = '';
-                    closePanel();
-                } else { // 아니면 제자리로
-                    pn.style.transition = 'transform .22s cubic-bezier(.2,.8,.3,1)';
+                if (dx > w * 0.3) { // 충분히 밀면: 남은 거리만큼 마저 밀어내며 닫기(부드럽게)
+                    pn.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1)';
+                    pn.style.transform = 'translateX(100%)';
+                    if (ovEl) { ovEl.style.transition = 'opacity .22s ease'; ovEl.style.opacity = '0'; }
+                    setTimeout(function () {
+                        pn.style.transition = ''; pn.style.transform = '';
+                        if (ovEl) { ovEl.style.transition = ''; ovEl.style.opacity = ''; }
+                        closePanel();
+                    }, 210);
+                } else { // 아니면 제자리로 부드럽게
+                    pn.style.transition = 'transform .26s cubic-bezier(.22,.61,.36,1)';
                     pn.style.transform = 'translateX(0)';
-                    setTimeout(function () { pn.style.transition = ''; pn.style.transform = ''; }, 240);
+                    if (ovEl) { ovEl.style.transition = 'opacity .26s ease'; ovEl.style.opacity = '1'; }
+                    setTimeout(function () {
+                        pn.style.transition = ''; pn.style.transform = '';
+                        if (ovEl) { ovEl.style.transition = ''; ovEl.style.opacity = ''; }
+                    }, 270);
                 }
             }
             pn.addEventListener('touchend', endDrag, { passive: true });
@@ -1256,8 +1271,8 @@
             var scrollEl = document.getElementById('dchat-scroll');
             if (!scrollEl) return;
             var startX = 0, startY = 0, curRow = null, dragging = false, decided = false, horiz = false;
-            var THRESH = 55;      // 이만큼 끌면 답장 확정
-            var MAX = 80;         // 시각적 최대 이동
+            var THRESH = 52;      // 이만큼 끌면 답장 확정
+            var MAX = 90;         // 시각적 최대 이동
             function rowFrom(t) { return t && t.closest ? t.closest('.dchat-row[data-id]') : null; }
             function onStart(x, y, t) {
                 curRow = rowFrom(t); dragging = !!curRow; decided = false; horiz = false;
@@ -1267,24 +1282,29 @@
                 if (!dragging || !curRow) return;
                 var dx = x - startX, dy = y - startY;
                 if (!decided) {
-                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
                     decided = true;
                     horiz = Math.abs(dx) > Math.abs(dy);
-                    if (horiz) curRow.classList.add('swiping');
+                    if (horiz) { curRow.classList.add('swiping'); }
                 }
                 if (!horiz) { dragging = false; return; } // 세로 스크롤이면 답장 취소
-                if (dx < 0) dx = 0;               // 오른쪽으로만
-                var d = Math.min(dx, MAX);
+                if (dx > 0) dx = 0;               // [B] edit by smsong - 카톡식: 왼쪽으로만
+                var d = Math.max(dx, -MAX);       // 음수(왼쪽)
+                var mag = -d;                     // 0..MAX
                 curRow.style.transform = 'translateX(' + d + 'px)';
-                curRow.classList.toggle('will-reply', d >= THRESH);
+                curRow.style.setProperty('--sw', String(Math.min(1, mag / THRESH)));
+                curRow.classList.toggle('will-reply', mag >= THRESH);
                 if (e && e.cancelable) e.preventDefault(); // 가로 드래그 중 스크롤 방지
             }
             function onEnd() {
                 if (!curRow) { dragging = false; return; }
                 var willReply = curRow.classList.contains('will-reply');
                 var row = curRow;
+                // 손 떼면 부드럽게 원위치 (swiping 제거 → .dchat-row 의 transition 이 살아나 스르륵 복귀)
                 row.classList.remove('swiping', 'will-reply');
                 row.style.transform = '';
+                row.style.setProperty('--sw', '0');
+                setTimeout(function () { try { row.style.removeProperty('--sw'); } catch (e) {} }, 320);
                 if (willReply) {
                     var id = row.getAttribute('data-id');
                     var m = state.msgs.find(function (x) { return String(x.id) === String(id); });
@@ -1363,7 +1383,7 @@
             '.dchat-sys{text-align:center;margin:10px 0;}' +
             '.dchat-sys span{display:inline-block;background:var(--gray-100);color:var(--gray-500);font-size:0.76rem;font-weight:500;padding:5px 13px;border-radius:13px;max-width:82%;line-height:1.4;}' +
             // 공통 row
-            '.dchat-row{display:flex;align-items:flex-end;gap:8px;margin:2px 0;max-width:100%;}' +
+            '.dchat-row{display:flex;align-items:flex-end;gap:8px;margin:2px 0;max-width:100%;position:relative;}' +
             '.dchat-row.mine{justify-content:flex-end;}' +
             '.dchat-row.other{justify-content:flex-start;align-items:flex-start;}' +
             '.dchat-row.head{margin-top:12px;}' +
@@ -1418,9 +1438,12 @@
             '.dchat-quote-snip{font-size:0.76rem;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}' +
             '.dchat-btext{display:block;}' +
             // 스와이프 답장
-            '.dchat-row{transition:transform .18s cubic-bezier(.2,.8,.3,1);}' +
+            '.dchat-row{transition:transform .3s cubic-bezier(.22,.61,.36,1);}' +
             '.dchat-row.swiping{transition:none;}' +
-            '.dchat-row.will-reply{opacity:0.75;}' +
+            // [B] edit by smsong - 카톡식 답장 화살표(오른쪽에서 나타남, 왼쪽으로 끌수록 진해짐)
+            '.dchat-row::after{content:"";position:absolute;right:8px;top:50%;width:34px;height:34px;margin-top:-17px;border-radius:50%;background:var(--gray-100);opacity:var(--sw,0);transform:scale(calc(.55 + .45 * var(--sw,0)));transition:opacity .2s ease, transform .2s ease, background-color .15s ease;pointer-events:none;' +
+                'background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23888\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'9 17 4 12 9 7\'/%3E%3Cpath d=\'M20 18v-2a4 4 0 0 0-4-4H4\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center;background-size:18px 18px;}' +
+            '.dchat-row.will-reply::after{background-color:var(--primary);background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23fff\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'9 17 4 12 9 7\'/%3E%3Cpath d=\'M20 18v-2a4 4 0 0 0-4-4H4\'/%3E%3C/svg%3E");}' +
             // 원본으로 점프 시 하이라이트
             '.dchat-row.flash .dchat-bubble,.dchat-row.flash .dchat-share,.dchat-row.flash .dchat-sharewrap{animation:dchatFlash 1.1s ease;}' +
             '@keyframes dchatFlash{0%,100%{box-shadow:0 0 0 0 rgba(176,137,104,0);}25%{box-shadow:0 0 0 4px rgba(176,137,104,0.45);}}' +
