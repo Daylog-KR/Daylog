@@ -5,7 +5,7 @@
 //    → '읽은 수'로 바꾸려면 아래 COUNT_MODE 를 'read' 로만 바꾸면 됨(서버 변경 불필요).
 (function () {
     'use strict';
-    try { console.log('%c[Daylog chat.js] v1.1.6 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[Daylog chat.js] v1.1.7 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
 
     var API = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || '';
     var COUNT_MODE = 'unread'; // 'unread'(카톡 기본) | 'read'
@@ -1087,16 +1087,19 @@
         var gear = document.getElementById('dchat-gear');
         if (gear) gear.addEventListener('click', openChatSettings); // [B] edit by smsong - 채팅방 설정
 
-        // [B] edit by smsong - iOS 카톡식: 왼쪽 가장자리에서 오른쪽으로 스와이프하면 뒤로(닫기)
+        // [B] edit by smsong - 카톡식: 채팅 영역 어디서든 오른쪽으로 스와이프하면 뒤로(닫기).
+        //  (답장=왼쪽 드래그 / 닫기=오른쪽 드래그 로 방향 분리 → 서로 충돌 안 함)
         (function () {
-            var startX = 0, startY = 0, dragging = false, active = false, w = 0;
-            var ovEl = null;
+            var startX = 0, startY = 0, dragging = false, active = false, w = 0, ovEl = null, raf = 0, lastDx = 0;
+            function applyDrag() {
+                raf = 0;
+                pn.style.transform = 'translateX(' + lastDx + 'px)';
+                if (ovEl) ovEl.style.opacity = String(Math.max(0, 1 - lastDx / w));
+            }
             pn.addEventListener('touchstart', function (e) {
                 if (e.touches.length !== 1) { active = false; return; }
-                var x = e.touches[0].clientX;
-                active = x <= 44; // 왼쪽 가장자리에서 시작한 것만(내부 스크롤/조작과 충돌 방지)
-                if (!active) return;
-                startX = x; startY = e.touches[0].clientY; dragging = false;
+                active = true; dragging = false;
+                startX = e.touches[0].clientX; startY = e.touches[0].clientY;
                 w = pn.offsetWidth || window.innerWidth;
                 ovEl = document.getElementById('dchat-overlay');
             }, { passive: true });
@@ -1105,36 +1108,42 @@
                 var dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
                 if (!dragging) {
                     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-                    if (Math.abs(dy) > Math.abs(dx)) { active = false; return; } // 세로 제스처면 취소
-                    dragging = true; pn.style.transition = 'none';
+                    if (Math.abs(dy) >= Math.abs(dx)) { active = false; return; } // 세로 스크롤
+                    if (dx <= 0) { active = false; return; }                       // 왼쪽 드래그는 '답장'용 → 닫기 취소
+                    dragging = true;
+                    pn.style.transition = 'none';
+                    pn.style.willChange = 'transform';
+                    pn.classList.add('dchat-dragging'); // 잔상 완화용(그림자 축소)
                     if (ovEl) ovEl.style.transition = 'none';
                 }
-                if (dx < 0) dx = 0; // 오른쪽으로만 따라감
-                pn.style.transform = 'translateX(' + dx + 'px)';
-                if (ovEl) ovEl.style.opacity = String(Math.max(0, 1 - dx / w)); // 끌수록 배경 옅어짐
+                if (dx < 0) dx = 0;
+                lastDx = dx;
+                if (!raf) raf = requestAnimationFrame(applyDrag);
                 e.preventDefault();
             }, { passive: false });
             function endDrag(e) {
-                if (!active) return;
+                if (!active) { return; }
                 active = false;
                 if (!dragging) return;
                 dragging = false;
-                var dx = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientX - startX) : 0;
-                if (dx > w * 0.3) { // 충분히 밀면: 남은 거리만큼 마저 밀어내며 닫기(부드럽게)
+                if (raf) { cancelAnimationFrame(raf); raf = 0; }
+                var dx = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientX - startX) : lastDx;
+                pn.style.willChange = '';
+                if (dx > w * 0.3) { // 충분히 밀면: 남은 거리 마저 밀어내며 닫기
                     pn.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1)';
                     pn.style.transform = 'translateX(100%)';
                     if (ovEl) { ovEl.style.transition = 'opacity .22s ease'; ovEl.style.opacity = '0'; }
                     setTimeout(function () {
-                        pn.style.transition = ''; pn.style.transform = '';
+                        pn.style.transition = ''; pn.style.transform = ''; pn.classList.remove('dchat-dragging');
                         if (ovEl) { ovEl.style.transition = ''; ovEl.style.opacity = ''; }
                         closePanel();
                     }, 210);
-                } else { // 아니면 제자리로 부드럽게
+                } else { // 제자리로 부드럽게
                     pn.style.transition = 'transform .26s cubic-bezier(.22,.61,.36,1)';
                     pn.style.transform = 'translateX(0)';
                     if (ovEl) { ovEl.style.transition = 'opacity .26s ease'; ovEl.style.opacity = '1'; }
                     setTimeout(function () {
-                        pn.style.transition = ''; pn.style.transform = '';
+                        pn.style.transition = ''; pn.style.transform = ''; pn.classList.remove('dchat-dragging');
                         if (ovEl) { ovEl.style.transition = ''; ovEl.style.opacity = ''; }
                     }, 270);
                 }
@@ -1285,6 +1294,7 @@
                     if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
                     decided = true;
                     horiz = Math.abs(dx) > Math.abs(dy);
+                    if (horiz && dx > 0) { dragging = false; return; } // [B] edit by smsong - 오른쪽 드래그는 '채팅방 닫기'용 → 답장 취소
                     if (horiz) { curRow.classList.add('swiping'); }
                 }
                 if (!horiz) { dragging = false; return; } // 세로 스크롤이면 답장 취소
@@ -1360,9 +1370,11 @@
             '#dchat-overlay{position:fixed;inset:0;z-index:9998;background:rgba(45,38,32,0.28);opacity:0;transition:opacity .22s ease;}' +
             '#dchat-overlay.show{opacity:1;}' +
             '#dchat-panel{position:fixed;top:0;right:0;z-index:9999;width:min(460px,100%);height:100%;height:100dvh;' +
-                'background:var(--bg-color);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.18);' +
+                'background:var(--bg-color, #fff);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.18);' +
+                '-webkit-backface-visibility:hidden;backface-visibility:hidden;' +
                 'transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.8,.3,1);}' +
             '#dchat-panel.show{transform:none;}' +
+            '#dchat-panel.dchat-dragging{box-shadow:-4px 0 16px rgba(0,0,0,0.12);}' +
             '.dchat-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;padding-top:calc(12px + var(--safe-t,0px));' +
                 'background:var(--white);border-bottom:1px solid var(--gray-100);}' +
             '.dchat-head-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;}' +
