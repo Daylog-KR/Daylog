@@ -668,3 +668,73 @@ html, body {
 }
 @keyframes loSpin { to { transform: rotate(360deg); } }
 .lo-text { font-size: 0.86rem; color: var(--gray-600, #6b6157); font-weight: 600; }
+
+/* ============================================================
+   [B] edit by smsong - 내 프로필: 전체화면 모던 리디자인 (버튼/기능 그대로)
+   ============================================================ */
+#profile-modal { padding: 0; align-items: stretch; justify-content: flex-start; background: var(--bg-color); }
+#profile-modal .room-modal-card.profile-card {
+    width: 100%; max-width: 100%; height: 100%; max-height: none;
+    border-radius: 0; padding: 0; background: transparent;
+    display: flex; flex-direction: column; animation: profScreenIn .3s cubic-bezier(.22,.61,.36,1);
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+@keyframes profScreenIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+#profile-modal .profile-x-close {
+    position: fixed; top: calc(12px + var(--safe-top, 0px)); right: 14px; z-index: 5;
+    width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+    background: rgba(255,255,255,0.18); color: #fff; font-size: 1.7rem; line-height: 40px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+/* 상단 히어로 (그라디언트) */
+#profile-modal .profile-view {
+    position: relative; margin: 0; padding: calc(70px + var(--safe-top, 0px)) 24px 30px;
+    background: linear-gradient(155deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-radius: 0 0 30px 30px; color: #fff;
+    display: flex; flex-direction: column; align-items: center; gap: 9px; box-shadow: 0 8px 26px rgba(0,0,0,0.10);
+}
+#profile-modal .profile-view-avatar {
+    width: 112px; height: 112px; border-radius: 38px; background-size: cover; background-position: center;
+    border: 4px solid rgba(255,255,255,0.92); box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+    display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85);
+    background-color: rgba(255,255,255,0.15); overflow: hidden;
+}
+#profile-modal .profile-view-name { font-size: 1.6rem; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
+#profile-modal .profile-view-realname { font-size: 0.95rem; color: rgba(255,255,255,0.85); }
+#profile-modal .profile-view-meta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+#profile-modal .profile-view-meta .social-badge,
+#profile-modal .profile-view-meta .join-date {
+    background: rgba(255,255,255,0.20); color: #fff; border: none;
+    padding: 5px 11px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+/* 액션 리스트 (모던 카드 로우) */
+#profile-modal .profile-actions {
+    display: flex; flex-direction: column; gap: 10px; padding: 22px 18px calc(28px + var(--safe-bottom, 0px));
+    max-width: 460px; width: 100%; margin: 0 auto;
+}
+#profile-modal .profile-actions .rm-btn {
+    width: 100%; height: auto; min-height: 56px; border-radius: 18px; border: 1px solid var(--gray-100);
+    background: var(--white); color: var(--gray-800); font-size: 1rem; font-weight: 600;
+    display: flex; align-items: center; gap: 12px; padding: 0 18px; box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    transition: transform .12s ease, box-shadow .12s ease;
+}
+#profile-modal .profile-actions .rm-btn:active { transform: scale(0.985); }
+#profile-modal .profile-actions .rm-btn.primary {
+    background: var(--primary); color: #fff; border: none; box-shadow: 0 6px 18px rgba(176,137,104,0.32);
+}
+#profile-modal .profile-actions .rm-btn svg { flex: 0 0 auto; }
+/* 토글형(다크/알림)은 스위치가 오른쪽 끝으로 */
+#profile-modal .profile-actions .setting-toggle { justify-content: flex-start; }
+#profile-modal .profile-actions .setting-toggle .st-label { flex: 1 1 auto; text-align: left; }
+#profile-modal .profile-actions .setting-toggle .st-ico { display: inline-flex; }
+#profile-modal .profile-actions #btn-profile-logout { color: #d9534f; }
+#profile-modal .profile-actions #btn-profile-logout svg { stroke: #d9534f; }
+
+/* ---- 프로필 수정 폼: 모던 시트 ---- */
+#profile-edit-modal .room-modal-card { border-radius: 26px; padding: 26px 22px calc(20px + var(--safe-bottom,0px)); }
+#profile-edit-modal .room-modal-title { font-size: 1.25rem; font-weight: 800; }
+#profile-edit-modal .pe-avatar { border-radius: 34px; width: 104px; height: 104px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+#profile-edit-modal .pe-avatar-wrap { margin-top: 6px; }
+#profile-edit-modal .room-modal-input { border-radius: 14px; height: 50px; font-size: 1rem; }
+#profile-edit-modal .room-modal-actions .rm-btn { height: 52px; border-radius: 15px; font-weight: 700; }

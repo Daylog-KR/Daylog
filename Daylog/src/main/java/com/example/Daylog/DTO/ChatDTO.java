@@ -58,6 +58,7 @@ public class ChatDTO {
         private String peerUid;               // 1:1 상대 uid (그룹이면 null)
         private String peerProfileURL;        // 1:1 상대 프로필(헤더 아바타)
         private String roomImageURL;          // [B] edit by smsong - 그룹방 헤더 썸네일(방 대표 이미지)
+        private List<String> memberImages;    // [B] edit by smsong - 단체방 헤더 멤버 합성 썸네일(최대4)
         private boolean muted;                // 이 방 채팅 알림 꺼짐 여부
     }
 

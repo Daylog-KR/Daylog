@@ -196,6 +196,18 @@ public class ChatService {
             }
         }
 
+        // [B] edit by smsong - 단체방 헤더 썸네일용 멤버 이미지(최대 4)
+        List<String> memberImages = null;
+        if (!direct) {
+            memberImages = new ArrayList<>();
+            for (String mUid : members) {
+                if (mUid == null) continue;
+                UserEntity mu = userRepository.findByUid(mUid).orElse(null);
+                memberImages.add(mu != null ? mu.getProfileURL() : null);
+                if (memberImages.size() >= 4) break;
+            }
+        }
+
         return ChatDTO.History.builder()
                 .me(requesterUid)
                 .memberCount(members.size())
@@ -208,6 +220,7 @@ public class ChatService {
                 .peerUid(peerUid)
                 .peerProfileURL(peerProfile)
                 .roomImageURL(roomImageURL)
+                .memberImages(memberImages)
                 .muted(isChatMuted(roomId, requesterUid))
                 .build();
     }

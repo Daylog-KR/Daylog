@@ -5,7 +5,7 @@
 //    → '읽은 수'로 바꾸려면 아래 COUNT_MODE 를 'read' 로만 바꾸면 됨(서버 변경 불필요).
 (function () {
     'use strict';
-    try { console.log('%c[Daylog chat.js] v1.1.7 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[Daylog chat.js] v1.1.8 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
 
     var API = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || '';
     var COUNT_MODE = 'unread'; // 'unread'(카톡 기본) | 'read'
@@ -54,7 +54,7 @@
         msgs: [],           // 오름차순 메시지 배열
         hasMore: false, loadingMore: false, oldestId: null,
         open: false, unread: 0,
-        title: '채팅', direct: false, peerUid: null, peerProfileURL: null, roomImageURL: null, // [B] edit by smsong - 헤더용
+        title: '채팅', direct: false, peerUid: null, peerProfileURL: null, roomImageURL: null, memberImages: null, // [B] edit by smsong - 헤더용
         replyTo: null // [B] edit by smsong - 답장 대상 {id, name, content, type}
     };
     var ws = null, wsTimer = null, wsBackoff = 1000, subscribed = false;
@@ -405,6 +405,7 @@
                 state.peerUid = h.peerUid || null;
                 state.peerProfileURL = h.peerProfileURL || null;
                 state.roomImageURL = h.roomImageURL || null; // [B] edit by smsong - 그룹방 헤더 썸네일
+                state.memberImages = h.memberImages || null; // [B] edit by smsong - 단체방 합성 썸네일
                 chatMuted = !!h.muted;
                 updateHeader();
                 renderAll();
@@ -453,27 +454,43 @@
         if (subEl) { subEl.style.cursor = 'pointer'; subEl.onclick = function () { openMemberList(); }; }
 
         if (avaEl) {
-            // 헤더에 표시할 이미지: 1:1이면 상대 프로필, 그룹이면 방 대표 이미지
+            var imgs = (!state.direct && state.memberImages && state.memberImages.length) ? state.memberImages : null;
             var headImg = state.direct ? state.peerProfileURL : state.roomImageURL;
-            if (headImg) {
+            if (imgs) {
+                // [B] edit by smsong - 단체방: 멤버 프로필 합성 썸네일(채팅 리스트와 동일)
+                avaEl.innerHTML = headComposite(imgs);
+                avaEl.className = 'dchat-head-ava comp';
+                avaEl.style.cursor = 'pointer';
+                avaEl.onclick = function () { openMemberList(); };
+            } else if (headImg) {
                 avaEl.innerHTML = '<img src="' + esc(headImg) + '" alt="" referrerpolicy="no-referrer">';
                 avaEl.className = 'dchat-head-ava has-img';
+                avaEl.style.cursor = 'zoom-in';
+                avaEl.onclick = function () { viewImage(headImg, avaEl); };
             } else if (state.direct) {
                 avaEl.innerHTML = esc((state.title || '?').trim().charAt(0) || '?');
                 avaEl.className = 'dchat-head-ava ph';
+                avaEl.style.cursor = 'default';
+                avaEl.onclick = null;
             } else {
                 avaEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
                 avaEl.className = 'dchat-head-ava grp';
-            }
-            // [B] edit by smsong - 왼쪽 썸네일 클릭 → 이미지 크게보기 (이미지 있을 때만)
-            if (headImg) {
-                avaEl.style.cursor = 'zoom-in';
-                avaEl.onclick = function () { viewImage(headImg, avaEl); };
-            } else {
                 avaEl.style.cursor = 'default';
                 avaEl.onclick = null;
             }
         }
+    }
+    // [B] edit by smsong - 헤더용 멤버 합성 썸네일(카톡식 1~4)
+    function headComposite(imgs) {
+        var n = Math.min(imgs.length, 4);
+        var cells = '';
+        for (var i = 0; i < n; i++) {
+            var u = imgs[i];
+            cells += u
+                ? '<span class="dch-cell"><img src="' + esc(u) + '" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'"></span>'
+                : '<span class="dch-cell dch-cell-ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5z"/></svg></span>';
+        }
+        return '<span class="dch-grid dch-grid-' + n + '">' + cells + '</span>';
     }
 
     // ===== [B] edit by smsong - 공용 이미지 크게보기 =====
@@ -896,19 +913,23 @@
             '#dpp-overlay{position:fixed;inset:0;z-index:10050;background:rgba(45,38,32,0.5);' +
                 'display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s ease;padding:24px;}' +
             '#dpp-overlay.show{opacity:1;}' +
-            '.dpp-card{width:100%;max-width:320px;background:var(--white);border-radius:22px;padding:26px 22px 20px;' +
-                'text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.28);transform:scale(.94);transition:transform .2s cubic-bezier(.2,.8,.3,1);}' +
+            '.dpp-card{width:100%;max-width:330px;background:var(--white);border-radius:28px;padding:0 0 20px;overflow:hidden;' +
+                'text-align:center;box-shadow:0 24px 70px rgba(0,0,0,0.30);transform:scale(.92) translateY(8px);transition:transform .22s cubic-bezier(.2,.8,.3,1);}' +
             '#dpp-overlay.show .dpp-card{transform:none;}' +
-            '.dpp-ava{width:110px;height:110px;border-radius:50%;object-fit:cover;margin:0 auto 14px;display:block;background:var(--gray-100);}' +
-            '.dpp-ava-ph{width:110px;height:110px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;' +
-                'font-size:2.6rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);}' +
-            '.dpp-name{font-size:1.18rem;font-weight:700;color:var(--gray-800);margin-bottom:4px;}' +
-            '.dpp-sub{font-size:0.82rem;color:var(--gray-400);margin-bottom:20px;}' +
-            '.dpp-actions{display:flex;flex-direction:column;gap:8px;}' +
-            '.dpp-btn{width:100%;padding:13px;border-radius:14px;border:none;cursor:pointer;font-family:inherit;font-size:0.96rem;font-weight:700;}' +
-            '.dpp-btn.primary{background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;gap:7px;}' +
+            '.dpp-card::before{content:"";display:block;height:92px;background:linear-gradient(150deg,var(--primary),var(--primary-dark));}' +
+            '#dpp-ava-slot{margin-top:-60px;}' +
+            '.dpp-ava{width:112px;height:112px;border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block;' +
+                'background:var(--gray-100);border:4px solid var(--white);box-shadow:0 8px 22px rgba(0,0,0,0.20);}' +
+            '.dpp-ava-ph{width:112px;height:112px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;' +
+                'font-size:2.6rem;font-weight:700;color:var(--primary-dark);background:var(--primary-light);border:4px solid var(--white);box-shadow:0 8px 22px rgba(0,0,0,0.20);}' +
+            '.dpp-name{font-size:1.3rem;font-weight:800;color:var(--gray-800);margin-bottom:4px;padding:0 22px;letter-spacing:-0.3px;}' +
+            '.dpp-sub{font-size:0.85rem;color:var(--gray-400);margin-bottom:20px;}' +
+            '.dpp-actions{display:flex;flex-direction:column;gap:9px;padding:0 20px;}' +
+            '.dpp-btn{width:100%;padding:14px;border-radius:15px;border:none;cursor:pointer;font-family:inherit;font-size:0.98rem;font-weight:700;transition:transform .12s ease;}' +
+            '.dpp-btn.primary{background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 6px 18px rgba(176,137,104,0.34);}' +
             '.dpp-btn.primary:active{transform:scale(.98);}' +
-            '.dpp-btn.ghost{background:var(--gray-100);color:var(--gray-600);}';
+            '.dpp-btn.ghost{background:var(--gray-100);color:var(--gray-600);}' +
+            '.dpp-btn.ghost:active{transform:scale(.98);}';
         var st = document.createElement('style');
         st.id = 'dpp-style';
         st.textContent = css;
@@ -1379,6 +1400,17 @@
                 'background:var(--white);border-bottom:1px solid var(--gray-100);}' +
             '.dchat-head-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;}' +
             '.dchat-head-ava{flex:0 0 auto;width:38px;height:38px;border-radius:13px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--gray-500);}' +
+            '.dchat-head-ava.comp{background:var(--gray-200);}' +
+            '.dch-grid{width:100%;height:100%;display:grid;gap:1px;background:var(--gray-200);}' +
+            '.dch-grid .dch-cell{overflow:hidden;background:var(--gray-100);display:flex;align-items:center;justify-content:center;}' +
+            '.dch-grid .dch-cell img{width:100%;height:100%;object-fit:cover;display:block;image-orientation:from-image;}' +
+            '.dch-grid .dch-cell-ph{color:var(--gray-300);}' +
+            '.dch-grid .dch-cell-ph svg{width:62%;height:62%;}' +
+            '.dch-grid-1{grid-template-columns:1fr;grid-template-rows:1fr;}' +
+            '.dch-grid-2{grid-template-columns:1fr 1fr;grid-template-rows:1fr;}' +
+            '.dch-grid-3{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}' +
+            '.dch-grid-3 .dch-cell:nth-child(3){grid-column:1 / span 2;}' +
+            '.dch-grid-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}' +
             '.dchat-head-ava img{width:100%;height:100%;object-fit:cover;display:block;image-orientation:from-image;}' +
             '.dchat-head-ava.ph{background:var(--primary-light);color:var(--primary-dark);font-weight:700;font-size:1.05rem;}' +
             '.dchat-head-texts{min-width:0;display:flex;flex-direction:column;}' +

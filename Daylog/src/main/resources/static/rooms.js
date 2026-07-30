@@ -1475,7 +1475,14 @@ function openProfileEdit() {
     const m = document.getElementById('profile-edit-modal');
     if (m) m.classList.remove('hidden');
 }
-function closeProfileEdit() { const m = document.getElementById('profile-edit-modal'); if (m) m.classList.add('hidden'); }
+function closeProfileEdit() {
+    const m = document.getElementById('profile-edit-modal');
+    if (m) m.classList.add('hidden');
+    // [B] edit by smsong - 취소/저장 후 '바로 전 폼'인 프로필 보기로 복귀(폼이 통째로 닫히던 버그 수정)
+    openProfileModal();
+}
+// 수정 폼을 완전히 닫기(보기로 복귀 없이) — 저장 성공 등에서 필요시 사용
+function closeProfileEditFully() { const m = document.getElementById('profile-edit-modal'); if (m) m.classList.add('hidden'); }
 
 // 이벤트 바인딩
 const _btnProfile = document.getElementById('btn-profile');
