@@ -731,10 +731,41 @@ html, body {
 #profile-modal .profile-actions #btn-profile-logout { color: #d9534f; }
 #profile-modal .profile-actions #btn-profile-logout svg { stroke: #d9534f; }
 
-/* ---- 프로필 수정 폼: 모던 시트 ---- */
-#profile-edit-modal .room-modal-card { border-radius: 26px; padding: 26px 22px calc(20px + var(--safe-bottom,0px)); }
-#profile-edit-modal .room-modal-title { font-size: 1.25rem; font-weight: 800; }
-#profile-edit-modal .pe-avatar { border-radius: 34px; width: 104px; height: 104px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
-#profile-edit-modal .pe-avatar-wrap { margin-top: 6px; }
-#profile-edit-modal .room-modal-input { border-radius: 14px; height: 50px; font-size: 1rem; }
-#profile-edit-modal .room-modal-actions .rm-btn { height: 52px; border-radius: 15px; font-weight: 700; }
+/* ---- 프로필 수정: 프로필 보기와 동일한 '풀스크린 화면' (전환 이질감 제거) ---- */
+#profile-edit-modal { padding: 0; align-items: stretch; justify-content: flex-start; background: var(--bg-color); }
+#profile-edit-modal .room-modal-card {
+    position: relative; width: 100%; max-width: 100%; height: 100%; max-height: none;
+    border-radius: 0; padding: 0; background: transparent; box-shadow: none;
+    display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    animation: profScreenIn .3s cubic-bezier(.22,.61,.36,1);
+}
+/* 상단 그라디언트 히어로 (보기 화면과 동일한 톤) */
+#profile-edit-modal .room-modal-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 244px; z-index: 0;
+    background: linear-gradient(155deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-radius: 0 0 30px 30px; box-shadow: 0 8px 26px rgba(0,0,0,0.10);
+}
+#profile-edit-modal .room-modal-title,
+#profile-edit-modal .room-modal-desc { display: none; } /* 히어로로 대체(제목/설명 숨김) */
+#profile-edit-modal .pe-avatar-wrap {
+    order: 1; position: relative; z-index: 1; width: 120px; height: 120px;
+    margin: calc(70px + var(--safe-top, 0px)) auto 0;
+}
+#profile-edit-modal .pe-avatar {
+    width: 120px; height: 120px; border-radius: 40px; overflow: hidden;
+    border: 4px solid rgba(255,255,255,0.92); box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+}
+#profile-edit-modal .pe-avatar-edit { right: 4px; bottom: 4px; width: 36px; height: 36px; }
+#profile-edit-modal .pe-avatar-hint { order: 2; z-index: 1; color: #fff; opacity: 0.92; margin: 12px 0 0; }
+#profile-edit-modal .pe-remove-photo { order: 3; margin: 10px auto 0; }
+#profile-edit-modal .pe-nickname {
+    order: 4; align-self: center; width: calc(100% - 44px); max-width: 420px;
+    margin: 30px 0 0; height: 54px; border-radius: 16px; font-size: 1.02rem;
+    background: var(--white); border: 1px solid var(--gray-100); box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+#profile-edit-modal .room-modal-actions {
+    order: 5; margin-top: auto; display: flex; gap: 10px;
+    padding: 16px 20px calc(18px + var(--safe-bottom, 0px)); max-width: 460px; width: 100%; align-self: center;
+}
+#profile-edit-modal .room-modal-actions .rm-btn { flex: 1; height: 54px; border-radius: 16px; font-weight: 700; }
+#profile-edit-modal .room-modal-actions .rm-btn.primary { box-shadow: 0 6px 18px rgba(176,137,104,0.32); }
