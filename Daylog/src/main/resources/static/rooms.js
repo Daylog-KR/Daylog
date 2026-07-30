@@ -1408,6 +1408,37 @@ function _setViewAvatar(url) {
     if (url) { el.style.backgroundImage = "url('" + _bustImg(url) + "')"; el.innerHTML = ''; }
     else { el.style.backgroundImage = 'none'; el.innerHTML = DEFAULT_AVATAR_SVG; }
 }
+// [B] edit by smsong - 소셜 로그인 배지 빌더 (프로필 보기/수정 화면 공용)
+var SOCIAL_ICON = {
+    kakao: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>',
+    naver: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>',
+    google: '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>'
+};
+var SOCIAL_LABEL = { kakao: '카카오', naver: '네이버', google: '구글' };
+function applySocialBadge(el, provider) {
+    if (!el) return false;
+    var key = provider ? String(provider).toLowerCase() : '';
+    if (SOCIAL_ICON[key]) {
+        el.className = 'social-badge sb-' + key;
+        el.innerHTML = SOCIAL_ICON[key] + '<span>' + SOCIAL_LABEL[key] + ' 로그인</span>';
+        el.style.display = '';
+        return true;
+    }
+    el.style.display = 'none'; el.innerHTML = '';
+    return false;
+}
+
+// [B] edit by smsong - 수정 화면 히어로: 이름(님) + 소셜을 보기 화면과 동일하게 채움
+function _fillPeIdentity() {
+    var realEl = document.getElementById('pe-view-realname');
+    var socialEl = document.getElementById('pe-view-social');
+    var metaEl = document.getElementById('pe-view-meta');
+    var rn = (me && me.name && String(me.name).trim()) ? String(me.name).trim() : '';
+    if (realEl) { realEl.textContent = rn ? (rn + '님') : ''; }
+    var hasSocial = applySocialBadge(socialEl, me && me.provider);
+    if (metaEl) metaEl.style.display = hasSocial ? 'flex' : 'none';
+}
+
 function _fillProfileExtra() {
     // [B] edit by smsong - #2 실제 이름 / 소셜 로그인 / 가입일
     var realEl = document.getElementById('profile-view-realname');
@@ -1419,16 +1450,7 @@ function _fillProfileExtra() {
         realEl.textContent = rn ? (rn + ' 님') : '';
         realEl.style.display = rn ? '' : 'none';
     }
-    var kakao = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>';
-    var naver = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>';
-    var google = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>';
-    var map = { kakao: { label: '카카오', cls: 'kakao', icon: kakao }, naver: { label: '네이버', cls: 'naver', icon: naver }, google: { label: '구글', cls: 'google', icon: google } };
-    var info = map[(me && me.provider ? String(me.provider).toLowerCase() : '')];
-    var any = false;
-    if (socialEl) {
-        if (info) { socialEl.className = 'social-badge sb-' + info.cls; socialEl.innerHTML = info.icon + '<span>' + info.label + ' 로그인</span>'; socialEl.style.display = ''; any = true; }
-        else { socialEl.style.display = 'none'; socialEl.innerHTML = ''; }
-    }
+    var any = applySocialBadge(socialEl, me && me.provider); // [B] edit by smsong - 공용 빌더로 대체
     if (joinEl) {
         var c = me && me.createdAt;
         if (c) {
@@ -1471,6 +1493,7 @@ function openProfileEdit() {
     const nick = document.getElementById('pe-nickname');
     if (nick) nick.value = me.nickname || '';
     _setPeAvatar(me.profileURL ? _bustImg(me.profileURL) : '', !!me.profileURL);
+    _fillPeIdentity(); // [B] edit by smsong - 이름(님)+소셜 표시 (보기 화면과 통일)
     closeProfileModal();
     const m = document.getElementById('profile-edit-modal');
     if (m) m.classList.remove('hidden');

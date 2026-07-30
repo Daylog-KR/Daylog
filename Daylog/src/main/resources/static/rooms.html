@@ -303,15 +303,26 @@
     <div class="room-modal-card">
         <div class="room-modal-title">프로필 수정</div>
         <div class="room-modal-desc">프로필 이미지와 닉네임을 설정하세요.</div>
-        <div class="pe-avatar-wrap" id="pe-avatar-wrap">
-            <div class="pe-avatar" id="pe-avatar">
-                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <!-- [B] edit by smsong - 히어로: 보기 화면(.profile-view)과 동일 구성(아바타+이름+소셜)으로 통일 → 전환 이질감 제거.
+             실제 컨테이너(.pe-hero)라 높이가 자동이라 '사진 제거'가 고정 히어로 경계에 걸려 잘리던 문제도 해결. -->
+        <div class="pe-hero">
+            <div class="pe-avatar-wrap" id="pe-avatar-wrap">
+                <div class="pe-avatar" id="pe-avatar">
+                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <span class="pe-avatar-edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
             </div>
-            <span class="pe-avatar-edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+            <!-- [B] edit by smsong - 이름(님) + 소셜 로그인 (보기 화면과 동일) -->
+            <div class="pe-view-realname" id="pe-view-realname"></div>
+            <div class="pe-view-meta" id="pe-view-meta"><span class="social-badge" id="pe-view-social"></span></div>
+            <p class="pe-avatar-hint">사진을 눌러 변경</p>
+            <button type="button" id="pe-remove-photo" class="pe-remove-photo hidden">사진 제거</button>
         </div>
-        <p class="pe-avatar-hint">사진을 눌러 변경</p>
-        <button type="button" id="pe-remove-photo" class="pe-remove-photo hidden">사진 제거</button>
-        <input id="pe-nickname" class="room-modal-input" type="text" maxlength="20" placeholder="닉네임" autocomplete="off" />
+        <!-- [B] edit by smsong - 본문: 무엇을 수정하는지 명확히 알 수 있게 닉네임 라벨 추가 -->
+        <div class="pe-body">
+            <label class="pe-field-label" for="pe-nickname">닉네임</label>
+            <input id="pe-nickname" class="room-modal-input" type="text" maxlength="20" placeholder="닉네임" autocomplete="off" />
+        </div>
         <input type="file" id="pe-file" accept="image/*" hidden />
         <div class="room-modal-actions">
             <button id="pe-cancel" class="rm-btn" type="button">취소</button>

@@ -731,7 +731,10 @@ html, body {
 #profile-modal .profile-actions #btn-profile-logout { color: #d9534f; }
 #profile-modal .profile-actions #btn-profile-logout svg { stroke: #d9534f; }
 
-/* ---- 프로필 수정: 프로필 보기와 동일한 '풀스크린 화면' (전환 이질감 제거) ---- */
+/* ---- 프로필 수정: 보기 화면과 동일한 풀스크린 + 히어로 구성 (전환 이질감 제거) ----
+   [B] edit by smsong - 히어로를 실제 컨테이너(.pe-hero)로 만들어 높이를 자동화.
+   기존엔 히어로가 고정높이 ::before(244px)라 '사진 제거'가 경계에 걸려 잘렸음.
+   또 보기 화면처럼 이름(님)+소셜 배지를 얹어 두 화면을 통일. */
 #profile-edit-modal { padding: 0; align-items: stretch; justify-content: flex-start; background: var(--bg-color); }
 #profile-edit-modal .room-modal-card {
     position: relative; width: 100%; max-width: 100%; height: 100%; max-height: none;
@@ -739,35 +742,68 @@ html, body {
     display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch;
     animation: profScreenIn .3s cubic-bezier(.22,.61,.36,1);
 }
-/* 상단 그라디언트 히어로 (보기 화면과 동일한 톤) */
-#profile-edit-modal .room-modal-card::before {
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 244px; z-index: 0;
-    background: linear-gradient(155deg, var(--primary) 0%, var(--primary-dark) 100%);
-    border-radius: 0 0 30px 30px; box-shadow: 0 8px 26px rgba(0,0,0,0.10);
-}
 #profile-edit-modal .room-modal-title,
 #profile-edit-modal .room-modal-desc { display: none; } /* 히어로로 대체(제목/설명 숨김) */
+
+/* 히어로 (보기 화면 .profile-view 와 동일 톤: 그라디언트 + 흰 텍스트, 자동 높이) */
+#profile-edit-modal .pe-hero {
+    position: relative;
+    padding: calc(70px + var(--safe-top, 0px)) 24px 24px;
+    background: linear-gradient(155deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-radius: 0 0 30px 30px; color: #fff;
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.10);
+}
 #profile-edit-modal .pe-avatar-wrap {
-    order: 1; position: relative; z-index: 1; width: 120px; height: 120px;
-    margin: calc(70px + var(--safe-top, 0px)) auto 0;
+    position: relative; z-index: 1; width: 120px; height: 120px; margin: 0 auto; cursor: pointer;
 }
 #profile-edit-modal .pe-avatar {
     width: 120px; height: 120px; border-radius: 40px; overflow: hidden;
     border: 4px solid rgba(255,255,255,0.92); box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+    background-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.85);
 }
 #profile-edit-modal .pe-avatar-edit { right: 4px; bottom: 4px; width: 36px; height: 36px; }
-#profile-edit-modal .pe-avatar-hint { order: 2; z-index: 1; color: #fff; opacity: 0.92; margin: 12px 0 0; }
-#profile-edit-modal .pe-remove-photo { order: 3; margin: 10px auto 0; }
-/* [B] edit by smsong - 선택자 오타 수정: 입력칸은 class 'pe-nickname'이 아니라 id 'pe-nickname'.
-   기존 .pe-nickname 은 매칭 안 돼 order:4 미적용 → input 이 order:0 으로 컬럼 맨 위(히어로 뒤)에 가려짐. */
-#profile-edit-modal #pe-nickname {
-    order: 4; align-self: center; width: calc(100% - 44px); max-width: 420px;
-    margin: 30px 0 0; height: 54px; border-radius: 16px; font-size: 1.02rem;
-    background: var(--white); border: 1px solid var(--gray-100); box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+
+/* 이름(님) + 소셜 로그인 배지 — 보기 화면과 동일 구성 */
+#profile-edit-modal .pe-view-realname {
+    font-size: 1.34rem; font-weight: 800; color: #fff; letter-spacing: -0.3px; margin: 4px 0 0; text-align: center;
 }
+#profile-edit-modal .pe-view-realname:empty { display: none; }
+#profile-edit-modal .pe-view-meta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 0; }
+#profile-edit-modal .pe-view-meta .social-badge {
+    background: rgba(255,255,255,0.20); color: #fff; border: none;
+    padding: 5px 11px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+
+/* 사진 안내/제거 — 히어로 위 흰 톤으로 그룹화 (경계 잘림 없음) */
+#profile-edit-modal .pe-avatar-hint { color: #fff; opacity: 0.9; font-size: 0.82rem; margin: 4px 0 0; }
+#profile-edit-modal .pe-remove-photo {
+    margin: 0; padding: 6px 15px; border-radius: 999px; line-height: 1;
+    background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.38);
+    font-size: 0.78rem; font-weight: 600; font-family: var(--font-main); cursor: pointer;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#profile-edit-modal .pe-remove-photo:active { transform: scale(0.96); }
+
+/* 본문: 닉네임 라벨 + 입력 */
+#profile-edit-modal .pe-body {
+    display: flex; flex-direction: column; gap: 8px;
+    width: 100%; max-width: 460px; margin: 0 auto; padding: 26px 22px 0;
+}
+#profile-edit-modal .pe-field-label {
+    font-size: 0.82rem; font-weight: 700; color: var(--gray-500); padding-left: 4px; letter-spacing: -0.2px;
+}
+#profile-edit-modal #pe-nickname {
+    width: 100%; margin: 0; height: 54px; border-radius: 16px; font-size: 1.02rem; padding: 0 16px;
+    background: var(--white); border: 1px solid var(--gray-200); box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+#profile-edit-modal #pe-nickname:focus { border-color: var(--primary); background: var(--white); }
+
 #profile-edit-modal .room-modal-actions {
-    order: 5; margin-top: auto; display: flex; gap: 10px;
-    padding: 16px 20px calc(18px + var(--safe-bottom, 0px)); max-width: 460px; width: 100%; align-self: center;
+    margin: auto auto 0; display: flex; gap: 10px;
+    padding: 16px 20px calc(18px + var(--safe-bottom, 0px)); max-width: 460px; width: 100%;
 }
 #profile-edit-modal .room-modal-actions .rm-btn { flex: 1; height: 54px; border-radius: 16px; font-weight: 700; }
 #profile-edit-modal .room-modal-actions .rm-btn.primary { box-shadow: 0 6px 18px rgba(176,137,104,0.32); }
