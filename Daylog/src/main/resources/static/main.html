@@ -3,6 +3,7 @@
 <head>
     <!-- [B] edit by smsong - #6 다크모드: 렌더 전에 테마 적용(깜빡임 방지) -->
     <script>(function(){try{var t=localStorage.getItem("daylog_theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
+<script>(function(){try{var a=localStorage.getItem("daylog_accent");if(a)document.documentElement.setAttribute("data-accent",a);}catch(e){}})();</script>
     <!-- [B] edit by smsong - Android PWA 하단 시스템 내비게이션(제스처바) 대응. iOS 는 절대 건드리지 않음.
          env(safe-area-inset-*) 는 viewport-fit=cover 일 때만 실제 값을 주므로 Android 에서만 cover 를 붙이고,
          html.android-pwa 아래에서만 --safe-top / --safe-bottom 이 값을 갖게 한다.
@@ -292,6 +293,12 @@
             <button type="button" id="btn-member-view" class="rooms-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 멤버 보기</button>
             <button type="button" id="btn-trash" class="trash-menu-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> 휴지통</button>
             <!-- [B] edit by smsong - #1 다크 모드 토글 (rooms.html 과 동일한 localStorage 키 'daylog_theme' 공유) -->
+            <!-- [B] edit by smsong - 기기별 테마 색상 커스터마이징 (다크 모드 위) -->
+            <div class="setting-color" id="setting-color">
+                <span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1.3"/><circle cx="17" cy="10.5" r="1.3"/><circle cx="8" cy="7.5" r="1.3"/><circle cx="6.5" cy="12.5" r="1.3"/><path d="M12 2C6.5 2 2 6 2 11c0 3 2.4 5 5.2 5H9c1 0 1.6.9 1.4 1.8-.1.6-.4 1-.4 1.7 0 1 .9 2.5 2.4 2.5C17.8 22 22 17.5 22 12 22 6.5 17.5 2 12 2z"/></svg></span>
+                <span class="st-label">테마 색상</span>
+                <span class="accent-swatches" id="accent-swatches"></span>
+            </div>
             <button type="button" id="btn-dark-toggle" class="rooms-menu-btn setting-toggle dark" aria-pressed="false">
                 <span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
                 <span class="st-label">다크 모드</span>
@@ -814,6 +821,7 @@
 <!-- [B][E] edit by smsong - #39 nav.js 누락 보완: 안드로이드 하드웨어 뒤로가기(#36)가 로드되지 않고 있었다.
      main.js 보다 먼저 올려 window.DaylogNav 를 준비시킨다. -->
 <script src="nav.js?v=1.0.0"></script>
+<script src="theme-accent.js?v=1.0.0"></script>
 <!-- [B] edit by smsong - 푸시 딥링크: main.js 로드 전에 ?room= 을 현재 방으로 설정 -->
 <script>(function(){try{var r=new URLSearchParams(location.search).get('room');if(r)localStorage.setItem('selectedRoomId',r);}catch(e){}})();</script>
 <script src="main.js?v=1.0.36"></script>

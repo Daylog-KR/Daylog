@@ -173,3 +173,11 @@ html, body {
     box-shadow: var(--shadow-md);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* [B] edit by smsong - 기기별 테마 색상(포인트색) 오버라이드. localStorage('daylog_accent') */
+:root[data-accent="slate"]{ --primary:#647394; --primary-dark:#505e7c; --primary-light:#cad1e4; }
+:root[data-accent="indigo"]{ --primary:#5a6cf0; --primary-dark:#4351d8; --primary-light:#dfe3fd; }
+:root[data-accent="violet"]{ --primary:#7c5cff; --primary-dark:#6742ee; --primary-light:#e9e3ff; }
+:root[data-accent="teal"]{ --primary:#13b183; --primary-dark:#0c9670; --primary-light:#d3f0e6; }
+:root[data-accent="rose"]{ --primary:#e0658a; --primary-dark:#c64d72; --primary-light:#fbe0e8; }
+:root[data-accent="amber"]{ --primary:#d9903a; --primary-dark:#bd7620; --primary-light:#f8e8cf; }
+:root[data-accent="graphite"]{ --primary:#3f4557; --primary-dark:#2a2e3c; --primary-light:#dfe1e8; }
