@@ -28,11 +28,11 @@
         var css =
             // 가볼곳 사진 그리드의 '＋' 옆에 같은 크기(정사각형)로 놓이는 타일 버튼.
             //  .media-add 와 동일한 aspect-ratio / 모양을 맞춰 나란히 보이게 한다.
-            '.pi-fetch{aspect-ratio:1/1;border-radius:12px;border:2px dashed var(--primary-light,#cad1e4);' +
-            'background:var(--gray-50,#f7f8fb);color:var(--primary,#647394);cursor:pointer;' +
+            '.pi-fetch{aspect-ratio:1/1;border-radius:12px;border:2px dashed var(--primary-light,#e6ccb2);' +
+            'background:var(--gray-50,#faf9f8);color:var(--primary,#b08968);cursor:pointer;' +
             'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
             'font-family:inherit;font-size:0.66rem;font-weight:700;line-height:1.15;text-align:center;padding:4px;}' +
-            '.pi-fetch:hover{background:var(--primary-light,#cad1e4);}' +
+            '.pi-fetch:hover{background:var(--primary-light,#e6ccb2);}' +
             '.pi-fetch:active{transform:scale(.97);}' +
             '.pi-fetch svg{width:20px;height:20px;}' +
 
@@ -40,25 +40,25 @@
             'display:flex;align-items:flex-end;justify-content:center;animation:piFade .18s ease;}' +
             '@media (min-width:600px){#pi-overlay{align-items:center;}}' +
             '#pi-card{width:100%;max-width:560px;max-height:88dvh;display:flex;flex-direction:column;' +
-            'background:var(--white,#ffffff);border-radius:22px 22px 0 0;overflow:hidden;' +
+            'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
             'animation:piUp .26s cubic-bezier(.2,.8,.3,1);}' +
             '@media (min-width:600px){#pi-card{border-radius:22px;}}' +
 
             '.pi-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
-            'border-bottom:1px solid var(--gray-100,#f1f3f9);}' +
-            '.pi-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#262a38);}' +
-            '.pi-head .pi-q{font-size:0.8rem;color:var(--gray-500,#5a6076);font-weight:600;' +
+            'border-bottom:1px solid var(--gray-100,#f3f0ec);}' +
+            '.pi-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#2e2b28);}' +
+            '.pi-head .pi-q{font-size:0.8rem;color:var(--gray-500,#7a756e);font-weight:600;' +
             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%;}' +
             '.pi-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
-            'color:var(--gray-400,#9ba1b5);cursor:pointer;padding:0 4px;}' +
+            'color:var(--gray-400,#a8a29a);cursor:pointer;padding:0 4px;}' +
 
             '#pi-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 4px;}' +
             // 타임라인 추억 그리드(인스타그램식)와 동일: 3:4 세로 비율, 3열
             '.pi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}' +
             '.pi-cell{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;' +
-            'background:var(--gray-100,#f1f3f9);border:2px solid transparent;}' +
+            'background:var(--gray-100,#f3f0ec);border:2px solid transparent;}' +
             '.pi-cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}' +
-            '.pi-cell.sel{border-color:var(--primary,#647394);}' +
+            '.pi-cell.sel{border-color:var(--primary,#b08968);}' +
             '.pi-cell.sel::after{content:"";position:absolute;inset:0;background:rgba(176,137,104,.18);pointer-events:none;}' +
             // 카카오톡 스타일 선택 동그라미 — 우측 상단, 항상 빈 원. 선택되면 채워지고 안에 숫자.
             '.pi-pick{position:absolute;top:6px;right:6px;z-index:4;width:24px;height:24px;padding:0;' +
@@ -66,7 +66,7 @@
             'display:flex;align-items:center;justify-content:center;' +
             'font-family:inherit;font-size:0.74rem;font-weight:800;color:#fff;line-height:1;' +
             'box-shadow:0 1px 5px rgba(0,0,0,.28);}' +
-            '.pi-cell.sel .pi-pick{background:var(--primary,#647394);border-color:#fff;}' +
+            '.pi-cell.sel .pi-pick{background:var(--primary,#b08968);border-color:#fff;}' +
             '.pi-src{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:3px 6px;font-size:0.6rem;' +
             'color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));' +
             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}' +
@@ -76,19 +76,19 @@
             'background:rgba(30,30,30,.42);color:#fff;font-family:inherit;font-size:1.05rem;font-weight:800;' +
             'line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
             'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
-            '.pi-lb-pick.on{background:var(--primary,#647394);border-color:#fff;}' +
+            '.pi-lb-pick.on{background:var(--primary,#b08968);border-color:#fff;}' +
             // X 버튼을 왼쪽으로 (라이트박스가 열려 있는 동안만)
             'body.pi-lb-open #lightbox-close{left:18px;right:auto;}' +
 
-            '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#5a6076);font-size:0.87rem;line-height:1.6;}' +
-            '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#9ba1b5);line-height:1.55;}' +
+            '.pi-msg{padding:34px 18px;text-align:center;color:var(--gray-500,#7a756e);font-size:0.87rem;line-height:1.6;}' +
+            '.pi-note{padding:12px 18px 2px;font-size:0.72rem;color:var(--gray-400,#a8a29a);line-height:1.55;}' +
 
             '.pi-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
-            'border-top:1px solid var(--gray-100,#f1f3f9);}' +
+            'border-top:1px solid var(--gray-100,#f3f0ec);}' +
             '.pi-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
             'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
-            '.pi-btn.ghost{background:var(--gray-100,#f1f3f9);color:var(--gray-600,#4a4f63);}' +
-            '.pi-btn.primary{background:var(--primary,#647394);color:#fff;}' +
+            '.pi-btn.ghost{background:var(--gray-100,#f3f0ec);color:var(--gray-600,#5c5751);}' +
+            '.pi-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
             '.pi-btn:disabled{opacity:.5;cursor:default;}' +
 
             '@keyframes piFade{from{opacity:0}to{opacity:1}}' +

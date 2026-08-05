@@ -3,21 +3,21 @@
 
 :root {
     /* 감성 웜톤 컬러 팔레트 */
-    --primary: #647394;       /* 따뜻한 카라멜 브라운 */
-    --primary-light: #cad1e4; /* 부드러운 베이지 */
-    --primary-dark: #505e7c;  /* 딥 브라운 */
-    --bg-color: #f6f7fb;      /* 포근한 크림 아이보리 */
+    --primary: #b08968;       /* 따뜻한 카라멜 브라운 */
+    --primary-light: #e6ccb2; /* 부드러운 베이지 */
+    --primary-dark: #9c6644;  /* 딥 브라운 */
+    --bg-color: #fdfbf7;      /* 포근한 크림 아이보리 */
 
-    --gray-50: #f7f8fb;
-    --gray-100: #f1f3f9;
-    --gray-200: #e6e9f2;
-    --gray-300: #d5dae6;
-    --gray-400: #9ba1b5;
-    --gray-500: #5a6076;
-    --gray-600: #4a4f63;
-    --gray-700: #35394a;
-    --gray-800: #262a38;
-    --gray-900: #14161c;
+    --gray-50: #faf9f8;
+    --gray-100: #f3f0ec;
+    --gray-200: #e5e0d8;
+    --gray-300: #d1cbc1;
+    --gray-400: #a8a29a;
+    --gray-500: #7a756e;
+    --gray-600: #5c5751;
+    --gray-700: #45413c;
+    --gray-800: #2e2b28;
+    --gray-900: #1c1a18;
     --white: #ffffff;
 
     --kakao: #fee500;
@@ -25,17 +25,17 @@
     --naver: #03c75a;
 
     /* 따뜻한 느낌의 부드러운 브라운 그림자 */
-    --shadow-sm: 0 1px 3px rgba(30, 34, 54, 0.08), 0 1px 2px rgba(30, 34, 54, 0.05);
-    --shadow-md: 0 4px 15px rgba(30, 34, 54, 0.08);
-    --shadow-lg: 0 10px 30px rgba(30, 34, 54, 0.12), 0 4px 12px rgba(30, 34, 54, 0.08);
+    --shadow-sm: 0 1px 3px rgba(139, 115, 85, 0.08), 0 1px 2px rgba(139, 115, 85, 0.05);
+    --shadow-md: 0 4px 15px rgba(139, 115, 85, 0.08);
+    --shadow-lg: 0 10px 30px rgba(139, 115, 85, 0.12), 0 4px 12px rgba(139, 115, 85, 0.08);
 
     --radius-md: 12px;
     --radius-lg: 16px;
     --radius-xl: 20px;
 
     /* 폰트 설정 */
-    --font-main: 'Pretendard Variable', Pretendard, 'Noto Sans KR', sans-serif;
-    --font-logo: 'Pretendard Variable', Pretendard, 'Noto Sans KR', sans-serif;
+    --font-main: 'Noto Sans KR', sans-serif;
+    --font-logo: 'Noto Sans KR', sans-serif;
 }
 
 html, body {

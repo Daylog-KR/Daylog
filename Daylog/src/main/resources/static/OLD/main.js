@@ -37,7 +37,7 @@ window.addEventListener('pageshow', function () {
         // 모바일 주소창 색상도 함께 전환
         try {
             var meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute('content', dark ? '#0d0e13' : '#505e7c');
+            if (meta) meta.setAttribute('content', dark ? '#171513' : '#9c6644');
         } catch (e) {}
         var btn = document.getElementById('btn-dark-toggle');
         if (btn) {
@@ -114,7 +114,7 @@ window.addEventListener('pageshow', function () {
             '.vf-more.show{display:flex;}' +
             '.vf-more .lo-spinner{width:22px;height:22px;border-width:2.5px;}' +
             '.vf-more .lo-text{font-size:0.82rem;}' +
-            '.vf-end{display:none;text-align:center;padding:18px 0 26px;font-size:0.8rem;color:var(--gray-500,#9ba1b5);}' +
+            '.vf-end{display:none;text-align:center;padding:18px 0 26px;font-size:0.8rem;color:var(--gray-500,#a99e90);}' +
             '@media (prefers-reduced-motion: reduce){.vf-more .lo-spinner{animation-duration:1.6s;}}';
         var st = document.createElement('style');
         st.id = 'vf-style';
@@ -603,17 +603,17 @@ window.addEventListener('pageshow', function () {
            ' .detail-modal-header .detail-edit-btn',
            ' .detail-modal-header .detail-trash-btn'],
           '{width:34px;height:34px;min-width:34px;padding:0;margin:0;border:none;border-radius:50%;' +
-          'background:rgba(36,31,27,.44);color:#f6f7fb;opacity:1;' +
+          'background:rgba(36,31,27,.44);color:#fdfbf7;opacity:1;' +
           'display:flex;align-items:center;justify-content:center;font-size:1.3rem;line-height:1;}'),
         g([' .detail-modal-header .close-modal:hover',
            ' .detail-modal-header .detail-edit-btn:hover',
            ' .detail-modal-header .detail-trash-btn:hover'],
-          '{background:rgba(36,31,27,.64);color:#f6f7fb;}'),
+          '{background:rgba(36,31,27,.64);color:#fdfbf7;}'),
 
         // ================= 무대(사진) =================
         //  height 는 첫 장의 비율에 맞춰 Daylog._fitDetailStage() 가 인라인으로 덮어쓴다.
         //  아래 값은 이미지 로드 전 잠깐 쓰이는 기본값 (레이아웃 점프 방지용).
-        s(' .dtl-stage', '{height:52dvh;min-height:0;background:#181a22;}'),
+        s(' .dtl-stage', '{height:52dvh;min-height:0;background:#241f1b;}'),
         s(' .dtl-stage.empty', '{height:23dvh;min-height:23dvh;background:var(--primary);}'),
         s(' .dtl-stage .detail-image-wrap', '{height:100%;border-radius:0;box-shadow:none;background:transparent;}'),
         s(' .dtl-stage .detail-image-wrap img', '{width:100%;height:100%;max-height:none;object-fit:cover;}'),
@@ -631,7 +631,7 @@ window.addEventListener('pageshow', function () {
         s(' .dtl-stage .carousel-dot',
           '{flex:1 1 auto;width:auto;height:3px;border-radius:2px;margin:0;box-shadow:none;' +
           'background:rgba(253,251,247,.36);}'),
-        s(' .dtl-stage .carousel-dot.active', '{background:#f6f7fb;transform:none;}'),
+        s(' .dtl-stage .carousel-dot.active', '{background:#fdfbf7;transform:none;}'),
 
         // ================= 내용 (:has() 없어도 적용되도록 스코프 밖) =================
         '.dtl{display:block;}',
@@ -677,7 +677,7 @@ window.addEventListener('pageshow', function () {
         '.lm-tile-img.no-fade{animation:none!important;}',   // [B][E] edit by smsong - #33 재등장 시 페이드 없음
         '.lm-tile-chip{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:3px;' +
         'font-size:0.66rem;font-weight:600;line-height:1;padding:5px 8px;border-radius:999px;' +
-        'background:rgba(36,31,27,.56);color:#f6f7fb;}',
+        'background:rgba(36,31,27,.56);color:#fdfbf7;}',
         '.lm-tile-chip.done{background:rgba(46,110,86,.82);}',
         '.lm-tile-title{font-size:0.86rem;font-weight:600;color:var(--gray-800);line-height:1.35;' +
         'overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}',
@@ -728,9 +728,9 @@ const TOKEN_KEY = 'accessToken';
 // SNS 기본 프로필 이미지 (회색 실루엣) — 외부 파일 없이 SVG 데이터 URI 사용
 const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
-    '<rect width="100" height="100" fill="#e8eaf2"/>' +
-    '<circle cx="50" cy="40" r="17" fill="#b0b6c6"/>' +
-    '<path d="M50 61c-17 0-29 11-29 27v12h58V88c0-16-12-27-29-27z" fill="#b0b6c6"/>' +
+    '<rect width="100" height="100" fill="#e7e0d6"/>' +
+    '<circle cx="50" cy="40" r="17" fill="#b9afa1"/>' +
+    '<path d="M50 61c-17 0-29 11-29 27v12h58V88c0-16-12-27-29-27z" fill="#b9afa1"/>' +
     '</svg>'
 );
 
@@ -1080,7 +1080,7 @@ const CHECKLIST_TYPES = {
     CAFE: { label: '카페', iconKey: 'coffee',  color: '#b06a4f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
     FOOD: { label: '식당', iconKey: 'food',    color: '#3f7fb0', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
     SPOT: { label: '장소', iconKey: 'pin',     color: '#5f9e6f', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } },
-    ETC:  { label: '기타', iconKey: 'sparkle', color: '#5a6076', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } }
+    ETC:  { label: '기타', iconKey: 'sparkle', color: '#7a756e', get emoji() { return icon(this.iconKey, 15, 'color:' + this.color + ';'); } }
 };
 function checklistType(t) { return CHECKLIST_TYPES[t] || CHECKLIST_TYPES.ETC; }
 function fmtDate(s) { return s ? String(s).substring(0, 10).replace(/-/g, '.') : ''; }
@@ -1178,7 +1178,7 @@ function openRoomMembers() {
         .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
         .then(function (room) { renderRoomMembers(room); })
         .catch(function (err) {
-            body.innerHTML = '<div class="perm-error" style="padding:16px;color:#7e8497;">멤버를 불러오지 못했습니다.</div>';
+            body.innerHTML = '<div class="perm-error" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>';
             console.error('[Daylog] 멤버 조회 실패:', err);
         });
 }
@@ -1326,8 +1326,8 @@ function showWelcomeModal() {
 //   · 파티클이 0이 되면 루프가 자동으로 멈춘다(평소 CPU 사용 0).
 //   · #welcome-fx 는 body 직속 position:fixed 라 디데이 폼을 내려도 축포는 끝까지 떨어진다.
 var WFX = (function () {
-    var COLORS = ['#647394', '#cad1e4', '#505e7c', '#dc7b93', '#e8b4b4', '#9aa0b6',
-                  '#dfe3ee', '#f2c14e', '#e07a5f', '#81b29a', '#d5dae6'];
+    var COLORS = ['#b08968', '#e6ccb2', '#9c6644', '#cf8b8b', '#e8b4b4', '#c9a27e',
+                  '#f0d9b5', '#f2c14e', '#e07a5f', '#81b29a', '#d1cbc1'];
     var MAX_PARTICLES = 2200;   // 연타 시 상한(넘으면 가장 오래된 것부터 제거)
     var GRAVITY = 980;          // px/s^2 — 중력
     var DRAG = 0.86;            // 공기저항(초당 감쇠율)
@@ -1595,7 +1595,7 @@ function openPermissionAdmin() {
             var msg = (err && err.message) ? err.message : '';
             body.innerHTML = '<div class="perm-empty">목록을 불러오지 못했습니다.' +
                 '<br><span style="font-size:0.78rem;color:#c0392b;">' + escapeHtml(msg) + '</span>' +
-                '<br><span style="font-size:0.76rem;color:#7e8497;line-height:1.5;">권한 API가 정상 응답하지 않습니다. 서버의 SecurityConfig에서 <b>/api/permissions/**</b> 가 인증 통과되는지, Permission 모듈이 배포됐는지 확인해 주십시오.</span></div>';
+                '<br><span style="font-size:0.76rem;color:#8a8178;line-height:1.5;">권한 API가 정상 응답하지 않습니다. 서버의 SecurityConfig에서 <b>/api/permissions/**</b> 가 인증 통과되는지, Permission 모듈이 배포됐는지 확인해 주십시오.</span></div>';
             console.error('[Daylog] 권한 목록 실패:', err);
         });
 }
@@ -4159,7 +4159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var _tlView = 'grid';   // [B][E] edit by smsong - #15 기본은 사진 그리드
     var _calYear = null, _calMonth = null; // month: 0-11
     // 추억 날짜 테두리 색상 (기기 저장, 로그아웃/재시작 후에도 유지)
-    var CAL_COLORS = ['#2e9e5b', '#3f7fb0', '#d05a4a', '#8a6fbf', '#e08a3c', '#d46a9a', '#647394', '#333333'];
+    var CAL_COLORS = ['#2e9e5b', '#3f7fb0', '#d05a4a', '#8a6fbf', '#e08a3c', '#d46a9a', '#b08968', '#333333'];
     var _calDateColor = (function () { try { return localStorage.getItem('daylog_cal_date_color') || '#2e9e5b'; } catch (e) { return '#2e9e5b'; } })();
     function _applyCalColor() {
         try { document.documentElement.style.setProperty('--cal-date-color', _calDateColor); } catch (e) {}
@@ -4290,7 +4290,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 var cover = coverUrlOf(items[0]);
                 var thumb = cover ? Daylog.thumbUrlOf(cover) : '';
                 if (thumb) cell += '<img class="cal-thumb" src="' + thumb + '" data-full="' + cover + '" alt="" decoding="sync" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)">';
-                else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#647394;') + '</span>';
+                else cell += '<span class="cal-nothumb">' + icon('book', 15, 'color:#b08968;') + '</span>';
                 if (items.length > 1) cell += '<span class="cal-count">+' + (items.length - 1) + '</span>';
             }
             cell += '</div>';
@@ -4482,7 +4482,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 markerHtml = '<div class="custom-marker' + nd + '"><img class="cm-photo" src="' + _thumb + '" data-full="' + _cover + '" onload="Daylog._thumbLoaded(this)" onerror="Daylog._thumbFallback(this)" alt="" decoding="async"></div>';
                 // [E] edit by smsong
             } else {
-                markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#647394;')}</div>`;
+                markerHtml = `<div class="marker-heart${nd}">${icon('book',26,'color:#b08968;')}</div>`;
             }
             // [B] edit by smsong - 마커 앵커를 '말풍선 아래 세모(꼬리) 끝'에 맞춰 실제 위치가 정확히 찍히도록 보정
             //  사진 마커: 56x56(사진46+패딩3*2+테두리2*2) 박스, 아래 세모 끝 ≈ (28, 62)
@@ -5206,7 +5206,7 @@ document.addEventListener('DOMContentLoaded', () => {
         withLoading(fetch(`${API_BASE_URL}/api/rooms/${encodeURIComponent(roomId)}/members`, { headers: authHeaders(true) })
             .then(handleResponse)
             .then(room => { Daylog.roomInfo = room; renderCouplePicker((room && room.members) || []); })
-            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#7e8497;">멤버를 불러오지 못했습니다.</div>'; console.error(err); }), '멤버를 불러오는 중...'); // [smsong] 로딩
+            .catch(err => { body.innerHTML = '<div class="perm-empty" style="padding:16px;color:#8a8178;">멤버를 불러오지 못했습니다.</div>'; console.error(err); }), '멤버를 불러오는 중...'); // [smsong] 로딩
     }
     function renderCouplePicker(members) {
         var body = document.getElementById('couple-pick-body');
@@ -6672,7 +6672,7 @@ function renderTrash(memories, comments, checklists, schedules) {
         html += '<div class="trash-group-title">추억 ' + memories.length + '</div>';
         memories.forEach(m => {
             const dateStr = m.createdAt ? m.createdAt.substring(0, 10).replace(/-/g, '.') : '';
-            const thumb = Daylog.lmThumbHtml(coverUrlOf(m), icon('book',22,'color:#647394;')); // [smsong] lazy 썸네일
+            const thumb = Daylog.lmThumbHtml(coverUrlOf(m), icon('book',22,'color:#b08968;')); // [smsong] lazy 썸네일
             html +=
                 '<div class="trash-row" data-kind="memory" data-id="' + m.id + '">' +
                 thumb +
@@ -6696,7 +6696,7 @@ function renderTrash(memories, comments, checklists, schedules) {
             const onTitle = c.memoryTitle ? ('"' + escapeHtml(c.memoryTitle) + '" 에 남긴 댓글') : '댓글';
             html +=
                 '<div class="trash-row" data-kind="comment" data-id="' + c.id + '">' +
-                '<div class="lm-thumb lm-thumb-empty">' + icon('comment',22,'color:#647394;') + '</div>' +
+                '<div class="lm-thumb lm-thumb-empty">' + icon('comment',22,'color:#b08968;') + '</div>' +
                 '<div class="lm-row-main">' +
                 '<div class="lm-row-date">' + onTitle + '</div>' +
                 '<div class="lm-row-text trash-comment-text">' + escapeHtml(c.content || '') + '</div>' +
@@ -6838,14 +6838,14 @@ function openMemberModal() {
         Daylog.roomInfo = room;
         renderMemberModal((room && room.members) || [], isCoupleRoom());
     }).catch(function () {
-        body.innerHTML = '<div style="padding:22px;text-align:center;color:#7e8497;">멤버를 불러오지 못했습니다.</div>';
+        body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버를 불러오지 못했습니다.</div>';
     }), '멤버를 불러오는 중...');
 }
 
 function renderMemberModal(members, isCouple) {
     const body = document.getElementById('member-modal-body');
     if (!body) return;
-    if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#7e8497;">멤버가 없습니다.</div>'; return; }
+    if (!members.length) { body.innerHTML = '<div style="padding:22px;text-align:center;color:#8a8178;">멤버가 없습니다.</div>'; return; }
     const mems = Daylog.memories || [];
     const cls = Daylog.checklists || [];
     body.innerHTML = '';
@@ -6858,7 +6858,7 @@ function renderMemberModal(members, isCouple) {
         const roleCls = role === 'OWNER' ? 'owner' : (role === 'MEMBER' ? 'member' : 'general');
         const avatar = m.profileURL
             ? `<img class="member-avatar-img" src="${m.profileURL}" alt="" onerror="this.style.display='none'">`
-            : icon('user', 26, 'color:#647394;');
+            : icon('user', 26, 'color:#b08968;');
         // [B] edit by smsong - 추억/가볼곳 개수만 표시 (댓글 제거)
         let counts = '';
         counts += `<button class="mm-count" data-act="mem" data-uid="${m.uid}"><b>${memCount}</b><span>추억</span></button>`;
@@ -6911,7 +6911,7 @@ function openCommentedListModal(title, entries) {
     titleEl.textContent = title;
     body.innerHTML = '';
     if (!entries.length) {
-        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#647394;') + '</span><p>작성한 댓글이 없습니다</p></div>';
+        body.innerHTML = '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>작성한 댓글이 없습니다</p></div>';
     } else {
         entries.forEach(function (e) {
             const kindLabel = (e.type === 'memory') ? '추억' : '체크리스트';
@@ -6920,7 +6920,7 @@ function openCommentedListModal(title, entries) {
             row.className = 'lm-row cmt-row';
             row.innerHTML =
                 '<div class="lm-row-main">' +
-                    '<div class="cmt-row-on">' + icon(e.type === 'memory' ? 'book' : 'bookmark', 13, 'color:#647394;') +
+                    '<div class="cmt-row-on">' + icon(e.type === 'memory' ? 'book' : 'bookmark', 13, 'color:#b08968;') +
                         " <b>" + kindLabel + "</b> · '" + escapeHtml(e.itemTitle || '') + "'</div>" +
                     '<div class="cmt-row-text">' + escapeHtml(e.content || '') + '</div>' +
                     (dateStr ? '<div class="lm-row-date">' + escapeHtml(dateStr) + '</div>' : '') +
@@ -6982,7 +6982,7 @@ function _lmTileEl(item, kind) {
 
     let chip = '', meta = '';
     if (kind === 'checklist') {
-        const m = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '', label: '체크리스트', color: '#647394' };
+        const m = (typeof checklistType === 'function') ? checklistType(item.type) : { emoji: '', label: '체크리스트', color: '#b08968' };
         chip = '<span class="lm-tile-chip' + (item.visited ? ' done' : '') + '">' +
                (item.visited ? icon('check', 11) + ' 다녀옴' : '예정') + '</span>';
         meta = escapeHtml([m.label, item.placeName || item.address || ''].filter(Boolean).join(' · '));
@@ -7082,7 +7082,7 @@ function _lmOpen(title, items, kind, emptyHtml) {
 
 function openMemoryListModal(title, items) {
     _lmOpen(title, items, 'memory',
-        '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#647394;') + '</span><p>표시할 추억이 없습니다</p></div>');
+        '<div class="empty-state"><span class="es-icon">' + icon('book', 40, 'color:#b08968;') + '</span><p>표시할 추억이 없습니다</p></div>');
 }
 
 // 유저별 체크리스트 목록 모달 (추억 목록과 동일한 그리드, 클릭 시 가볼곳 상세)
@@ -9609,7 +9609,7 @@ document.addEventListener('DOMContentLoaded', () => {
             '.selecting .trash-row.picked::before{background:var(--primary);border-color:var(--primary);}',
             '.cw-bar{position:fixed;left:0;right:0;bottom:0;z-index:2650;display:none;align-items:center;gap:10px;' +
             'padding:12px 18px calc(env(safe-area-inset-bottom) + 12px);background:var(--white);' +
-            'box-shadow:0 -6px 22px rgba(30, 34, 54,.14);}',
+            'box-shadow:0 -6px 22px rgba(139,115,85,.14);}',
             '.cw-bar.show{display:flex;}',
             '.cw-bar-all{border:1px solid var(--gray-200);background:transparent;border-radius:10px;padding:9px 12px;' +
             'font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
@@ -9757,45 +9757,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 'display:flex;align-items:flex-end;justify-content:center;animation:moFade .18s ease;}' +
             '@media (min-width:600px){#mo-overlay{align-items:center;}}' +
             '#mo-card{width:100%;max-width:520px;max-height:86dvh;display:flex;flex-direction:column;' +
-                'background:var(--white,#ffffff);border-radius:22px 22px 0 0;overflow:hidden;' +
+                'background:var(--white,#fffdf9);border-radius:22px 22px 0 0;overflow:hidden;' +
                 'animation:moUp .26s cubic-bezier(.2,.8,.3,1);}' +
             '@media (min-width:600px){#mo-card{border-radius:22px;}}' +
             '.mo-head{display:flex;align-items:center;gap:10px;padding:16px 18px 13px;' +
-                'border-bottom:1px solid var(--gray-100,#f1f3f9);}' +
-            '.mo-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#2a2e3c);}' +
-            '.mo-head .mo-date{font-size:0.8rem;color:var(--gray-500,#8b90a4);font-weight:600;}' +
+                'border-bottom:1px solid var(--gray-100,#f1ece4);}' +
+            '.mo-head h3{margin:0;font-size:1.02rem;font-weight:700;color:var(--gray-800,#3a3128);}' +
+            '.mo-head .mo-date{font-size:0.8rem;color:var(--gray-500,#9a8f82);font-weight:600;}' +
             '.mo-x{margin-left:auto;border:none;background:transparent;font-size:1.5rem;line-height:1;' +
-                'color:var(--gray-400,#9ba1b5);cursor:pointer;padding:0 4px;}' +
-            '.mo-hint{padding:10px 18px 0;font-size:0.78rem;color:var(--gray-500,#8b90a4);line-height:1.5;}' +
+                'color:var(--gray-400,#a99e90);cursor:pointer;padding:0 4px;}' +
+            '.mo-hint{padding:10px 18px 0;font-size:0.78rem;color:var(--gray-500,#9a8f82);line-height:1.5;}' +
             '#mo-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 14px 6px;' +
                 'list-style:none;margin:0;}' +
             '.mo-row{display:flex;align-items:center;gap:11px;padding:9px 10px;margin-bottom:8px;' +
-                'background:var(--white,#fff);border:1px solid var(--gray-200,#e8eaf2);border-radius:14px;' +
+                'background:var(--white,#fff);border:1px solid var(--gray-200,#e8e0d6);border-radius:14px;' +
                 'touch-action:none;user-select:none;-webkit-user-select:none;}' +
-            '.mo-row.dragging{opacity:.9;border-color:var(--primary,#647394);' +
+            '.mo-row.dragging{opacity:.9;border-color:var(--primary,#b08968);' +
                 'box-shadow:0 10px 24px rgba(0,0,0,.16);transform:scale(1.01);}' +
             '.mo-no{flex:none;width:20px;text-align:center;font-size:0.76rem;font-weight:800;' +
-                'color:var(--primary-dark,#5b6480);}' +
+                'color:var(--primary-dark,#7f5539);}' +
             '.mo-thumb{flex:none;width:44px;height:44px;border-radius:10px;overflow:hidden;' +
-                'background:var(--gray-100,#f1f3f9);position:relative;}' +
+                'background:var(--gray-100,#f1ece4);position:relative;}' +
             '.mo-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}' +
             '.mo-body{flex:1;min-width:0;}' +
-            '.mo-title{font-size:0.9rem;font-weight:700;color:var(--gray-800,#2a2e3c);' +
+            '.mo-title{font-size:0.9rem;font-weight:700;color:var(--gray-800,#3a3128);' +
                 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-            '.mo-sub{font-size:0.76rem;color:var(--gray-500,#8b90a4);margin-top:2px;' +
+            '.mo-sub{font-size:0.76rem;color:var(--gray-500,#9a8f82);margin-top:2px;' +
                 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
             '.mo-moves{display:flex;flex-direction:column;gap:2px;flex:none;}' +
-            '.mo-mv{border:none;background:transparent;color:var(--gray-400,#9ba1b5);cursor:pointer;' +
+            '.mo-mv{border:none;background:transparent;color:var(--gray-400,#a99e90);cursor:pointer;' +
                 'padding:1px 4px;line-height:1;}' +
             '.mo-mv:disabled{opacity:.28;cursor:default;}' +
-            '.mo-grip{flex:none;color:var(--gray-400,#9ba1b5);cursor:grab;padding:6px 2px;touch-action:none;}' +
+            '.mo-grip{flex:none;color:var(--gray-400,#a99e90);cursor:grab;padding:6px 2px;touch-action:none;}' +
             '.mo-grip:active{cursor:grabbing;}' +
             '.mo-foot{display:flex;gap:10px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));' +
-                'border-top:1px solid var(--gray-100,#f1f3f9);}' +
+                'border-top:1px solid var(--gray-100,#f1ece4);}' +
             '.mo-btn{flex:1;border:none;border-radius:13px;padding:13px;font-family:inherit;' +
                 'font-size:0.94rem;font-weight:700;cursor:pointer;}' +
-            '.mo-btn.ghost{background:var(--gray-100,#f1f3f9);color:var(--gray-600,#565c70);}' +
-            '.mo-btn.primary{background:var(--primary,#647394);color:#fff;}' +
+            '.mo-btn.ghost{background:var(--gray-100,#f1ece4);color:var(--gray-600,#6f645a);}' +
+            '.mo-btn.primary{background:var(--primary,#b08968);color:#fff;}' +
             '.mo-btn:disabled{opacity:.6;cursor:default;}' +
             '@keyframes moFade{from{opacity:0}to{opacity:1}}' +
             '@keyframes moUp{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}';

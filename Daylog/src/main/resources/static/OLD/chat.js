@@ -5,7 +5,7 @@
 //    → '읽은 수'로 바꾸려면 아래 COUNT_MODE 를 'read' 로만 바꾸면 됨(서버 변경 불필요).
 (function () {
     'use strict';
-    try { console.log('%c[Daylog chat.js] v1.1.8 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#647394;font-weight:bold'); } catch (e) {}
+    try { console.log('%c[Daylog chat.js] v1.1.8 loaded (답장=왼쪽스와이프, 패널닫기=왼쪽가장자리→오른쪽)', 'color:#b08968;font-weight:bold'); } catch (e) {}
 
     var API = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_BASE) || '';
     var COUNT_MODE = 'unread'; // 'unread'(카톡 기본) | 'read'

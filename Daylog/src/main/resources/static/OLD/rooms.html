@@ -61,18 +61,17 @@
     <!-- [E] edit by smsong -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#f6f7fb">
+    <meta name="theme-color" content="#fdfbf7">
     <title>Daylog — 방 선택</title>
     <!-- [smsong] PWA 매니페스트/아이콘 연결 -->
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="../icons/OLD/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../icons/OLD/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Daylog">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
     <link rel="stylesheet" href="rooms.css?v=1.0.17">
 </head>
 <body>
@@ -80,7 +79,7 @@
     <header class="rooms-header">
         <div class="brand">
             <div class="brand-logo">
-                <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#ffffff" stroke="#647394" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#647394" stroke-width="2.2"/><circle cx="19.5" cy="16" r="1.5" fill="#647394"/><circle cx="19.5" cy="24" r="1.5" fill="#647394"/><circle cx="19.5" cy="32" r="1.5" fill="#647394"/><circle cx="19.5" cy="40" r="1.5" fill="#647394"/><circle cx="19.5" cy="48" r="1.5" fill="#647394"/><g stroke="#cad1e4" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="20" x2="40" y2="20"/><line x1="29" y1="27" x2="46" y2="27"/><line x1="29" y1="34" x2="42" y2="34"/><line x1="29" y1="41" x2="46" y2="41"/><line x1="29" y1="48" x2="44" y2="48"/></g><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#505e7c"/></svg>
+                <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#fffdf9" stroke="#b08968" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#b08968" stroke-width="2.2"/><circle cx="19.5" cy="16" r="1.5" fill="#b08968"/><circle cx="19.5" cy="24" r="1.5" fill="#b08968"/><circle cx="19.5" cy="32" r="1.5" fill="#b08968"/><circle cx="19.5" cy="40" r="1.5" fill="#b08968"/><circle cx="19.5" cy="48" r="1.5" fill="#b08968"/><g stroke="#e6ccb2" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="20" x2="40" y2="20"/><line x1="29" y1="27" x2="46" y2="27"/><line x1="29" y1="34" x2="42" y2="34"/><line x1="29" y1="41" x2="46" y2="41"/><line x1="29" y1="48" x2="44" y2="48"/></g><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#9c6644"/></svg>
             </div>
             <div class="brand-text">
                 <div class="brand-name">Daylog</div>
@@ -336,7 +335,7 @@
 <div id="nickname-modal" class="room-modal hidden">
     <div class="room-modal-card">
         <div class="nickname-logo">
-            <svg width="44" height="44" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#ffffff" stroke="#647394" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#647394" stroke-width="2.2"/><circle cx="19.5" cy="16" r="1.5" fill="#647394"/><circle cx="19.5" cy="24" r="1.5" fill="#647394"/><circle cx="19.5" cy="32" r="1.5" fill="#647394"/><circle cx="19.5" cy="40" r="1.5" fill="#647394"/><circle cx="19.5" cy="48" r="1.5" fill="#647394"/><g stroke="#cad1e4" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="20" x2="40" y2="20"/><line x1="29" y1="27" x2="46" y2="27"/><line x1="29" y1="34" x2="42" y2="34"/><line x1="29" y1="41" x2="46" y2="41"/><line x1="29" y1="48" x2="44" y2="48"/></g><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#505e7c"/></svg>
+            <svg width="44" height="44" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="15" y="9" width="35" height="46" rx="6" fill="#fffdf9" stroke="#b08968" stroke-width="2.6"/><line x1="24" y1="9" x2="24" y2="55" stroke="#b08968" stroke-width="2.2"/><circle cx="19.5" cy="16" r="1.5" fill="#b08968"/><circle cx="19.5" cy="24" r="1.5" fill="#b08968"/><circle cx="19.5" cy="32" r="1.5" fill="#b08968"/><circle cx="19.5" cy="40" r="1.5" fill="#b08968"/><circle cx="19.5" cy="48" r="1.5" fill="#b08968"/><g stroke="#e6ccb2" stroke-width="2.3" stroke-linecap="round"><line x1="29" y1="20" x2="40" y2="20"/><line x1="29" y1="27" x2="46" y2="27"/><line x1="29" y1="34" x2="42" y2="34"/><line x1="29" y1="41" x2="46" y2="41"/><line x1="29" y1="48" x2="44" y2="48"/></g><path d="M43 9h6v13l-3-2.4-3 2.4z" fill="#9c6644"/></svg>
         </div>
         <div class="room-modal-title" style="text-align:center;">닉네임을 설정해주세요</div>
         <div class="room-modal-desc" style="text-align:center;">프로필에서 언제든 변경할 수 있어요.</div>

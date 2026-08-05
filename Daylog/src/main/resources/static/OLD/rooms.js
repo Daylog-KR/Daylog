@@ -1,0 +1,1688 @@
+// =====================================================
+// Daylog — 방 목록 (셋로그 스타일)
+// 로그인 후 진입: 방 목록 → 방 입장 → main.html
+// 방은 초대 코드로 멤버가 모여, 그 방 멤버끼리만 추억/가볼곳 공유
+// =====================================================
+
+const CFG = window.APP_CONFIG || {};
+const API_BASE = (CFG && CFG.BACKEND_BASE) || 'http://localhost:8086';
+const TOKEN_KEY = 'accessToken';
+
+// 로그인 관련 로컬스토리지 키 (일괄 정리용)
+const AUTH_KEYS = ['accessToken', 'currentUser', 'auth', 'selectedRoomId', 'selectedRoomName', 'selectedRoomType', 'selectedRoomOwnerUid',
+    'daylog_last_room']; // [B] edit by smsong - #10 로그아웃하면 마지막 방 기록도 함께 지운다(재로그인 시 방 목록으로) [E]
+
+// ==========================================================================
+// [B] edit by smsong - #10 마지막 방 자동 입장
+//
+//  · 로그인이 유지된 채로 앱을 다시 열면 마지막에 들어갔던 방(main.html)으로 바로 이동한다.
+//  · 로그아웃 → 재로그인이면 AUTH_KEYS 정리에서 daylog_last_room 이 지워져 있으므로
+//    기록이 없어 자동 이동하지 않고 이 방 목록 화면이 그대로 뜬다.
+//  · 자동 이동은 '앱을 새로 연 세션당 1회'만 한다(sessionStorage).
+//    → main.html 에서 로고를 눌러 방 목록으로 돌아왔을 때 다시 튕겨 나가는 것을 막는다.
+//
+//  ┌──────────────────────────────────────────────────────────────────────┐
+//  │ ★ 켜기 / 끄기                                                        │
+//  │                                                                      │
+//  │  [방법 1] 아래 상수를 바꾼다 (배포 필요)                              │
+//  │      const AUTO_ENTER_LAST_ROOM = true;   // false → 항상 방 목록      │
+//  │                                                                      │
+//  │  [방법 2] 배포 없이 기기에서 즉시 (브라우저 콘솔 / 설정 메뉴에서 호출) │
+//  │      localStorage.setItem('daylog_auto_enter_room', '0');  // 끄기     │
+//  │      localStorage.setItem('daylog_auto_enter_room', '1');  // 켜기     │
+//  │      localStorage.removeItem('daylog_auto_enter_room');    // 기본값   │
+//  │    방법 2 가 방법 1 보다 우선한다.                                    │
+//  └──────────────────────────────────────────────────────────────────────┘
+// ==========================================================================
+const AUTO_ENTER_LAST_ROOM = true;                 // ★ 기본값
+const AUTO_ENTER_KEY = 'daylog_auto_enter_room';   // '1' / '0' 로 기본값을 덮어씀
+const LAST_ROOM_KEY  = 'daylog_last_room';
+const AUTO_DONE_KEY  = 'daylog_auto_room_done';    // sessionStorage — 세션당 1회
+
+function autoEnterEnabled() {
+    try {
+        const v = localStorage.getItem(AUTO_ENTER_KEY);
+        if (v === '0') return false;
+        if (v === '1') return true;
+    } catch (e) {}
+    return AUTO_ENTER_LAST_ROOM;
+}
+
+// 마지막 방으로 이동했으면 true (이동 중이므로 방 목록을 그리지 않는다)
+function tryAutoEnterLastRoom() {
+    let ss = null;
+    try { ss = window.sessionStorage; } catch (e) {}
+    let already = false;
+    try { already = !!(ss && ss.getItem(AUTO_DONE_KEY)); } catch (e) {}
+    // 켜짐/꺼짐과 무관하게 이 세션의 '자동 입장 1회'를 여기서 소진한다.
+    //  → 설정을 중간에 켜도 지금 보고 있는 방 목록에서 갑자기 튕겨 나가지 않는다.
+    try { if (ss) ss.setItem(AUTO_DONE_KEY, '1'); } catch (e) {}
+    if (already) return false;      // 사용자가 스스로 방 목록으로 돌아온 것 → 다시 보내지 않는다
+    if (!autoEnterEnabled()) return false;
+
+    let raw = null;
+    try { raw = localStorage.getItem(LAST_ROOM_KEY); } catch (e) {}
+    if (!raw) return false;   // 로그아웃 후 재로그인 → 기록이 없으므로 여기서 멈춘다
+
+    let r = null;
+    try { r = JSON.parse(raw); } catch (e) {}
+    if (!r || !r.id) return false;
+
+    try {
+        localStorage.setItem('selectedRoomId', String(r.id));
+        localStorage.setItem('selectedRoomName', r.name || '');
+        localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
+        localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
+    } catch (e) { return false; }
+
+    try { showLoading('이동하는 중...'); } catch (e) {}
+    location.replace('main.html');   // replace → 뒤로가기로 이 화면에 되돌아와 다시 튕기지 않게
+    return true;
+}
+// [E] edit by smsong
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+
+function decodeJwt(token) {
+    try {
+        const part = token.split('.')[1];
+        const json = decodeURIComponent(
+            atob(part.replace(/-/g, '+').replace(/_/g, '/'))
+                .split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+        );
+        return JSON.parse(json);
+    } catch (e) { return null; }
+}
+
+function authHeaders(withJson) {
+    const h = {};
+    if (withJson) h['Content-Type'] = 'application/json';
+    const t = getToken();
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return h;
+}
+
+// [B] edit by smsong : 로그인 유지(슬라이딩 만료) — 만료 임박 시 서버에 갱신 요청해 새 토큰으로 교체.
+var _REFRESH_LEAD_MS = 5 * 60 * 1000;
+var _refreshing = null;
+var _expireTimer = null;
+function _tokenExpMs() { const p = decodeJwt(getToken()); return (p && p.exp) ? p.exp * 1000 : 0; }
+function refreshToken() {
+    if (_refreshing) return _refreshing;
+    const cur = getToken();
+    if (!cur) return Promise.resolve(false);
+    _refreshing = fetch(API_BASE + '/user/refresh', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + cur }
+    }).then(function (res) {
+        if (!res.ok) return false;
+        return res.json().then(function (data) {
+            const nt = data && (data.token || data.accessToken || data.jwt);
+            if (nt) {
+                localStorage.setItem(TOKEN_KEY, nt);
+                try { if (data.user) localStorage.setItem('currentUser', JSON.stringify(data.user)); } catch (_) {}
+                scheduleTokenRefresh();
+                return true;
+            }
+            return false;
+        });
+    }).catch(function () { return false; }).then(function (ok) { _refreshing = null; return ok; });
+    return _refreshing;
+}
+function ensureFreshToken() {
+    const t = getToken();
+    if (!t) return Promise.resolve(false);
+    const exp = _tokenExpMs();
+    if (!exp) return Promise.resolve(true);
+    const left = exp - Date.now();
+    if (left > _REFRESH_LEAD_MS) return Promise.resolve(true);
+    if (left <= 0) return Promise.resolve(false);
+    return refreshToken();
+}
+function scheduleTokenRefresh() {
+    if (_expireTimer) clearTimeout(_expireTimer);
+    const exp = _tokenExpMs();
+    if (!exp) return;
+    const left = exp - Date.now();
+    if (left <= 0) return;
+    const refreshAt = Math.max(left - _REFRESH_LEAD_MS, 0);
+    _expireTimer = setTimeout(function () { refreshToken(); }, Math.min(refreshAt, 2147483000));
+}
+// [E] edit by smsong
+
+// [B] edit by smsong - 권한 API(reject-seen/dismiss)는 방을 X-Room-Id 헤더로 구분
+function roomHeaders(roomId) {
+    const h = authHeaders(false);
+    if (roomId != null) h['X-Room-Id'] = String(roomId);
+    return h;
+}
+
+// =====================================================
+// ⭐ 무한 리다이렉트 차단의 핵심:
+//   로그인 화면으로 돌려보낼 때는 "항상" 토큰을 먼저 지운다.
+//   그래야 login.js 가 남아있는 토큰을 보고 다시 rooms 로 튕기지 않는다.
+//   (login → rooms → login → rooms ... 루프의 종료 조건 확보)
+// =====================================================
+// main.js 와 동일한 문구: 토큰 없음/만료 시 안내 후 로그인 화면으로.
+const AUTH_EXPIRED_MSG = '토큰이 만료되었거나 존재하지 않습니다. 다시 로그인해주십시오.';
+let __redirecting = false;
+function gotoLoginCleared(msg) {
+    if (__redirecting) return;      // 중복 호출/중복 alert 방지
+    __redirecting = true;
+    if (msg) alert(msg);            // 안내 메시지 (main.js 와 동일 패턴)
+    AUTH_KEYS.forEach(k => localStorage.removeItem(k)); // 토큰 제거 → login.js 되튕김 방지
+    location.replace('login.html');
+}
+
+// ===== 인증 가드 =====
+const token = getToken();
+const payload = decodeJwt(token);
+const expired = !!(payload && payload.exp && Date.now() >= payload.exp * 1000);
+const uid = payload && (payload.sub || payload.uid || payload.username || payload.userId);
+
+// 토큰 없음 / 디코드 실패 / 만료 / uid 추출 불가 → 토큰 정리 후 로그인으로
+const validSession = !!token && !!payload && !expired && !!uid;
+if (!validSession) {
+    gotoLoginCleared(AUTH_EXPIRED_MSG);
+}
+
+// [B][E] edit by smsong : 로그인 유지 — 유효 세션이면 자동 갱신 스케줄 + 앱 복귀 시 갱신
+if (validSession) {
+    scheduleTokenRefresh();
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        const p = decodeJwt(getToken());
+        const ok = !!(p && (!p.exp || Date.now() < p.exp * 1000));
+        if (ok) { ensureFreshToken(); scheduleTokenRefresh(); }
+    });
+}
+
+// ===== 엘리먼트 =====
+const listEl = document.getElementById('rooms-list');
+const emptyEl = document.getElementById('rooms-empty');
+const modalEl = document.getElementById('room-modal');
+const modalTitle = document.getElementById('room-modal-title');
+const modalDesc = document.getElementById('room-modal-desc');
+const modalInput = document.getElementById('room-modal-input');
+const modalOk = document.getElementById('room-modal-ok');
+const modalCancel = document.getElementById('room-modal-cancel');
+const pasteRow = document.getElementById('room-paste-row');   // [B] edit by smsong
+const pasteBtn = document.getElementById('room-modal-paste'); // [B] edit by smsong
+const typeRow = document.getElementById('room-type-row');
+// [B] edit by smsong - 방 코드 재생성 UI
+const codeRow = document.getElementById('room-code-row');
+const codeValueEl = document.getElementById('room-code-value');
+const codeRefreshBtn = document.getElementById('room-code-refresh');
+if (codeRefreshBtn) codeRefreshBtn.addEventListener('click', async () => {
+    if (!renameTarget || !renameTarget.id) return;
+    if (!confirm('방 코드를 새로 만들까요?\n기존 코드로는 더 이상 입장할 수 없어요.')) return;
+    codeRefreshBtn.disabled = true;
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${renameTarget.id}/code`, {
+            method: 'POST', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid })
+        });
+        if (!res.ok) throw new Error('fail');
+        const room = await res.json();
+        const newCode = room.inviteCode || '';
+        renameTarget.inviteCode = newCode;
+        if (codeValueEl) codeValueEl.textContent = newCode || '-';
+        showToast('새 코드를 만들었어요');
+        loadRooms(); // 목록의 복사 코드도 갱신
+    } catch (e) {
+        showToast('코드 재생성에 실패했어요');
+    } finally {
+        codeRefreshBtn.disabled = false;
+    }
+});
+const ddayRow = document.getElementById('room-dday-row');
+const ddayInput = document.getElementById('room-dday-input');
+// [smsong] 상단 탭
+const tabMemberEl = document.getElementById('tab-member'); // 내가 속한 방
+const tabOwnerEl = document.getElementById('tab-owner');   // 내가 방장인 방
+const tabPendingEl = document.getElementById('tab-pending'); // [smsong] 요청 대기중인 방
+const tabChatEl = document.getElementById('tab-chat'); // [B] edit by smsong - 채팅 탭
+const mainEl = document.querySelector('.rooms-main');
+
+// [B] edit by smsong - 코드 입장 미리보기 모달
+const previewModalEl = document.getElementById('preview-modal');
+const previewThumbEl = document.getElementById('preview-thumb');
+const previewNameEl = document.getElementById('preview-name');
+const previewTypeEl = document.getElementById('preview-type');
+const previewCountEl = document.getElementById('preview-count');
+const previewNoteEl = document.getElementById('preview-note');
+const previewOkBtn = document.getElementById('preview-ok');
+const previewCancelBtn = document.getElementById('preview-cancel');
+// 거절 안내 모달
+const rejectModalEl = document.getElementById('reject-modal');
+const rejectReasonEl = document.getElementById('reject-reason');
+const rejectOkBtn = document.getElementById('reject-ok');
+let previewRoom = null; // 미리보기 중인 방
+let previewCode = null; // 미리보기 중 입력한 초대 코드(요청 전송 시 사용)
+// [E] edit by smsong
+
+let modalMode = null; // 'create' | 'join' | 'rename'
+let selectedType = null; // [smsong] 방 생성 시 기본 미선택
+let currentView = 'member'; // [smsong] 'member'(내가 속한 방) | 'owner'(내가 방장인 방) | 'pending'(요청 대기중인 방)
+let myRooms = []; // [smsong] 내가 속한 방 원본(한 번 받아 탭별로 필터링)
+let myPendingRooms = []; // [B] edit by smsong - 요청 대기중/거절된 방 목록
+let renameTarget = null; // [smsong] 이름 수정 대상 방
+let selectedImageFile = null; // [smsong] 방 생성/수정 시 첨부한 대표 이미지
+
+function typeLabel(type) {
+    if (type === 'FRIEND') return { label: '친구', cls: 'friend' };
+    if (type === 'FAMILY') return { label: '가족', cls: 'family' };
+    if (type === 'ACQUAINTANCE') return { label: '지인', cls: 'acquaintance' }; // [B] edit by smsong
+    if (type === 'PERSONAL') return { label: '개인', cls: 'personal' };         // [B] edit by smsong - #5 개인
+    return { label: '커플', cls: 'couple' };
+}
+// [B] edit by smsong - #6 만난 날짜 행을 display 토글이 아닌 .open 클래스로 부드럽게 펼침/접힘
+function setDdayRowOpen(open) {
+    if (!ddayRow) return;
+    ddayRow.classList.toggle('open', !!open);
+    ddayRow.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (!open && ddayInput) { try { ddayInput.blur(); } catch (e) {} } // 접힐 때 iOS 날짜 피커가 남지 않도록
+}
+// [E] edit by smsong
+function updateTypeChips() {
+    document.querySelectorAll('.type-chip').forEach(ch => {
+        ch.classList.toggle('active', !!selectedType && ch.dataset.type === selectedType);
+    });
+    setDdayRowOpen(selectedType === 'COUPLE'); // [B] edit by smsong - #6
+}
+
+// ===== 유틸 =====
+// [B] edit by smsong - #43 방 썸네일 안전망 (main.js 의 Daylog._thumbFallback 과 같은 전략).
+//
+//  예전 onerror 는 `this.style.display='none'` 이었다. 한 번 실패하면 그 방 사진은
+//  새로고침 전까지 영영 안 보였다(= 사용자가 말한 '가끔 공백').
+//  이제는  소형 썸네일 → 원본 → 캐시버스트 1회 재시도 → 그래도 안 되면 타입별 자리표시자.
+//  또 브라우저 캐시에 이미 있어 load 이벤트가 안 뜨는 경우를 대비해 주기적으로 훑는다.
+function _roomThumbUrl(url) {
+    if (!url) return url;
+    var i = url.lastIndexOf('/');
+    return (i < 0) ? ('thumb_' + url) : (url.substring(0, i + 1) + 'thumb_' + url.substring(i + 1));
+}
+window.DaylogRoomImg = {
+    ok: function (img) {
+        if (!img) return;
+        img.style.display = '';
+        if (img.parentNode) img.parentNode.classList.remove('room-thumb-empty');
+    },
+    fail: function (img, cls) {
+        if (!img) return;
+        var full = img.getAttribute('data-full') || '';
+        // 1) 썸네일 실패 → 원본
+        if (full && img.getAttribute('data-fb') !== '1' && img.src !== full) {
+            img.setAttribute('data-fb', '1');
+            img.src = full;
+            return;
+        }
+        if (!img.complete) return;                 // 방금 src 를 바꾼 직후의 중복 호출
+        // 2) 원본도 실패 → 600ms 뒤 1회만 재시도 (일시적인 네트워크 오류 구제)
+        if (img.getAttribute('data-retry') !== '1') {
+            img.setAttribute('data-retry', '1');
+            var base = full || img.src;
+            setTimeout(function () {
+                img.src = base + (base.indexOf('?') < 0 ? '?' : '&') + '_r=' + Date.now();
+            }, 600);
+            return;
+        }
+        // 3) 끝내 실패 → 타입별 자리표시자
+        img.onerror = null;
+        img.style.display = 'none';
+        if (img.parentNode) img.parentNode.classList.add('room-thumb-empty', cls || '');
+    },
+    // 캐시된 이미지는 load 가 안 뜨는 경우가 있어, 이미 완료된 것들을 주기적으로 확인
+    sweep: function () {
+        var list;
+        try { list = document.querySelectorAll('.room-thumb img[data-full], .rchat-ava-thumb img[data-full]'); } catch (e) { return; }
+        for (var i = 0; i < list.length; i++) {
+            var im = list[i];
+            if (im.complete && im.naturalWidth > 0) window.DaylogRoomImg.ok(im);
+        }
+    }
+};
+(function () {
+    var kick = function () { try { window.DaylogRoomImg.sweep(); } catch (e) {} };
+    if (window.MutationObserver) {
+        var timer = null;
+        try {
+            new MutationObserver(function () {
+                clearTimeout(timer); timer = setTimeout(kick, 200);
+            }).observe(document.documentElement, { childList: true, subtree: true });
+        } catch (e) {}
+    }
+    setTimeout(kick, 300);
+    setTimeout(kick, 1200);
+    window.addEventListener('focus', kick);
+})();
+// [E] edit by smsong
+
+// [B] edit by smsong - 방/프로필 썸네일 클릭 → 이미지 크게보기 (chat.js 의 Daylog.viewImage 사용).
+//  카드/행 자체 클릭(입장/채팅열기)보다 우선하도록 stopPropagation. 이미지가 실제로 있을 때만.
+function _bindThumbZoom(scopeEl) {
+    if (!scopeEl) return;
+    scopeEl.querySelectorAll('.room-thumb img, .rchat-ava-thumb img').forEach(function (im) {
+        if (im.getAttribute('data-zoom') === '1') return; // 중복 바인딩 방지
+        im.setAttribute('data-zoom', '1');
+        im.style.cursor = 'zoom-in';
+        im.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var url = im.getAttribute('data-full') || im.getAttribute('src');
+            if (window.Daylog && typeof window.Daylog.viewImage === 'function') window.Daylog.viewImage(url, im);
+        });
+    });
+}
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ===== 전역 로딩 오버레이 (main 과 동일: 처리/이동 중 클릭 차단 · 중복 표시 방지) =====
+let _loadingCount = 0;
+function showLoading(msg) {
+    _loadingCount++;
+    const ov = document.getElementById('loading-overlay');
+    if (ov) {
+        const t = ov.querySelector('.lo-text');
+        if (t) t.textContent = msg || '처리 중입니다...';
+        ov.classList.add('show');
+        ov.setAttribute('aria-hidden', 'false');
+    }
+}
+function hideLoading() {
+    _loadingCount = Math.max(0, _loadingCount - 1);
+    if (_loadingCount === 0) {
+        const ov = document.getElementById('loading-overlay');
+        if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    }
+}
+
+// [B] edit by smsong - 뒤로가기(bfcache 복원) 시 로딩 오버레이가 켜진 채 되살아나 '영원히 로딩'되는 문제 해결.
+//  방 입장 시 showLoading()을 켠 채로 main.html 로 떠났다가, 브라우저 뒤로가기로 이 페이지가
+//  bfcache 에서 복원되면 오버레이가 그대로 남아 멈춰 보인다. → 복원 시점에 무조건 오버레이를 끈다.
+function _forceHideOverlay() {
+    _loadingCount = 0;
+    const ov = document.getElementById('loading-overlay');
+    if (ov) { ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true'); }
+    __redirecting = false; // 재진입 시 정상 동작하도록 리다이렉트 가드도 해제
+}
+window.addEventListener('pageshow', function () {
+    // e.persisted === true → bfcache 복원. (일반 로드 때도 안전하게 오버레이 정리)
+    _forceHideOverlay();
+});
+// [E] edit by smsong
+
+// [B] edit by smsong - 방 대표 이미지 픽커/미리보기/업로드
+const imgPickerRow = document.getElementById('room-img-row');
+const imgInput = document.getElementById('room-img-input');
+const imgPreview = document.getElementById('room-img-preview');
+const imgClearBtn = document.getElementById('room-img-clear');
+
+function resetRoomImagePicker(previewUrl) {
+    selectedImageFile = null;
+    if (imgInput) imgInput.value = '';
+    if (imgPreview) {
+        if (previewUrl) {
+            imgPreview.style.backgroundImage = `url('${previewUrl}')`;
+            imgPreview.classList.add('has-img');
+        } else {
+            imgPreview.style.backgroundImage = '';
+            imgPreview.classList.remove('has-img');
+        }
+    }
+    if (imgClearBtn) imgClearBtn.style.display = previewUrl ? 'inline-flex' : 'none';
+}
+if (imgInput) {
+    imgInput.addEventListener('change', () => {
+        const f = imgInput.files && imgInput.files[0];
+        if (!f) return;
+        selectedImageFile = f;
+        const url = URL.createObjectURL(f);
+        if (imgPreview) { imgPreview.style.backgroundImage = `url('${url}')`; imgPreview.classList.add('has-img'); }
+        if (imgClearBtn) imgClearBtn.style.display = 'inline-flex';
+    });
+}
+if (imgPreview) imgPreview.addEventListener('click', () => { if (imgInput) imgInput.click(); });
+if (imgClearBtn) imgClearBtn.addEventListener('click', () => resetRoomImagePicker(''));
+
+// [B] edit by smsong - 썸네일 회전 버그 근본 해결: 업로드 전에 EXIF 방향을 픽셀에 '구워서'
+//  똑바로 세운 JPEG 로 변환해 보낸다. (서버 썸네일 생성기가 EXIF 방향을 반영하지 못해
+//  회전돼 보이던 문제 → 애초에 방향 없는 정위치 이미지를 올리면 원본/썸네일 모두 정상)
+//  · createImageBitmap(file, {imageOrientation:'from-image'}) 이 EXIF 를 적용해 준다(안드로이드 크롬 지원).
+//  · 큰 사진은 최대 변에서 2048px 로 축소(용량↓). 실패/미지원 브라우저면 원본 그대로 업로드(안전).
+async function normalizeImageForUpload(file) {
+    try {
+        if (!file || !/^image\//.test(file.type)) return file;          // 이미지 아님
+        if (/gif|svg/i.test(file.type)) return file;                    // 애니메이션/벡터는 건드리지 않음
+        if (typeof createImageBitmap !== 'function' || typeof document.createElement('canvas').toBlob !== 'function') return file;
+
+        let bmp;
+        try {
+            bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+        } catch (e) {
+            bmp = await createImageBitmap(file); // 옵션 미지원 브라우저 → 방향 적용은 못하지만 진행
+        }
+
+        const MAX = 2048;
+        let w = bmp.width, h = bmp.height;
+        if (Math.max(w, h) > MAX) {
+            const s = MAX / Math.max(w, h);
+            w = Math.round(w * s); h = Math.round(h * s);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bmp, 0, 0, w, h);
+        if (bmp.close) { try { bmp.close(); } catch (e) {} }
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) return file;
+
+        const baseName = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg';
+        return new File([blob], baseName, { type: 'image/jpeg', lastModified: Date.now() });
+    } catch (e) {
+        return file; // 어떤 이유로든 실패하면 원본 그대로(업로드 자체는 막지 않음)
+    }
+}
+
+// 방 대표 이미지 업로드 (생성/이름수정 성공 후 호출) — 백엔드: POST /api/rooms/{id}/image (multipart, part명 'mediaData')
+async function uploadRoomImage(roomId, file) {
+    if (!roomId || !file) return;
+    try {
+        const upFile = await normalizeImageForUpload(file); // [B] edit by smsong - 방향 보정
+        const fd = new FormData();
+        fd.append('mediaData', upFile);
+        const res = await fetch(`${API_BASE}/api/rooms/${roomId}/image`, {
+            method: 'POST', headers: authHeaders(false), body: fd // FormData → Content-Type 자동
+        });
+        if (!res.ok) { showToast('방은 저장됐지만 이미지 업로드는 실패했어요'); }
+    } catch (e) { showToast('이미지 업로드 중 오류가 발생했어요'); }
+}
+// [E] edit by smsong
+
+// ===== 방 목록 로드 =====
+// 두 탭 모두 '내가 속한 방'(기존 엔드포인트) 하나만 호출하고,
+//  받은 목록을 탭에 따라 프론트에서 필터링한다. (전체 방 조회 안 함 → 데이터 정합성 유지)
+//   - 내가 속한 방  : 전부
+//   - 내가 방장인 방: owner === true 만
+async function loadRooms() {
+    if (!uid) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+    showLoading('방 목록을 불러오는 중...'); // [smsong] 로딩
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
+        // 서버가 토큰을 거부(401/403)하면 → 토큰 정리 후 로그인으로 (여기서 안 지우면 login 이 되튕김)
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('방 목록을 불러오지 못했습니다'); myRooms = []; renderCurrentView(); return; }
+        const rooms = await res.json();
+        myRooms = Array.isArray(rooms) ? rooms : [];
+        await loadPendingRooms(); // [B] edit by smsong - 요청 대기중/거절 방도 함께 갱신
+        renderCurrentView();
+        maybeShowEntryNotices(); // [B] edit by smsong - 거절/강퇴 안내 또는 입장 수락 안내 1회 표시
+        preloadChatBadge(); // [B] edit by smsong - 채팅 탭 안읽음 배지 미리 채우기
+    } catch (e) {
+        console.error(e);
+        showToast('서버에 연결하지 못했습니다');
+    } finally {
+        hideLoading(); // [smsong] 로딩 해제
+    }
+}
+
+// [B] edit by smsong - 요청 대기중/거절된 방 목록 로드
+async function loadPendingRooms() {
+    if (!uid) return;
+    showLoading('요청 현황을 불러오는 중...'); // [B] edit by smsong - #3 로딩
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(uid)}/pending`, { headers: authHeaders(true) });
+        if (!res.ok) { myPendingRooms = []; return; }
+        const list = await res.json();
+        myPendingRooms = Array.isArray(list) ? list : [];
+    } catch (e) {
+        console.error(e);
+        myPendingRooms = [];
+    } finally { hideLoading(); }
+}
+
+// 현재 탭에 맞춰 필터링 후 렌더
+// ===== [B] edit by smsong - 채팅 탭: 내 채팅방 대화목록 =====
+let _chatRoomsLoaded = false;
+function _chatTimeLabel(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    if (sameDay) {
+        var h = d.getHours(), m = d.getMinutes();
+        var ap = h < 12 ? '오전' : '오후'; var hh = h % 12; if (hh === 0) hh = 12;
+        return ap + ' ' + hh + ':' + (m < 10 ? '0' + m : m);
+    }
+    var oneDay = 24 * 60 * 60 * 1000;
+    var diff = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / oneDay);
+    if (diff === 1) return '어제';
+    if (diff < 7) return ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] + '요일';
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+}
+function _chatEsc(s) {
+    return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+async function loadChatRooms() {
+    const listEl2 = document.getElementById('rooms-chat-list');
+    const emptyEl2 = document.getElementById('rooms-chat-empty');
+    if (!listEl2) return;
+    if (!_chatRoomsLoaded) listEl2.innerHTML = '<div class="rooms-empty" style="display:block;padding-top:30px;">불러오는 중…</div>';
+    try {
+        const res = await fetch(`${API_BASE}/api/chat/rooms`, { headers: authHeaders(true) });
+        if (!res.ok) throw new Error(res.status);
+        const rooms = await res.json();
+        _chatRoomsLoaded = true;
+        renderChatRooms(Array.isArray(rooms) ? rooms : []);
+        // 채팅 탭 배지(총 안읽음)
+        let total = 0;
+        (rooms || []).forEach(r => { total += (r.unreadCount || 0); });
+        setChatTabBadge(total);
+    } catch (e) {
+        listEl2.innerHTML = '';
+        if (emptyEl2) { emptyEl2.textContent = '채팅을 불러오지 못했어요.'; emptyEl2.style.display = 'block'; }
+    }
+}
+// [B] edit by smsong - 카톡식 단체방 썸네일 합성(멤버 이미지 1~4)
+function _chatAvaComposite(imgs) {
+    const n = Math.min(imgs.length, 4);
+    let cells = '';
+    for (let i = 0; i < n; i++) {
+        const u = imgs[i];
+        cells += u
+            ? '<span class="rchat-cell"><img src="' + _chatEsc(u) + '" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'"></span>'
+            : '<span class="rchat-cell rchat-cell-ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5z"/></svg></span>';
+    }
+    return '<span class="rchat-ava rchat-grid rchat-grid-' + n + '">' + cells + '</span>';
+}
+function renderChatRooms(rooms) {
+    const listEl2 = document.getElementById('rooms-chat-list');
+    const emptyEl2 = document.getElementById('rooms-chat-empty');
+    if (!listEl2) return;
+    if (!rooms.length) {
+        listEl2.innerHTML = '';
+        if (emptyEl2) { emptyEl2.innerHTML = '아직 채팅이 없어요.<br>방에 들어가 첫 메시지를 남겨보세요.'; emptyEl2.style.display = 'block'; }
+        return;
+    }
+    if (emptyEl2) emptyEl2.style.display = 'none';
+    listEl2.innerHTML = rooms.map(r => {
+        const title = _chatEsc(r.title || '채팅');
+        const preview = r.lastMessage ? _chatEsc(r.lastMessage) : '아직 대화가 없어요';
+        const time = r.lastMessageAt ? _chatTimeLabel(r.lastMessageAt) : '';
+        const mc = (!r.direct && r.memberCount > 2) ? ('<span class="rchat-mc">' + r.memberCount + '</span>') : '';
+        const muteIcon = r.muted ? '<span class="rchat-mute"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span>' : '';
+        const unread = (r.unreadCount > 0) ? ('<span class="rchat-unread">' + (r.unreadCount > 99 ? '99+' : r.unreadCount) + '</span>') : '';
+        let ava;
+        // [B] edit by smsong - 카톡식 단체방 썸네일: 멤버 이미지 최대 4개 합성. 1:1/이미지 있으면 기존 단일.
+        if (!r.direct && Array.isArray(r.memberImages) && r.memberImages.length) {
+            ava = _chatAvaComposite(r.memberImages);
+        } else if (r.imageURL) {
+            ava = '<div class="rchat-ava rchat-ava-thumb"><img src="' + _chatEsc(r.imageURL) + '" data-full="' + _chatEsc(r.imageURL) + '" alt="" decoding="sync" referrerpolicy="no-referrer" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,\'\')"></div>';
+        } else {
+            ava = '<span class="rchat-ava rchat-ava-ph">' + _chatEsc((r.title || '?').trim().charAt(0) || '?') + '</span>';
+        }
+        return '<div class="rchat-item" data-room="' + r.roomId + '" data-name="' + title + '" data-type="' + _chatEsc(r.type || '') + '">' +
+            ava +
+            '<div class="rchat-body">' +
+                '<div class="rchat-toprow">' +
+                    '<span class="rchat-title">' + title + '</span>' + mc + muteIcon +
+                    '<span class="rchat-time">' + time + '</span>' +
+                '</div>' +
+                '<div class="rchat-botrow">' +
+                    '<span class="rchat-preview">' + preview + '</span>' + unread +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    // 클릭 → 페이지 이동 없이 이 자리에서 채팅 패널 열기
+    listEl2.querySelectorAll('.rchat-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const rid = el.getAttribute('data-room');
+            if (!rid) return;
+            if (window.Daylog && typeof window.Daylog.openChat === 'function') {
+                window.Daylog.openChat(rid); // rooms.html 에서 바로 해당 방 채팅 오픈
+            } else {
+                // chat.js 미로드 시 폴백: 기존처럼 방 입장 후 main 에서 열기
+                const rname = el.getAttribute('data-name') || '';
+                const rtype = el.getAttribute('data-type') || 'COUPLE';
+                try { localStorage.setItem('openChatOnEnter', '1'); } catch (e) {}
+                enterRoom({ id: rid, name: rname, type: rtype });
+            }
+        });
+    });
+    _bindThumbZoom(listEl2); // [B] edit by smsong - 채팅 리스트 프로필/방 썸네일 클릭 확대
+}
+function setChatTabBadge(n) {
+    const b = document.getElementById('rooms-chat-badge');
+    if (!b) return;
+    if (n && n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.classList.remove('hidden'); }
+    else { b.classList.add('hidden'); }
+}
+// [B] edit by smsong - 채팅 패널을 닫으면(chat.js) 채팅 리스트/배지 갱신
+window.Daylog = window.Daylog || {};
+window.Daylog.onChatClosed = function () {
+    if (currentView === 'chat') loadChatRooms();
+    else preloadChatBadge();
+};
+// 채팅 탭에 들어가지 않아도 안읽음 총합 배지를 보여주기 위한 가벼운 프리로드
+async function preloadChatBadge() {
+    try {
+        const res = await fetch(`${API_BASE}/api/chat/rooms`, { headers: authHeaders(true) });
+        if (!res.ok) return;
+        const rooms = await res.json();
+        let total = 0;
+        (rooms || []).forEach(r => { total += (r.unreadCount || 0); });
+        setChatTabBadge(total);
+    } catch (e) {}
+}
+
+function renderCurrentView() {
+    // [B] edit by smsong - 채팅 탭: 방 목록 대신 채팅방 대화목록 표시
+    var chatList = document.getElementById('rooms-chat-list');
+    var chatEmpty = document.getElementById('rooms-chat-empty');
+    var isChat = (currentView === 'chat');
+    if (listEl) listEl.style.display = isChat ? 'none' : '';
+    if (emptyEl && isChat) emptyEl.style.display = 'none';
+    if (chatList) chatList.style.display = isChat ? 'flex' : 'none';
+    if (chatEmpty && !isChat) chatEmpty.style.display = 'none';
+    // 방 만들기/코드입장 액션은 채팅 탭에서 숨김
+    //  [B] edit by smsong - 기존 querySelector('.rooms-actions') 는 헤더 아이콘 그룹을 먼저 잡아
+    //   채팅 탭에서 알림/프로필 버튼이 사라지던 버그가 있었다 → id 로 정확히 버튼 행만 토글.
+    var actions = document.getElementById('rooms-create-actions');
+    if (actions) actions.style.display = isChat ? 'none' : 'flex';
+
+    if (isChat) {
+        loadChatRooms();
+    } else if (currentView === 'pending') {
+        renderPendingRooms(myPendingRooms); // [B] edit by smsong
+    } else {
+        const list = (currentView === 'owner') ? myRooms.filter(r => r.owner) : myRooms;
+        renderRooms(list);
+    }
+    if (mainEl) mainEl.scrollTop = 0; // [smsong] 렌더 직후 항상 맨 위에서 시작 (탭 전환 시 이전 스크롤 위치 캐시 방지)
+}
+
+// ===== 탭 전환 (속한 방 / 방장인 방 / 대기중 / 채팅) =====
+function setView(view) {
+    if (currentView === view) return;
+    currentView = view;
+    if (tabMemberEl)  tabMemberEl.classList.toggle('active', view === 'member');
+    if (tabOwnerEl)   tabOwnerEl.classList.toggle('active', view === 'owner');
+    if (tabPendingEl) tabPendingEl.classList.toggle('active', view === 'pending');
+    if (tabChatEl)    tabChatEl.classList.toggle('active', view === 'chat'); // [B] edit by smsong
+    renderCurrentView(); // 재요청 없이 캐시된 목록만 다시 필터 (스크롤 초기화 포함)
+}
+
+// ===== 렌더링 =====
+function renderRooms(rooms) {
+    listEl.innerHTML = '';
+    if (!rooms.length) {
+        emptyEl.innerHTML = (currentView === 'owner')
+            ? '내가 방장인 방이 없어요.<br>방을 만들어보세요.'
+            : '아직 참여한 방이 없어요.<br>방을 만들거나 초대 코드로 입장해보세요.';
+        emptyEl.style.display = 'block';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    rooms.forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'room-card';
+
+        const ownerBadge = r.owner ? '<span class="room-owner-badge">방장</span>' : '';
+        const t = typeLabel(r.type);
+        // [B] edit by smsong - 방 썸네일 (이미지 있으면 표시, 없으면 타입별 자리표시자)
+        const imgUrl = r.imageUrl || r.thumbnailUrl || '';
+        const thumbHtml = imgUrl
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
+            : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
+        // [E] edit by smsong
+        card.innerHTML = `
+            <div class="room-card-top">
+                ${thumbHtml}
+                <div class="room-card-body">
+                    <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> ${ownerBadge} <span class="room-type-badge ${t.cls}">${t.label}</span></div>
+                    <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
+                </div>
+            </div>
+            <div class="room-card-footer">
+                <div class="room-enter-hint">탭하여 입장 →</div>
+                <div class="room-card-actions"></div>
+            </div>
+        `;
+
+        // 카드 전체(버튼 영역 제외) 클릭 시 방 이동
+        card.addEventListener('click', () => enterRoom(r));
+
+        const actions = card.querySelector('.room-card-actions');
+        // 버튼 영역 클릭은 이동으로 전파되지 않도록 차단 (개별 버튼도 stopPropagation)
+        actions.addEventListener('click', (e) => e.stopPropagation());
+
+        // 코드 복사
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'room-icon-btn';
+        copyBtn.type = 'button';
+        copyBtn.title = '초대 코드 복사';
+        copyBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyCode(r.inviteCode); });
+        actions.appendChild(copyBtn);
+
+        // 방장이면 이름 수정 버튼
+        if (r.owner) {
+            const editBtn = document.createElement('button');
+            editBtn.className = 'room-icon-btn';
+            editBtn.type = 'button';
+            editBtn.title = '방 이름 수정';
+            editBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+            editBtn.addEventListener('click', (e) => { e.stopPropagation(); openRenameModal(r); });
+            actions.appendChild(editBtn);
+        }
+
+        // 방장이면 삭제 / 아니면 나가기 (둘 다 내가 속한 방이므로 나가기 유효)
+        const dangerBtn = document.createElement('button');
+        dangerBtn.className = 'room-icon-btn danger';
+        dangerBtn.type = 'button';
+        if (r.owner) {
+            dangerBtn.title = '방 삭제';
+            dangerBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+            dangerBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteRoom(r); });
+        } else {
+            dangerBtn.title = '방 나가기';
+            dangerBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+            dangerBtn.addEventListener('click', (e) => { e.stopPropagation(); leaveRoom(r); });
+        }
+        actions.appendChild(dangerBtn);
+
+        listEl.appendChild(card);
+    });
+    _bindThumbZoom(listEl); // [B] edit by smsong - 방 썸네일 클릭 확대
+}
+
+// ===== 요청 대기중/거절된 방 렌더링 =====
+// [B] edit by smsong - PENDING: 승인 대기중 배지 / REJECTED: 거절됨 배지 + 사유 + X(제거)
+function renderPendingRooms(rooms) {
+    listEl.innerHTML = '';
+    if (!rooms.length) {
+        emptyEl.innerHTML = '요청 대기중인 방이 없어요.<br>코드로 입장을 요청하면 여기에 표시돼요.';
+        emptyEl.style.display = 'block';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    rooms.forEach(r => {
+        const rejected = r.myStatus === 'REJECTED';
+        // [B] edit by smsong - 강퇴(kicked)로 인한 REJECTED 는 '내보내짐' 문구로 구분
+        const kicked = rejected && r.kicked === true;
+        const card = document.createElement('div');
+        card.className = 'room-card' + (rejected ? ' is-rejected' : '');
+
+        const t = typeLabel(r.type);
+        const imgUrl = r.imageUrl || r.thumbnailUrl || '';
+        const thumbHtml = imgUrl
+            ? `<div class="room-thumb"><img src="${esc(imgUrl)}" data-full="${esc(imgUrl)}" alt="" decoding="sync" onload="DaylogRoomImg.ok(this)" onerror="DaylogRoomImg.fail(this,'${t.cls}')"></div>`
+            : `<div class="room-thumb room-thumb-empty ${t.cls}"></div>`;
+        const statusBadge = rejected
+            ? (kicked
+                ? '<span class="room-status-badge rejected">내보내짐</span>'
+                : '<span class="room-status-badge rejected">거절됨</span>')
+            : '<span class="room-status-badge pending">승인 대기중</span>';
+        const reasonHtml = (rejected && r.rejectReason)
+            ? `<div class="room-reject-reason">${kicked ? '강퇴 사유' : '거절 사유'}: ${esc(r.rejectReason)}</div>`
+            : '';
+        const footerLeft = rejected
+            ? (kicked
+                ? '<div class="room-pending-hint">방장이 회원님을 내보냈어요</div>'
+                : '<div class="room-pending-hint">방장이 요청을 거절했어요</div>')
+            : '<div class="room-pending-hint">방장 승인을 기다리는 중…</div>';
+
+        card.innerHTML = `
+            <div class="room-card-top">
+                ${thumbHtml}
+                <div class="room-card-body">
+                    <div class="room-name"><span class="room-name-text">${esc(r.name)}</span> <span class="room-type-badge ${t.cls}">${t.label}</span> ${statusBadge}</div>
+                    <div class="room-meta">멤버 ${Number(r.memberCount) || 0}명</div>
+                    ${reasonHtml}
+                </div>
+            </div>
+            <div class="room-card-footer">
+                ${footerLeft}
+                <div class="room-card-actions"></div>
+            </div>
+        `;
+
+        const actions = card.querySelector('.room-card-actions');
+        actions.addEventListener('click', (e) => e.stopPropagation());
+
+        if (rejected) {
+            // 거절된 방: X 버튼으로 목록에서 제거
+            const xBtn = document.createElement('button');
+            xBtn.className = 'room-icon-btn danger';
+            xBtn.type = 'button';
+            xBtn.title = '목록에서 제거';
+            xBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            xBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissRejected(r); });
+            actions.appendChild(xBtn);
+        } else {
+            // 대기중: 요청 취소(제거) 버튼도 X 로 제공
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'room-icon-btn';
+            cancelBtn.type = 'button';
+            cancelBtn.title = '요청 취소';
+            cancelBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissRejected(r, true); });
+            actions.appendChild(cancelBtn);
+        }
+
+        listEl.appendChild(card);
+    });
+    _bindThumbZoom(listEl); // [B] edit by smsong - 방 썸네일 클릭 확대
+}
+
+// [B] edit by smsong - 거절된 방(또는 대기중 요청) 제거 → 서버 dismiss 후 목록 갱신
+async function dismissRejected(r, isPending) {
+    if (isPending && !confirm(`'${r.name}' 방 입장 요청을 취소할까요?`)) return;
+    showLoading('처리 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/permissions/dismiss`, {
+            method: 'POST', headers: roomHeaders(r.id)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        // 성공/실패 무관하게 목록에서 즉시 제거(낙관적) 후 재동기화
+        myPendingRooms = myPendingRooms.filter(x => x.id !== r.id);
+        renderCurrentView();
+        await loadPendingRooms();
+        renderCurrentView();
+        showToast(isPending ? '요청을 취소했어요' : '목록에서 제거했어요');
+    } catch (e) {
+        showToast('서버에 연결하지 못했습니다');
+    } finally { hideLoading(); }
+}
+
+// [B] edit by smsong - rooms 최초 진입 안내: 거절/강퇴가 우선, 없으면 '입장 수락됨' 안내.
+//  (한 화면에 모달 두 개가 겹치지 않도록 우선순위로 하나만 표시)
+function maybeShowEntryNotices() {
+    const rejected = (myPendingRooms || []).find(r => r.myStatus === 'REJECTED' && r.rejectSeen === false);
+    if (rejected) { openRejectNotice(rejected); return; }
+    const accepted = (myRooms || []).find(r => r.owner === false && r.acceptSeen === false);
+    if (accepted) openAcceptNotice(accepted);
+}
+
+// [B] edit by smsong - 방장이 입장을 수락한 방이 있으면 최초 1회 안내 (acceptSeen=false)
+let _acceptTarget = null;
+function openAcceptNotice(r) {
+    const modal = document.getElementById('accept-modal');
+    if (!modal) return;
+    _acceptTarget = r;
+    const nameEl = document.getElementById('accept-room-name');
+    if (nameEl) nameEl.textContent = r.name || '방';
+    modal.classList.remove('hidden');
+    // 서버에 '봤음' 기록 → 다음 진입부터는 안 뜸
+    markAcceptSeen(r.id);
+}
+async function markAcceptSeen(roomId) {
+    try {
+        await fetch(`${API_BASE}/api/rooms/${roomId}/accept-seen?uid=${encodeURIComponent(uid)}`,
+            { method: 'POST', headers: authHeaders(true) });
+        const t = (myRooms || []).find(x => x.id === roomId);
+        if (t) t.acceptSeen = true; // 로컬도 갱신(같은 세션 중복 표시 방지)
+    } catch (e) { /* 조용히 무시 */ }
+}
+function closeAcceptNotice() {
+    const modal = document.getElementById('accept-modal');
+    if (modal) modal.classList.add('hidden');
+    _acceptTarget = null;
+}
+
+// [B] edit by smsong - 거절된 방이 있으면 최초 1회 안내 모달 표시 (rejectSeen=false)
+function maybeShowRejectNotice() {
+    const target = (myPendingRooms || []).find(r => r.myStatus === 'REJECTED' && r.rejectSeen === false);
+    if (!target) return;
+    openRejectNotice(target);
+}
+function openRejectNotice(r) {
+    if (!rejectModalEl) return;
+    // [B] edit by smsong - 강퇴(kicked)면 '내보내짐' 문구로, 아니면 기존 '거절' 문구로 표시
+    const kicked = r.kicked === true;
+    const titleEl = document.getElementById('reject-title');
+    if (titleEl) titleEl.textContent = kicked ? '방에서 내보내졌습니다' : '입장 요청이 거절되었습니다';
+    if (rejectReasonEl) {
+        if (r.rejectReason) {
+            rejectReasonEl.innerHTML = '<span class="reject-reason-label">' +
+                (kicked ? '방장이 남긴 사유' : '방장이 남긴 거절 사유') + '</span>' + esc(r.rejectReason);
+            rejectReasonEl.style.display = 'block';
+        } else {
+            rejectReasonEl.style.display = 'none';
+        }
+    }
+    const descEl = document.getElementById('reject-desc');
+    if (descEl) descEl.textContent = kicked
+        ? `'${r.name}' 방에서 방장에 의해 내보내져 더 이상 참여할 수 없습니다.`
+        : `'${r.name}' 방의 입장 요청이 거절되어 이 방에서 제외되었습니다.`;
+    rejectModalEl.classList.remove('hidden');
+    // 서버에 '봤음' 기록 → 다음 진입부터는 안 뜸
+    markRejectSeen(r.id);
+}
+async function markRejectSeen(roomId) {
+    try {
+        await fetch(`${API_BASE}/api/permissions/reject-seen`, { method: 'POST', headers: roomHeaders(roomId) });
+        const t = (myPendingRooms || []).find(x => x.id === roomId);
+        if (t) t.rejectSeen = true; // 로컬도 갱신(같은 세션 중복 표시 방지)
+    } catch (e) { /* 조용히 무시 */ }
+}
+function closeRejectNotice() {
+    if (rejectModalEl) rejectModalEl.classList.add('hidden');
+}
+
+// ===== 방 입장 =====
+function enterRoom(r) {
+    localStorage.setItem('selectedRoomId', r.id);
+    localStorage.setItem('selectedRoomName', r.name || '');
+    localStorage.setItem('selectedRoomType', r.type || 'COUPLE');
+    localStorage.setItem('selectedRoomOwnerUid', r.ownerUid || '');
+    // [B] edit by smsong - #10 다음 실행 때 이 방으로 바로 들어가도록 기록
+    try {
+        localStorage.setItem(LAST_ROOM_KEY, JSON.stringify({
+            id: r.id, name: r.name || '', type: r.type || 'COUPLE', ownerUid: r.ownerUid || ''
+        }));
+    } catch (e) {}
+    // [E] edit by smsong
+    showLoading('이동하는 중...'); // main 과 동일한 로딩 폼
+    // 오버레이가 먼저 그려지도록 아주 짧게 지연 후 이동
+    setTimeout(() => { location.href = 'main.html'; }, 60);
+}
+
+// ===== 코드 복사 =====
+async function copyCode(code) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(code);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = code; document.body.appendChild(ta); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        showToast('초대 코드를 복사했어요');
+    } catch (e) { showToast('복사에 실패했습니다'); }
+}
+
+// ===== 모달 =====
+function openModal(mode) {
+    modalMode = mode;
+    if (mode === 'create') {
+        modalTitle.textContent = '방 만들기';
+        modalDesc.textContent = '방 이름과 종류를 정하세요. 만든 사람이 방장이 됩니다.';
+        modalInput.value = '';
+        modalInput.placeholder = '예: 우리의 추억';
+        modalInput.classList.remove('code');
+        modalInput.maxLength = 30;
+        typeRow.style.display = 'grid'; // [B] edit by smsong - #5 칩 5개 → 그리드 레이아웃
+        selectedType = null; // [smsong] 아무 타입도 선택되지 않은 상태로 시작
+        updateTypeChips();
+        if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 대표 이미지 첨부
+        resetRoomImagePicker('');
+        if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong - 붙여넣기는 코드 입장 전용
+    } else {
+        modalTitle.textContent = '코드로 입장';
+        modalDesc.textContent = '초대 코드를 입력하면 방을 확인하고 입장을 요청할 수 있어요.';
+        modalInput.value = '';
+        modalInput.placeholder = '초대 코드 6자리';
+        modalInput.classList.add('code');
+        modalInput.maxLength = 8;
+        typeRow.style.display = 'none';
+        setDdayRowOpen(false); // [B] edit by smsong - #6
+        if (imgPickerRow) imgPickerRow.style.display = 'none'; // [smsong] 입장 모드엔 이미지 없음
+        if (pasteRow) pasteRow.style.display = 'block'; // [B] edit by smsong - 코드 붙여넣기 노출
+    }
+    modalEl.classList.remove('hidden');
+    setTimeout(() => modalInput.focus(), 50);
+}
+
+// [smsong] 방 이름 수정 모달 (방장 전용)
+function openRenameModal(r) {
+    modalMode = 'rename';
+    renameTarget = r;
+    modalTitle.textContent = '방 이름 수정';
+    modalDesc.textContent = '방장만 이름을 바꿀 수 있어요.';
+    modalInput.value = r.name || '';
+    modalInput.placeholder = '방 이름';
+    modalInput.classList.remove('code');
+    modalInput.maxLength = 30;
+    typeRow.style.display = 'none';
+    setDdayRowOpen(false); // [B] edit by smsong - #6
+    if (imgPickerRow) imgPickerRow.style.display = 'flex'; // [smsong] 이름 수정 시 대표 이미지도 변경 가능
+    resetRoomImagePicker(r.imageUrl || r.thumbnailUrl || '');
+    if (codeRow) { codeRow.style.display = 'flex'; if (codeValueEl) codeValueEl.textContent = r.inviteCode || '-'; } // [B] edit by smsong - 방 코드 표시
+    if (pasteRow) pasteRow.style.display = 'none'; // [B] edit by smsong
+    modalEl.classList.remove('hidden');
+    setTimeout(() => { modalInput.focus(); modalInput.select(); }, 50);
+}
+
+function closeModal() {
+    modalEl.classList.add('hidden'); modalMode = null; renameTarget = null;
+    resetRoomImagePicker(''); // [smsong] 닫을 때 이미지 선택 초기화
+    if (codeRow) codeRow.style.display = 'none'; // [B] edit by smsong - 방 코드 행 숨김
+}
+
+// [B] edit by smsong - 클립보드의 복사한 코드를 입력창에 붙여넣기
+async function pasteCodeFromClipboard() {
+    try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = await navigator.clipboard.readText();
+            const code = String(text || '').trim().toUpperCase().replace(/\s+/g, '');
+            if (!code) { showToast('클립보드가 비어 있어요'); return; }
+            const max = modalInput.maxLength && modalInput.maxLength > 0 ? modalInput.maxLength : 8;
+            modalInput.value = code.slice(0, max);
+            modalInput.focus();
+            showToast('코드를 붙여넣었어요');
+        } else {
+            showToast('이 브라우저에서는 붙여넣기를 지원하지 않아요');
+        }
+    } catch (e) {
+        showToast('붙여넣기 권한이 없어요. 길게 눌러 붙여넣어 주세요');
+    }
+}
+
+async function submitModal() {
+    const val = (modalInput.value || '').trim();
+    if (!val) { showToast(modalMode === 'join' ? '초대 코드를 입력하세요' : '방 이름을 입력하세요'); return; }
+    if (modalMode === 'create' && !selectedType) { showToast('방 종류를 선택하세요'); return; }
+    modalOk.disabled = true;
+    try {
+        if (modalMode === 'create') await createRoom(val);
+        else if (modalMode === 'rename') await renameRoom(renameTarget, val);
+        else await joinRoom(val);
+    } finally { modalOk.disabled = false; }
+}
+
+// ===== 방 이름 수정 (방장) =====
+async function renameRoom(r, name) {
+    if (!r) { closeModal(); return; }
+    showLoading('저장하는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${r.id}/name`, {
+            method: 'PUT', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid, name: name })
+        });
+        if (res.status === 401) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (res.status === 403) { showToast('방장만 이름을 수정할 수 있습니다'); return; }
+        if (!res.ok) { showToast('이름을 수정하지 못했습니다'); return; }
+        if (selectedImageFile) await uploadRoomImage(r.id, selectedImageFile); // [smsong] 대표 이미지 변경
+        closeModal();
+        showToast('방 정보를 수정했어요');
+        await loadRooms();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
+}
+
+// ===== 방 생성 =====
+async function createRoom(name) {
+    showLoading('방을 만드는 중...');
+    try {
+        const body = { uid: uid, name: name, type: selectedType };
+        if (selectedType === 'COUPLE' && ddayInput && ddayInput.value) {
+            body.coupleSince = ddayInput.value; // 만난 날짜 → 방 디데이 기준일
+        }
+        const res = await fetch(`${API_BASE}/api/rooms`, {
+            method: 'POST', headers: authHeaders(true),
+            body: JSON.stringify(body)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('방을 만들지 못했습니다'); return; }
+        const room = await res.json();
+        if (selectedImageFile && room && room.id) await uploadRoomImage(room.id, selectedImageFile); // [smsong] 대표 이미지 첨부
+        closeModal();
+        showToast('방이 만들어졌어요');
+        await loadRooms(); // 목록에서 코드 확인/공유 후 입장
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
+}
+
+// ===== 코드로 입장 (1단계: 미리보기) =====
+// [B] edit by smsong - 코드로 바로 입장하지 않고, 어떤 방인지 미리보기 후 '입장 요청'을 보낸다.
+async function joinRoom(code) {
+    showLoading('방을 확인하는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/preview?code=${encodeURIComponent(code.toUpperCase())}`, {
+            headers: authHeaders(true)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (res.status === 404) { showToast('유효하지 않은 초대 코드입니다'); return; }
+        if (!res.ok) { showToast('방을 확인하지 못했습니다'); return; }
+        const room = await res.json();
+        previewCode = code.toUpperCase(); // [B] edit by smsong - 요청 전송 시 재사용
+        closeModal();
+        openPreviewModal(room); // 미리보기 폼 표시
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
+}
+
+// 미리보기 모달 열기 — 방 상태(myStatus)에 따라 안내/버튼 조정
+function openPreviewModal(room) {
+    previewRoom = room;
+    const t = typeLabel(room.type);
+    if (previewNameEl) previewNameEl.textContent = room.name || '이름 없는 방';
+    if (previewTypeEl) { previewTypeEl.textContent = t.label; previewTypeEl.className = 'room-type-badge ' + t.cls; }
+    if (previewCountEl) previewCountEl.textContent = `멤버 ${Number(room.memberCount) || 0}명`;
+    if (previewThumbEl) {
+        const imgUrl = room.imageUrl || room.thumbnailUrl || '';
+        if (imgUrl) {
+            previewThumbEl.className = 'preview-thumb';
+            previewThumbEl.style.backgroundImage = `url('${imgUrl}')`;
+        } else {
+            previewThumbEl.className = 'preview-thumb room-thumb-empty ' + t.cls;
+            previewThumbEl.style.backgroundImage = '';
+        }
+    }
+
+    let note = '', okText = '입장 요청 보내기', okDisabled = false;
+    switch (room.myStatus) {
+        case 'OWNER':
+            note = '내가 방장인 방이에요. 바로 입장할 수 있어요.'; okText = '입장하기'; break;
+        case 'MEMBER':
+            note = '이미 참여 중인 방이에요. 바로 입장할 수 있어요.'; okText = '입장하기'; break;
+        case 'PENDING':
+            note = '이미 입장 요청을 보낸 방이에요. 방장 승인을 기다리는 중이에요.'; okText = '확인'; okDisabled = false; break;
+        case 'REJECTED':
+            note = '이전에 거절된 방이에요. 다시 입장 요청을 보낼 수 있어요.'; okText = '다시 요청 보내기'; break;
+        default:
+            note = ''; okText = '입장 요청 보내기';
+    }
+    if (previewNoteEl) {
+        if (note) { previewNoteEl.textContent = note; previewNoteEl.style.display = 'block'; }
+        else previewNoteEl.style.display = 'none';
+    }
+    if (previewOkBtn) { previewOkBtn.textContent = okText; previewOkBtn.disabled = okDisabled; }
+    if (previewModalEl) previewModalEl.classList.remove('hidden');
+}
+function closePreviewModal() {
+    if (previewModalEl) previewModalEl.classList.add('hidden');
+    previewRoom = null;
+    previewCode = null;
+}
+
+// 미리보기 확인 → 상태별 동작 (멤버/방장이면 입장, 그 외엔 요청 전송)
+async function confirmPreview() {
+    const room = previewRoom;
+    if (!room) { closePreviewModal(); return; }
+    // 이미 멤버/방장이면 바로 입장
+    if (room.myStatus === 'OWNER' || room.myStatus === 'MEMBER') {
+        closePreviewModal();
+        enterRoom(room);
+        return;
+    }
+    // 이미 대기중이면 대기 탭으로 이동만
+    if (room.myStatus === 'PENDING') {
+        closePreviewModal();
+        await loadPendingRooms();
+        setView('pending');
+        renderCurrentView();
+        return;
+    }
+    // NONE / REJECTED → 입장 요청 전송
+    if (previewOkBtn) previewOkBtn.disabled = true;
+    showLoading('요청을 보내는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/join`, {
+            method: 'POST', headers: authHeaders(true),
+            body: JSON.stringify({ uid: uid, code: previewCode || room.inviteCode || '' })
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('요청을 보내지 못했습니다'); return; }
+        const result = await res.json();
+        closePreviewModal();
+        if (result && (result.myStatus === 'OWNER' || result.myStatus === 'MEMBER')) {
+            enterRoom(result); // 방장/이미 멤버였다면 바로 입장
+            return;
+        }
+        showToast('입장 요청을 보냈어요. 방장 승인을 기다려주세요');
+        await loadPendingRooms();
+        setView('pending');
+        renderCurrentView();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); if (previewOkBtn) previewOkBtn.disabled = false; }
+}
+
+// ===== 방 삭제 (방장) =====
+async function deleteRoom(r) {
+    if (!confirm(`'${r.name}' 방을 삭제할까요?\n방의 모든 멤버가 나가게 됩니다.`)) return;
+    showLoading('삭제하는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${r.id}?uid=${encodeURIComponent(uid)}`, {
+            method: 'DELETE', headers: authHeaders(true)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('삭제하지 못했습니다'); return; }
+        // 현재 보던 방을 삭제했다면 선택 해제
+        if (localStorage.getItem('selectedRoomId') === String(r.id)) {
+            localStorage.removeItem('selectedRoomId');
+            localStorage.removeItem('selectedRoomName');
+        }
+        showToast('방을 삭제했어요');
+        await loadRooms();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
+}
+
+// ===== 방 나가기 (멤버) =====
+async function leaveRoom(r) {
+    if (!confirm(`'${r.name}' 방에서 나갈까요?`)) return;
+    showLoading('나가는 중...');
+    try {
+        const res = await fetch(`${API_BASE}/api/rooms/${r.id}/leave?uid=${encodeURIComponent(uid)}`, {
+            method: 'POST', headers: authHeaders(true)
+        });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) { showToast('나가지 못했습니다'); return; }
+        if (localStorage.getItem('selectedRoomId') === String(r.id)) {
+            localStorage.removeItem('selectedRoomId');
+            localStorage.removeItem('selectedRoomName');
+        }
+        showToast('방에서 나왔어요');
+        await loadRooms();
+    } catch (e) { showToast('서버에 연결하지 못했습니다'); }
+    finally { hideLoading(); }
+}
+
+// ===== 이벤트 바인딩 =====
+if (tabMemberEl) tabMemberEl.addEventListener('click', () => setView('member'));
+if (tabOwnerEl)  tabOwnerEl.addEventListener('click', () => setView('owner'));
+if (tabPendingEl) tabPendingEl.addEventListener('click', () => setView('pending'));
+if (tabChatEl) tabChatEl.addEventListener('click', () => setView('chat')); // [B] edit by smsong
+// [B] edit by smsong - 미리보기/거절 모달 이벤트
+if (previewOkBtn) previewOkBtn.addEventListener('click', confirmPreview);
+if (previewCancelBtn) previewCancelBtn.addEventListener('click', closePreviewModal);
+if (previewModalEl) previewModalEl.addEventListener('click', (e) => { if (e.target === previewModalEl) closePreviewModal(); });
+if (rejectOkBtn) rejectOkBtn.addEventListener('click', closeRejectNotice);
+if (rejectModalEl) rejectModalEl.addEventListener('click', (e) => { if (e.target === rejectModalEl) closeRejectNotice(); });
+// [B] edit by smsong - 입장 수락 안내 모달: '지금 입장'(해당 방으로 이동) / '확인'(닫기) / 배경 탭(닫기)
+const acceptModalEl = document.getElementById('accept-modal');
+const acceptEnterBtn = document.getElementById('accept-enter');
+const acceptOkBtn = document.getElementById('accept-ok');
+if (acceptEnterBtn) acceptEnterBtn.addEventListener('click', () => {
+    const target = _acceptTarget;
+    closeAcceptNotice();
+    if (target) enterRoom(target);
+});
+if (acceptOkBtn) acceptOkBtn.addEventListener('click', closeAcceptNotice);
+if (acceptModalEl) acceptModalEl.addEventListener('click', (e) => { if (e.target === acceptModalEl) closeAcceptNotice(); });
+// [E] edit by smsong
+document.getElementById('btn-create-room').addEventListener('click', () => openModal('create'));
+document.getElementById('btn-join-room').addEventListener('click', () => openModal('join'));
+document.querySelectorAll('.type-chip').forEach(ch => {
+    ch.addEventListener('click', () => { selectedType = ch.dataset.type; updateTypeChips(); });
+});
+// [B] edit by smsong - 로그아웃은 프로필 패널 안 버튼으로 이동
+function doLogout() {
+    if (!confirm('로그아웃 하시겠어요?')) return;
+    // [B][E] edit by smsong : 서버의 이 기기 세션도 제거(기기 목록에서 사라지도록) 후 로컬 정리
+    var token = getToken();
+    var done = function () { AUTH_KEYS.forEach(k => localStorage.removeItem(k)); location.replace('login.html'); };
+    if (token) {
+        try {
+            fetch(API_BASE + '/user/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+                .then(done).catch(done);
+        } catch (_) { done(); }
+    } else { done(); }
+}
+const _btnProfileLogout = document.getElementById('btn-profile-logout');
+if (_btnProfileLogout) _btnProfileLogout.addEventListener('click', doLogout);
+// [E] edit by smsong
+modalOk.addEventListener('click', submitModal);
+modalCancel.addEventListener('click', closeModal);
+// [B] edit by smsong - 복사한 코드 붙여넣기
+if (pasteBtn) pasteBtn.addEventListener('click', pasteCodeFromClipboard);
+modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
+modalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitModal(); });
+
+// =====================================================
+// [B] edit by smsong - 내 프로필 (보기 / 수정 / 최초 닉네임 설정)
+//   프로필 수정은 방 화면(rooms.html)에서 가능하도록 이동.
+//   최초 진입(닉네임 없음) 시 main.html 이 아닌 이 화면에서 닉네임을 받는다.
+//   저장 API 는 main.html 과 동일: PUT /user (multipart: userData + mediaData)
+// =====================================================
+const DEFAULT_AVATAR_SVG =
+    '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+let me = null;                 // 현재 로그인 사용자 (GET /user/uid/{uid})
+let pePendingFile = null;      // 프로필 수정: 선택한 새 이미지
+let peRemovePhoto = false;     // 프로필 수정: 사진 제거 여부
+
+function _bustImg(url) {
+    if (!url) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_v=' + Date.now();
+}
+
+async function loadMe() {
+    showLoading('내 정보를 불러오는 중...'); // [B] edit by smsong - #3 로딩
+    try {
+        const res = await fetch(`${API_BASE}/user/uid/${encodeURIComponent(uid)}`, { headers: authHeaders(true) });
+        if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); return; }
+        if (!res.ok) return;
+        me = await res.json();
+        maybePromptNicknameRooms();
+    } catch (e) { /* 네트워크 오류 시 조용히 무시 (방 목록은 계속 사용 가능) */ }
+    finally { hideLoading(); }
+}
+
+// 닉네임이 없으면 최초 설정 모달 노출 (있으면 노출하지 않음)
+function maybePromptNicknameRooms() {
+    if (!me) return;
+    const nick = me.nickname;
+    const modal = document.getElementById('nickname-modal');
+    if (!modal) return;
+    if ((!nick || !String(nick).trim()) && modal.classList.contains('hidden')) {
+        const inp = document.getElementById('nickname-input');
+        if (inp) inp.value = '';
+        modal.classList.remove('hidden');
+        setTimeout(() => { if (inp) inp.focus(); }, 120);
+    }
+}
+
+// PUT /user (main.html saveUser 와 동일 계약). file 없으면 빈 파트로 mediaData 채워 백엔드 기존 이미지 유지
+async function saveUser(userObj, file) {
+    const fd = new FormData();
+    fd.append('userData', JSON.stringify(userObj));
+    if (file) fd.append('mediaData', file);
+    else fd.append('mediaData', new Blob([], { type: 'application/octet-stream' }), 'empty');
+    const res = await fetch(`${API_BASE}/user`, { method: 'PUT', headers: authHeaders(false), body: fd });
+    if (res.status === 401 || res.status === 403) { gotoLoginCleared(AUTH_EXPIRED_MSG); throw new Error('auth'); }
+    if (!res.ok) { let m = ''; try { m = await res.text(); } catch (e) {} throw new Error(m || ('저장 실패(' + res.status + ')')); }
+    try { return await res.json(); } catch (e) { return userObj; }
+}
+
+// ----- 프로필 보기 패널 -----
+function _setViewAvatar(url) {
+    const el = document.getElementById('profile-view-avatar');
+    if (!el) return;
+    if (url) { el.style.backgroundImage = "url('" + _bustImg(url) + "')"; el.innerHTML = ''; }
+    else { el.style.backgroundImage = 'none'; el.innerHTML = DEFAULT_AVATAR_SVG; }
+}
+// [B] edit by smsong - 소셜 로그인 배지 빌더 (프로필 보기/수정 화면 공용)
+var SOCIAL_ICON = {
+    kakao: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.7 2.6-.8 3 0 .2 0 .4.2.5.2 0 .4 0 .5-.1.4-.3 3-2 4-2.7.5.1 1 .1 1.4.1 5.5 0 10-3.6 10-8S17.5 3 12 3z"/></svg>',
+    naver: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3v8.4L9.6 3H3v18h6.8v-8.4L14.4 21H21V3z"/></svg>',
+    google: '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1C3.4 21.3 7.4 24 12 24z"/><path fill="#FBBC05" d="M5.4 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4V6.6H1.4C.5 8.2 0 10 0 12s.5 3.8 1.4 5.4l4-3z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.6l4 3C6.3 6.9 8.9 4.8 12 4.8z"/></svg>'
+};
+var SOCIAL_LABEL = { kakao: '카카오', naver: '네이버', google: '구글' };
+function applySocialBadge(el, provider) {
+    if (!el) return false;
+    var key = provider ? String(provider).toLowerCase() : '';
+    if (SOCIAL_ICON[key]) {
+        el.className = 'social-badge sb-' + key;
+        el.innerHTML = SOCIAL_ICON[key] + '<span>' + SOCIAL_LABEL[key] + ' 로그인</span>';
+        el.style.display = '';
+        return true;
+    }
+    el.style.display = 'none'; el.innerHTML = '';
+    return false;
+}
+
+// [B] edit by smsong - 수정 화면 히어로: 이름(님) + 소셜을 보기 화면과 동일하게 채움
+function _fillPeIdentity() {
+    var realEl = document.getElementById('pe-view-realname');
+    var socialEl = document.getElementById('pe-view-social');
+    var metaEl = document.getElementById('pe-view-meta');
+    var rn = (me && me.name && String(me.name).trim()) ? String(me.name).trim() : '';
+    if (realEl) { realEl.textContent = rn ? (rn + '님') : ''; }
+    var hasSocial = applySocialBadge(socialEl, me && me.provider);
+    if (metaEl) metaEl.style.display = hasSocial ? 'flex' : 'none';
+}
+
+function _fillProfileExtra() {
+    // [B] edit by smsong - #2 실제 이름 / 소셜 로그인 / 가입일
+    var realEl = document.getElementById('profile-view-realname');
+    var socialEl = document.getElementById('profile-view-social');
+    var joinEl = document.getElementById('profile-view-joindate');
+    var metaEl = document.getElementById('profile-view-meta');
+    if (realEl) {
+        var rn = (me && me.name && String(me.name).trim()) ? String(me.name).trim() : '';
+        realEl.textContent = rn ? (rn + ' 님') : '';
+        realEl.style.display = rn ? '' : 'none';
+    }
+    var any = applySocialBadge(socialEl, me && me.provider); // [B] edit by smsong - 공용 빌더로 대체
+    if (joinEl) {
+        var c = me && me.createdAt;
+        if (c) {
+            var d = new Date(c);
+            var s = isNaN(d.getTime()) ? String(c).substring(0, 10).replace(/-/g, '.') : (d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'));
+            joinEl.textContent = s + ' 가입'; joinEl.style.display = ''; any = true;
+        } else { joinEl.style.display = 'none'; joinEl.textContent = ''; }
+    }
+    if (metaEl) metaEl.style.display = any ? 'flex' : 'none';
+}
+
+function openProfileModal() {
+    const nameEl = document.getElementById('profile-view-name');
+    const nick = (me && me.nickname && String(me.nickname).trim()) ? me.nickname : '나';
+    if (nameEl) nameEl.textContent = nick;
+    // [B] edit by smsong - 닉네임 밑 'Daylog' 서브텍스트 제거
+    _setViewAvatar(me && me.profileURL);
+    _fillProfileExtra(); // [B] #2
+    const m = document.getElementById('profile-modal');
+    if (m) m.classList.remove('hidden');
+    // 최신 정보 반영을 위해 조용히 재조회
+    loadMe().then(() => { if (m && !m.classList.contains('hidden')) {
+        if (nameEl) nameEl.textContent = (me && me.nickname && String(me.nickname).trim()) ? me.nickname : '나';
+        _setViewAvatar(me && me.profileURL);
+        _fillProfileExtra(); // [B] #2
+    }});
+}
+function closeProfileModal() { const m = document.getElementById('profile-modal'); if (m) m.classList.add('hidden'); }
+
+// ----- 프로필 수정 폼 -----
+function _setPeAvatar(src, hasPhoto) {
+    const av = document.getElementById('pe-avatar');
+    if (av) { if (src) { av.style.backgroundImage = "url('" + src + "')"; av.innerHTML = ''; } else { av.style.backgroundImage = 'none'; av.innerHTML = DEFAULT_AVATAR_SVG; } }
+    const rm = document.getElementById('pe-remove-photo');
+    if (rm) rm.classList.toggle('hidden', !hasPhoto);
+}
+function openProfileEdit() {
+    if (!me) { showToast('사용자 정보를 불러오는 중입니다'); loadMe(); return; }
+    pePendingFile = null; peRemovePhoto = false;
+    const nick = document.getElementById('pe-nickname');
+    if (nick) nick.value = me.nickname || '';
+    _setPeAvatar(me.profileURL ? _bustImg(me.profileURL) : '', !!me.profileURL);
+    _fillPeIdentity(); // [B] edit by smsong - 이름(님)+소셜 표시 (보기 화면과 통일)
+    closeProfileModal();
+    const m = document.getElementById('profile-edit-modal');
+    if (m) m.classList.remove('hidden');
+}
+function closeProfileEdit() {
+    const m = document.getElementById('profile-edit-modal');
+    if (m) m.classList.add('hidden');
+    // [B] edit by smsong - 취소/저장 후 '바로 전 폼'인 프로필 보기로 복귀(폼이 통째로 닫히던 버그 수정)
+    openProfileModal();
+}
+// 수정 폼을 완전히 닫기(보기로 복귀 없이) — 저장 성공 등에서 필요시 사용
+function closeProfileEditFully() { const m = document.getElementById('profile-edit-modal'); if (m) m.classList.add('hidden'); }
+
+// 이벤트 바인딩
+const _btnProfile = document.getElementById('btn-profile');
+if (_btnProfile) _btnProfile.addEventListener('click', openProfileModal);
+const _profileCloseBtn = document.getElementById('profile-close');
+if (_profileCloseBtn) _profileCloseBtn.addEventListener('click', closeProfileModal);
+const _profileModalEl = document.getElementById('profile-modal');
+if (_profileModalEl) _profileModalEl.addEventListener('click', (e) => { if (e.target === _profileModalEl) closeProfileModal(); });
+const _btnOpenPe = document.getElementById('btn-open-profile-edit');
+if (_btnOpenPe) _btnOpenPe.addEventListener('click', openProfileEdit);
+// [B] edit by smsong - #6 다크모드 토글
+function _isDark() { try { return localStorage.getItem('daylog_theme') === 'dark'; } catch (e) { return false; } }
+function applyDarkToggle() {
+    var btn = document.getElementById('btn-dark-toggle');
+    var dark = _isDark();
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    if (btn) {
+        btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        btn.classList.toggle('on', dark); // CSS 스위치가 해/달 + 노브 슬라이드 처리
+    }
+}
+function toggleDark() {
+    var dark = !_isDark();
+    try { localStorage.setItem('daylog_theme', dark ? 'dark' : 'light'); } catch (e) {}
+    applyDarkToggle();
+}
+var _btnDark = document.getElementById('btn-dark-toggle');
+if (_btnDark) _btnDark.addEventListener('click', toggleDark);
+applyDarkToggle();
+const _peCancel = document.getElementById('pe-cancel');
+if (_peCancel) _peCancel.addEventListener('click', closeProfileEdit);
+const _peModalEl = document.getElementById('profile-edit-modal');
+if (_peModalEl) _peModalEl.addEventListener('click', (e) => { if (e.target === _peModalEl) closeProfileEdit(); });
+
+const _peWrap = document.getElementById('pe-avatar-wrap');
+const _peFile = document.getElementById('pe-file');
+if (_peWrap && _peFile) _peWrap.addEventListener('click', () => _peFile.click());
+if (_peFile) _peFile.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    _peFile.value = '';
+    if (!file) return;
+    pePendingFile = file; peRemovePhoto = false;
+    const reader = new FileReader();
+    reader.onload = (ev) => _setPeAvatar(ev.target.result, true);
+    reader.readAsDataURL(file);
+});
+const _peRemove = document.getElementById('pe-remove-photo');
+if (_peRemove) _peRemove.addEventListener('click', () => {
+    pePendingFile = null; peRemovePhoto = true;
+    _setPeAvatar('', false);
+    showToast('저장하면 사진이 제거됩니다');
+});
+
+const _peSave = document.getElementById('pe-save');
+if (_peSave) _peSave.addEventListener('click', async () => {
+    if (!me) { showToast('사용자 정보 조회 실패'); return; }
+    const nick = (document.getElementById('pe-nickname').value || '').trim();
+    if (!nick) { showToast('닉네임을 입력해주세요'); return; }
+    _peSave.disabled = true; const prev = _peSave.textContent; _peSave.textContent = '저장 중...';
+    showLoading('저장 중...');
+    try {
+        const payload = { uid: me.uid, id: me.id, nickname: nick };
+        if (!pePendingFile && peRemovePhoto) payload.profileURL = '';
+        const updated = await saveUser(payload, pePendingFile);
+        me = updated || Object.assign({}, me, payload);
+        if (peRemovePhoto) me.profileURL = '';
+        pePendingFile = null; peRemovePhoto = false;
+        showToast('프로필 저장 완료');
+        closeProfileEdit();
+    } catch (err) {
+        if (String(err && err.message) !== 'auth') showToast('저장 실패: ' + (err.message || '서버 오류'));
+    } finally {
+        _peSave.disabled = false; _peSave.textContent = prev; hideLoading();
+    }
+});
+
+// ----- 최초 닉네임 설정 -----
+async function submitNicknameFirst() {
+    const val = (document.getElementById('nickname-input').value || '').trim();
+    if (!val) { showToast('닉네임을 입력해주세요'); return; }
+    if (!me) { showToast('사용자 정보 조회 실패'); return; }
+    const btn = document.getElementById('nickname-ok');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    showLoading('설정 중...');
+    try {
+        const payload = { uid: me.uid, id: me.id, nickname: val };
+        const updated = await saveUser(payload, null);
+        me = updated || Object.assign({}, me, payload);
+        const modal = document.getElementById('nickname-modal');
+        if (modal) modal.classList.add('hidden');
+        showToast('닉네임 설정 완료');
+    } catch (err) {
+        if (String(err && err.message) !== 'auth') showToast('설정 실패: ' + (err.message || '서버 오류'));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '시작하기'; }
+        hideLoading();
+    }
+}
+const _nickOk = document.getElementById('nickname-ok');
+if (_nickOk) _nickOk.addEventListener('click', submitNicknameFirst);
+const _nickInput = document.getElementById('nickname-input');
+if (_nickInput) _nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitNicknameFirst(); });
+// [E] edit by smsong
+
+// [B] edit by smsong - #10 프로필 패널에 '마지막 방 자동 입장' 토글 스위치를 넣는다.
+//  · rooms.html 을 수정하지 않도록 알림 버튼(#btn-enable-push) 바로 아래에 JS 로 끼워 넣는다.
+//  · 마크업/클래스는 기존 알림 토글과 동일 → rooms.css 의 .setting-toggle 스타일을 그대로 쓴다.
+(function autoRoomToggle() {
+    function build() {
+        const push = document.getElementById('btn-enable-push');
+        if (!push || document.getElementById('btn-auto-room')) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'btn-auto-room';
+        btn.type = 'button';
+        btn.className = 'rm-btn setting-toggle';
+        btn.setAttribute('aria-pressed', 'false');
+        btn.innerHTML =
+            '<span class="st-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+            ' stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/>' +
+            '<line x1="15" y1="12" x2="3" y2="12"/></svg></span>' +
+            '<span class="st-label">마지막 방 자동 입장</span>' +
+            '<span class="ui-switch" aria-hidden="true"><span class="sw-knob">' +
+            '<span class="sw-on">ON</span><span class="sw-off">OFF</span></span></span>';
+
+        push.insertAdjacentElement('afterend', btn);   // 알림 버튼 바로 아래
+
+        const paint = () => {
+            const on = autoEnterEnabled();
+            btn.classList.toggle('on', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        btn.addEventListener('click', () => {
+            const next = !autoEnterEnabled();
+            try { localStorage.setItem(AUTO_ENTER_KEY, next ? '1' : '0'); } catch (e) {}
+            paint();
+            try {
+                showToast(next ? '다음 실행부터 마지막 방으로 바로 들어갑니다'
+                               : '항상 방 목록을 먼저 보여줍니다');
+            } catch (e) {}
+        });
+        paint();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+    else build();
+})();
+// [E] edit by smsong
+
+// ===== 시작 =====
+// 유효한 세션일 때만 로드. (이미 gotoLoginCleared() 로 이동 중이면 실행 안 함)
+// [B] edit by smsong - #10 로그인이 유지된 상태면 마지막 방으로 바로 이동, 아니면 방 목록을 그린다
+//  단, 채팅 알림으로 들어온 경우(chat=1)엔 마지막 방 자동 이동을 건너뛰고 방 목록에 머문다.
+//  (chat.js 가 이어서 해당 방 채팅 패널을 자동으로 연다)
+var __chatEntry = false;
+var __chatRoomId = null; // [B] edit by smsong - ?chat=<roomId> 로 특정 방 채팅 바로 열기(상세→채팅 복귀)
+try {
+    var __cv = new URLSearchParams(location.search || '').get('chat');
+    __chatEntry = (__cv === '1');
+    if (__cv && /^\d+$/.test(__cv)) { __chatRoomId = __cv; __chatEntry = true; }
+} catch (e) {}
+if (validSession) {
+    if (__chatEntry) {
+        loadRooms(); loadMe();
+        try { setView('chat'); } catch (e) {}   // 패널 닫으면 채팅 목록이 보이도록
+        // 특정 방으로 복귀한 경우 그 방 채팅 패널을 바로 연다
+        if (__chatRoomId) {
+            var __openTry = function (n) {
+                if (window.Daylog && typeof window.Daylog.openChat === 'function') { window.Daylog.openChat(__chatRoomId); return; }
+                if (n > 0) setTimeout(function () { __openTry(n - 1); }, 200); // chat.js 로드 대기
+            };
+            setTimeout(function () { __openTry(15); }, 300);
+        }
+        // URL 정리 (뒤로가기/새로고침 시 재오픈 방지)
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    } else if (!tryAutoEnterLastRoom()) {
+        loadRooms(); loadMe();
+    }
+}
+// [E] edit by smsong
