@@ -3,7 +3,7 @@
 <head>
     <!-- [B] edit by smsong - #6 다크모드: 렌더 전에 테마 적용(깜빡임 방지) -->
     <script>(function(){try{var t=localStorage.getItem("daylog_theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
-<script>(function(){try{var a=localStorage.getItem("daylog_accent");if(a)document.documentElement.setAttribute("data-accent",a);}catch(e){}})();</script>
+<script>(function(){try{var a=localStorage.getItem("daylog_accent");if(a){var r=document.documentElement;if(a.charAt(0)==="#"){r.setAttribute("data-accent","custom");r.style.setProperty("--primary",a);}else{r.setAttribute("data-accent",a);}}}catch(e){}})();</script>
     <!-- [B] edit by smsong - Android PWA 하단 시스템 내비게이션(제스처바) 대응. iOS 는 절대 건드리지 않음.
          env(safe-area-inset-*) 는 viewport-fit=cover 일 때만 실제 값을 주므로 Android 에서만 cover 를 붙이고,
          html.android-pwa 아래에서만 --safe-top / --safe-bottom 이 값을 갖게 한다.
@@ -361,7 +361,7 @@
 <script src="config.js?v=1.0.11"></script>
 <!-- [B][E] edit by smsong - #39 nav.js 누락 보완 (rooms 는 nav.js 기본 제공자가 모달을 처리한다) -->
 <script src="nav.js?v=1.0.0"></script>
-<script src="theme-accent.js?v=1.0.1"></script>
+<script src="theme-accent.js?v=1.0.2"></script>
 <script src="rooms.js?v=1.0.31"></script>
 <!-- [B] edit by smsong - 위치 트래커(백그라운드 DB 적재 전용 · UI 없음 · on/off 는 파일 내 ENABLED 상수) -->
 <script src="location-tracker.js?v=1.0.0"></script>
