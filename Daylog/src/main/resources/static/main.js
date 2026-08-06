@@ -5935,6 +5935,9 @@ function openLayerStack() {
     var L = [];
     var add = function (name, el, cond, close) { if (el && cond) L.push({ name: name, close: close }); };
 
+    var _acM = document.getElementById('accent-modal');
+    add('accent-modal', _acM, _acM && !_acM.classList.contains('hidden'), function () { _acM.classList.add('hidden'); });
+
     // [B][E] edit by smsong - #44 장소 사진 시트 (가장 위 레이어)
     if (Daylog.placeImages) { try { L = L.concat(Daylog.placeImages.layers() || []); } catch (e) {} }
 

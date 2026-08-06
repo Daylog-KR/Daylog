@@ -809,29 +809,55 @@ html, body {
 #profile-edit-modal .room-modal-actions .rm-btn.primary { box-shadow: 0 6px 18px rgba(176,137,104,0.32); }
 
 /* [B] edit by smsong - 기기별 테마 색상(포인트색) 오버라이드. localStorage('daylog_accent') */
-:root[data-accent="slate"]{ --primary:#647394; --primary-dark:#505e7c; --primary-light:#cad1e4; }
-:root[data-accent="slate"][data-theme="dark"]{ --primary:#9ba6c2; --primary-dark:#b7c0d6; --primary-light:#262a3c; }
-:root[data-accent="indigo"]{ --primary:#5a6cf0; --primary-dark:#4351d8; --primary-light:#dfe3fd; }
-:root[data-accent="indigo"][data-theme="dark"]{ --primary:#8a98ff; --primary-dark:#a9b4ff; --primary-light:#232744; }
-:root[data-accent="violet"]{ --primary:#7c5cff; --primary-dark:#6742ee; --primary-light:#e9e3ff; }
-:root[data-accent="violet"][data-theme="dark"]{ --primary:#a98bff; --primary-dark:#c0a9ff; --primary-light:#2a2247; }
-:root[data-accent="teal"]{ --primary:#13b183; --primary-dark:#0c9670; --primary-light:#d3f0e6; }
-:root[data-accent="teal"][data-theme="dark"]{ --primary:#38d6a6; --primary-dark:#63e2bd; --primary-light:#123028; }
-:root[data-accent="rose"]{ --primary:#e0658a; --primary-dark:#c64d72; --primary-light:#fbe0e8; }
-:root[data-accent="rose"][data-theme="dark"]{ --primary:#f592b0; --primary-dark:#ffb2c8; --primary-light:#3a2430; }
-:root[data-accent="amber"]{ --primary:#d9903a; --primary-dark:#bd7620; --primary-light:#f8e8cf; }
-:root[data-accent="amber"][data-theme="dark"]{ --primary:#e6ab4d; --primary-dark:#f0c374; --primary-light:#37301c; }
-:root[data-accent="graphite"]{ --primary:#3f4557; --primary-dark:#2a2e3c; --primary-light:#dfe1e8; }
+:root[data-accent="slate"]{ --primary:#647394; --primary-dark:#505e7c; --primary-light:#e7eaf1; }
+:root[data-accent="slate"][data-theme="dark"]{ --primary:#9ba6c2; --primary-dark:#b7c0d6; --primary-light:#242938; }
+:root[data-accent="graphite"]{ --primary:#3f4557; --primary-dark:#2a2e3c; --primary-light:#e4e5ea; }
 :root[data-accent="graphite"][data-theme="dark"]{ --primary:#c3c8d6; --primary-dark:#dfe2ec; --primary-light:#2a2e3a; }
+:root[data-accent="indigo"]{ --primary:#5a6cf0; --primary-dark:#4351d8; --primary-light:#e6e9fe; }
+:root[data-accent="indigo"][data-theme="dark"]{ --primary:#8a98ff; --primary-dark:#a9b4ff; --primary-light:#222746; }
+:root[data-accent="blue"]{ --primary:#2f7fe0; --primary-dark:#1f63c7; --primary-light:#e2eefb; }
+:root[data-accent="blue"][data-theme="dark"]{ --primary:#5aa2ff; --primary-dark:#8cc0ff; --primary-light:#12233f; }
+:root[data-accent="cyan"]{ --primary:#0ca5c9; --primary-dark:#0b87a6; --primary-light:#dcf3f8; }
+:root[data-accent="cyan"][data-theme="dark"]{ --primary:#3fd0e8; --primary-dark:#77e0f0; --primary-light:#0c2a31; }
+:root[data-accent="teal"]{ --primary:#12b183; --primary-dark:#0c9670; --primary-light:#d6f2e9; }
+:root[data-accent="teal"][data-theme="dark"]{ --primary:#38d6a6; --primary-dark:#63e2bd; --primary-light:#0f2b23; }
+:root[data-accent="emerald"]{ --primary:#1a9d5a; --primary-dark:#137a46; --primary-light:#dcf1e4; }
+:root[data-accent="emerald"][data-theme="dark"]{ --primary:#43cd82; --primary-dark:#72dda0; --primary-light:#123021; }
+:root[data-accent="lime"]{ --primary:#5a9e2a; --primary-dark:#48801f; --primary-light:#e8f4d8; }
+:root[data-accent="lime"][data-theme="dark"]{ --primary:#8fd14f; --primary-dark:#aede7d; --primary-light:#20300f; }
+:root[data-accent="amber"]{ --primary:#d9903a; --primary-dark:#bd7620; --primary-light:#f8ead2; }
+:root[data-accent="amber"][data-theme="dark"]{ --primary:#e6ab4d; --primary-dark:#f0c374; --primary-light:#352c17; }
+:root[data-accent="orange"]{ --primary:#e07a35; --primary-dark:#c25f1e; --primary-light:#fbe7d6; }
+:root[data-accent="orange"][data-theme="dark"]{ --primary:#f39b57; --primary-dark:#ffb87f; --primary-light:#39230f; }
+:root[data-accent="coral"]{ --primary:#ec6a52; --primary-dark:#d24e37; --primary-light:#fbe4de; }
+:root[data-accent="coral"][data-theme="dark"]{ --primary:#ff8a72; --primary-dark:#ffab97; --primary-light:#3a1d16; }
+:root[data-accent="rose"]{ --primary:#e0658a; --primary-dark:#c64d72; --primary-light:#fbe0e8; }
+:root[data-accent="rose"][data-theme="dark"]{ --primary:#f592b0; --primary-dark:#ffb2c8; --primary-light:#39222c; }
+:root[data-accent="pink"]{ --primary:#d957b0; --primary-dark:#bd3f96; --primary-light:#fbe1f2; }
+:root[data-accent="pink"][data-theme="dark"]{ --primary:#f086cf; --primary-dark:#ffb0e0; --primary-light:#371d30; }
+:root[data-accent="crimson"]{ --primary:#d94a5a; --primary-dark:#bd3244; --primary-light:#fbe0e3; }
+:root[data-accent="crimson"][data-theme="dark"]{ --primary:#f57d8b; --primary-dark:#ffabb4; --primary-light:#3a1d22; }
+:root[data-accent="violet"]{ --primary:#7c5cff; --primary-dark:#6742ee; --primary-light:#eae4ff; }
+:root[data-accent="violet"][data-theme="dark"]{ --primary:#a98bff; --primary-dark:#c0a9ff; --primary-light:#291f47; }
+:root[data-accent="purple"]{ --primary:#9a55d4; --primary-dark:#7f3fba; --primary-light:#f0e2fb; }
+:root[data-accent="purple"][data-theme="dark"]{ --primary:#c088ee; --primary-dark:#d6acf5; --primary-light:#2f1c40; }
 
-/* [B] edit by smsong - 설정 메뉴: 테마 색상 선택 행 + 스와치 */
-.setting-color{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;padding:11px 14px;border-radius:12px;background:var(--gray-100);border:1px solid var(--gray-200);box-sizing:border-box;}
-.setting-color .st-ico{display:flex;align-items:center;color:var(--gray-600);}
-.setting-color .st-label{font-size:0.92rem;font-weight:600;color:var(--gray-800);margin-right:auto;}
-.accent-swatches{display:flex;gap:9px;flex-wrap:wrap;flex-basis:100%;padding-left:27px;margin-top:2px;}
-.accent-sw{position:relative;width:26px;height:26px;border-radius:50%;border:0;padding:0;cursor:pointer;background:transparent;box-shadow:0 0 0 1px var(--gray-200);transition:transform .12s ease;-webkit-tap-highlight-color:transparent;}
-.accent-sw .accent-dot{position:absolute;inset:0;border-radius:50%;background:var(--c);}
-.accent-sw .accent-chk{position:absolute;inset:0;margin:auto;opacity:0;transition:opacity .1s;pointer-events:none;}
-.accent-sw.on{transform:scale(1.14);box-shadow:0 0 0 2px var(--white),0 0 0 4px var(--c);}
-.accent-sw.on .accent-chk{opacity:1;}
-.accent-sw:active{transform:scale(.92);}
+/* [B] edit by smsong - 테마 색상: 버튼 우측 현재색 점 + 색상 선택 모달 */
+.accent-current{float:right;width:16px;height:16px;border-radius:50%;background:var(--primary);margin-top:1px;box-shadow:0 0 0 2px var(--white),0 0 0 3px var(--gray-200);}
+#accent-modal{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(20,22,34,.5);}
+#accent-modal.hidden{display:none;}
+#ac-card{width:100%;max-width:400px;max-height:82vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--white);border-radius:20px;padding:20px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:acPop .24s cubic-bezier(.2,.8,.3,1);}
+@keyframes acPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.ac-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+.ac-head h3{margin:0;font-size:1.1rem;font-weight:700;color:var(--gray-800);}
+.ac-head .ac-x{border:0;background:transparent;font-size:1.5rem;line-height:1;color:var(--gray-500);cursor:pointer;padding:2px 6px;}
+.ac-desc{font-size:.82rem;color:var(--gray-500);margin:0 0 14px;}
+.ac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:10px;}
+.ac-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 6px 9px;border-radius:14px;border:1.5px solid var(--gray-200);background:var(--gray-50);cursor:pointer;transition:transform .1s,border-color .12s;-webkit-tap-highlight-color:transparent;}
+.ac-tile:active{transform:scale(.96);}
+.ac-tile .ac-dot{width:30px;height:30px;border-radius:50%;background:var(--c);box-shadow:0 2px 6px rgba(0,0,0,.14);}
+.ac-tile .ac-nm{font-size:.74rem;font-weight:600;color:var(--gray-600);}
+.ac-tile.on{border-color:var(--c);}
+.ac-tile.on .ac-nm{color:var(--gray-800);}
+.ac-tile .ac-ck{position:absolute;top:6px;right:6px;width:17px;height:17px;border-radius:50%;background:var(--c);display:none;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--white);}
+.ac-tile.on .ac-ck{display:flex;}

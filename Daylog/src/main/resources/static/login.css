@@ -174,10 +174,19 @@ html, body {
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 /* [B] edit by smsong - 기기별 테마 색상(포인트색) 오버라이드. localStorage('daylog_accent') */
-:root[data-accent="slate"]{ --primary:#647394; --primary-dark:#505e7c; --primary-light:#cad1e4; }
-:root[data-accent="indigo"]{ --primary:#5a6cf0; --primary-dark:#4351d8; --primary-light:#dfe3fd; }
-:root[data-accent="violet"]{ --primary:#7c5cff; --primary-dark:#6742ee; --primary-light:#e9e3ff; }
-:root[data-accent="teal"]{ --primary:#13b183; --primary-dark:#0c9670; --primary-light:#d3f0e6; }
+:root[data-accent="slate"]{ --primary:#647394; --primary-dark:#505e7c; --primary-light:#e7eaf1; }
+:root[data-accent="graphite"]{ --primary:#3f4557; --primary-dark:#2a2e3c; --primary-light:#e4e5ea; }
+:root[data-accent="indigo"]{ --primary:#5a6cf0; --primary-dark:#4351d8; --primary-light:#e6e9fe; }
+:root[data-accent="blue"]{ --primary:#2f7fe0; --primary-dark:#1f63c7; --primary-light:#e2eefb; }
+:root[data-accent="cyan"]{ --primary:#0ca5c9; --primary-dark:#0b87a6; --primary-light:#dcf3f8; }
+:root[data-accent="teal"]{ --primary:#12b183; --primary-dark:#0c9670; --primary-light:#d6f2e9; }
+:root[data-accent="emerald"]{ --primary:#1a9d5a; --primary-dark:#137a46; --primary-light:#dcf1e4; }
+:root[data-accent="lime"]{ --primary:#5a9e2a; --primary-dark:#48801f; --primary-light:#e8f4d8; }
+:root[data-accent="amber"]{ --primary:#d9903a; --primary-dark:#bd7620; --primary-light:#f8ead2; }
+:root[data-accent="orange"]{ --primary:#e07a35; --primary-dark:#c25f1e; --primary-light:#fbe7d6; }
+:root[data-accent="coral"]{ --primary:#ec6a52; --primary-dark:#d24e37; --primary-light:#fbe4de; }
 :root[data-accent="rose"]{ --primary:#e0658a; --primary-dark:#c64d72; --primary-light:#fbe0e8; }
-:root[data-accent="amber"]{ --primary:#d9903a; --primary-dark:#bd7620; --primary-light:#f8e8cf; }
-:root[data-accent="graphite"]{ --primary:#3f4557; --primary-dark:#2a2e3c; --primary-light:#dfe1e8; }
+:root[data-accent="pink"]{ --primary:#d957b0; --primary-dark:#bd3f96; --primary-light:#fbe1f2; }
+:root[data-accent="crimson"]{ --primary:#d94a5a; --primary-dark:#bd3244; --primary-light:#fbe0e3; }
+:root[data-accent="violet"]{ --primary:#7c5cff; --primary-dark:#6742ee; --primary-light:#eae4ff; }
+:root[data-accent="purple"]{ --primary:#9a55d4; --primary-dark:#7f3fba; --primary-light:#f0e2fb; }
