@@ -8800,11 +8800,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (total) {
                 var label = (it.s[0] && it.s[0].title) || (it.c[0] && it.c[0].title) || '';
                 cell += '<span class="cw-label">' + esc(label) + '</span>';
+                // [B] edit by smsong - 여러 개면 날짜별로 모두 표시(이벤트당 점 1개, 최대 3개 + 나머지 +N)
                 cell += '<span class="cw-dots">';
-                if (it.s.length) cell += '<i class="cw-dot sch"></i>';
-                if (it.c.length) cell += '<i class="cw-dot cl"></i>';
-                if (total > 1) cell += '<span class="cw-more">' + total + '</span>';
+                var _cap = 3, _shown = 0, _extra = 0;
+                for (var _si = 0; _si < it.s.length; _si++) {
+                    if (_shown < _cap) { cell += '<i class="cw-dot sch"></i>'; _shown++; } else _extra++;
+                }
+                for (var _ci = 0; _ci < it.c.length; _ci++) {
+                    if (_shown < _cap) { cell += '<i class="cw-dot cl"></i>'; _shown++; } else _extra++;
+                }
+                if (_extra > 0) cell += '<span class="cw-more">+' + _extra + '</span>';
                 cell += '</span>';
+                // [E] edit by smsong
             }
             cell += '</div>';
             cells += cell;
@@ -9380,7 +9387,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!rows.length) { showToast('선택된 항목이 없습니다'); return; }
         if (!confirm(rows.length + '개를 영구 삭제합니다.\n' + PERM_WARN)) return;
 
-        var by = { memory: [], checklist: [], comment: [] };
+        // [B] edit by smsong - #23-fix 일정(schedule)도 일괄 영구삭제에 포함 (기존엔 빠져 무시됐음)
+        var by = { memory: [], checklist: [], comment: [], schedule: [] };
         rows.forEach(function (r) {
             var k = r.getAttribute('data-kind'), id = Number(r.getAttribute('data-id'));
             if (by[k]) by[k].push(id);
@@ -9388,6 +9396,8 @@ document.addEventListener('DOMContentLoaded', () => {
         var jobs = [];
         if (by.memory.length) jobs.push(fetch(api() + '/api/memories/bulk/delete', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: by.memory }) }));
         if (by.checklist.length) jobs.push(fetch(api() + '/api/checklists/bulk/delete', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: by.checklist }) }));
+        if (by.schedule.length) jobs.push(fetch(api() + '/api/schedules/bulk/delete', { method: 'POST', headers: hdr(true), body: JSON.stringify({ ids: by.schedule }) }));
+        // [E] edit by smsong
         // 댓글은 일괄 API 가 없어 개별 호출
         by.comment.forEach(function (id) {
             jobs.push(fetch(api() + '/comment/' + id + '?hard=true', { method: 'DELETE', headers: hdr(true) }));
