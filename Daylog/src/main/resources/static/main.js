@@ -8663,6 +8663,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
     function dkey(v) { return v ? String(v).substring(0, 10) : ''; }
+    // [B] edit by smsong - "YYYY-MM-DD" → 로컬 Date (타임존 밀림 방지) / 시작~종료(포함) 날짜 목록
+    function parseYmd(str) {
+        if (!str) return null;
+        var m = String(str).substring(0, 10).split('-');
+        if (m.length !== 3) return null;
+        var d = new Date(Number(m[0]), Number(m[1]) - 1, Number(m[2]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+    function enumDates(startStr, endStr) {
+        var a = parseYmd(startStr), b = parseYmd(endStr) || a;
+        if (!a) return [];
+        if (b < a) b = a;
+        var out = [], cur = new Date(a.getTime());
+        while (cur <= b) { out.push(ymd(cur)); cur.setDate(cur.getDate() + 1); }
+        return out;
+    }
+    // [E] edit by smsong
 
     // ===================== 데이터 =====================
     function loadCalendarData(force) {
@@ -9105,8 +9122,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     '<h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ' + (editing ? '일정 수정' : '일정 추가') + '</h3>' +
                     '<button type="button" class="cw-x" aria-label="닫기">&times;</button>' +
                 '</div>' +
-                '<label class="cw-lb">날짜</label>' +
-                '<input type="date" id="cw-date" class="cw-in" value="' + esc(editing ? dkey(s.scheduleDate) : dateKey) + '">' +
+                // [B] edit by smsong - 생성은 기간(시작~종료), 수정은 단일 날짜
+                (editing
+                    ? '<label class="cw-lb">날짜</label>' +
+                      '<input type="date" id="cw-date" class="cw-in" value="' + esc(dkey(s.scheduleDate)) + '">'
+                    : '<label class="cw-lb">기간 <span class="cw-opt">여러 날이면 각 날짜에 하나씩 생성돼요</span></label>' +
+                      '<div class="cw-daterow">' +
+                          '<input type="date" id="cw-date" class="cw-in" value="' + esc(dateKey) + '">' +
+                          '<span class="cw-date-sep">~</span>' +
+                          '<input type="date" id="cw-date-end" class="cw-in" value="' + esc(dateKey) + '">' +
+                      '</div>' +
+                      '<div class="cw-daterange-hint" id="cw-daterange-hint"></div>'
+                ) +
+                // [E] edit by smsong
                 '<label class="cw-lb">무엇을 할까요</label>' +
                 '<input type="text" id="cw-title" class="cw-in" maxlength="60" placeholder="예) 전시 보러 가기" value="' + esc(editing ? s.title : '') + '">' +
                 '<label class="cw-lb">메모 <span class="cw-opt">선택</span></label>' +
@@ -9134,6 +9162,28 @@ document.addEventListener('DOMContentLoaded', () => {
         var allday = document.getElementById('cw-allday'), timeEl = document.getElementById('cw-time');
         allday.addEventListener('change', function () { timeEl.disabled = allday.checked; if (allday.checked) timeEl.value = ''; });
 
+        // [B] edit by smsong - 기간 입력 동기화 + 안내(생성 시에만 존재)
+        var startEl = document.getElementById('cw-date');
+        var endEl = document.getElementById('cw-date-end');
+        var hintEl = document.getElementById('cw-daterange-hint');
+        function syncRange() {
+            if (!startEl || !endEl) return;
+            if (endEl.value && startEl.value && endEl.value < startEl.value) endEl.value = startEl.value;
+            if (hintEl) {
+                var n = enumDates(startEl.value, endEl.value).length;
+                hintEl.textContent = (n > 1) ? ('총 ' + n + '일 · 날짜별로 ' + n + '개가 생성됩니다') : '';
+            }
+        }
+        if (startEl && endEl) {
+            startEl.addEventListener('change', function () {
+                if (!endEl.value || endEl.value < startEl.value) endEl.value = startEl.value;
+                syncRange();
+            });
+            endEl.addEventListener('change', syncRange);
+            syncRange();
+        }
+        // [E] edit by smsong
+
         document.getElementById('cw-save').addEventListener('click', function () {
             var title = document.getElementById('cw-title').value.trim();
             var date = document.getElementById('cw-date').value;
@@ -9153,22 +9203,43 @@ document.addEventListener('DOMContentLoaded', () => {
             body.remind1 = _r1; body.remind2 = _r2;
             if (!allday.checked && timeEl.value) body.startTime = timeEl.value + ':00';
             // [E] edit by smsong
-            var url = editing ? (api() + '/api/schedules/' + s.id)
-                              : (api() + '/api/schedules?uid=' + encodeURIComponent(Daylog.currentUid));
-            withLoading(fetch(url, { method: editing ? 'PUT' : 'POST', headers: hdr(true), body: JSON.stringify(body) })
-                .then(Daylog.handleResponse), '저장 중...')
+            if (editing) {
+                withLoading(fetch(api() + '/api/schedules/' + s.id, { method: 'PUT', headers: hdr(true), body: JSON.stringify(body) })
+                    .then(Daylog.handleResponse), '저장 중...')
+                    .then(function () { return loadCalendarData(true); })
+                    .then(function () {
+                        closeScheduleForm(); render();
+                        // [B][E] edit by smsong - 상세에서 들어왔으면 갱신된 값으로 상세를 다시 띄운다
+                        if (fromDetail) {
+                            var fresh = _schedules.find(function (x) { return String(x.id) === String(s.id); });
+                            if (fresh) openScheduleDetail(fresh, dkey(fresh.scheduleDate));
+                            else closeScheduleDetail();
+                        }
+                        showToast('일정을 수정했어요');
+                    })
+                    .catch(function (e) { console.error(e); showToast('저장 실패. 다시 시도해주십시오.'); });
+                return;
+            }
+
+            // [B] edit by smsong - 생성: 기간(시작~종료)의 각 날짜에 하나씩 생성
+            var _endEl = document.getElementById('cw-date-end');
+            var dates = enumDates(date, _endEl ? _endEl.value : date);
+            if (!dates.length) { showToast('날짜를 선택해주십시오'); return; }
+            var MAX_RANGE = 92;
+            if (dates.length > MAX_RANGE) { showToast('기간이 너무 길어요 (최대 ' + MAX_RANGE + '일)'); return; }
+            var createUrl = api() + '/api/schedules?uid=' + encodeURIComponent(Daylog.currentUid);
+            var jobs = dates.map(function (d0) {
+                var b2 = Object.assign({}, body, { scheduleDate: d0 });
+                return fetch(createUrl, { method: 'POST', headers: hdr(true), body: JSON.stringify(b2) }).then(Daylog.handleResponse);
+            });
+            withLoading(Promise.all(jobs), dates.length > 1 ? (dates.length + '개 일정 저장 중...') : '저장 중...')
                 .then(function () { return loadCalendarData(true); })
                 .then(function () {
                     closeScheduleForm(); render();
-                    // [B][E] edit by smsong - 상세에서 들어왔으면 갱신된 값으로 상세를 다시 띄운다
-                    if (fromDetail && editing) {
-                        var fresh = _schedules.find(function (x) { return String(x.id) === String(s.id); });
-                        if (fresh) openScheduleDetail(fresh, dkey(fresh.scheduleDate));
-                        else closeScheduleDetail();
-                    }
-                    showToast(editing ? '일정을 수정했어요' : '일정을 추가했어요');
+                    showToast(dates.length > 1 ? (dates.length + '일 일정을 추가했어요') : '일정을 추가했어요');
                 })
                 .catch(function (e) { console.error(e); showToast('저장 실패. 다시 시도해주십시오.'); });
+            // [E] edit by smsong
         });
 
         var del = document.getElementById('cw-del');
@@ -9560,6 +9631,12 @@ document.addEventListener('DOMContentLoaded', () => {
             'font-family:inherit;font-size:0.92rem;color:var(--gray-800);background:var(--white);}',
             '.cw-in:focus{outline:none;border-color:var(--primary);}',
             '.cw-ta{min-height:74px;resize:vertical;}',
+            // [B] edit by smsong - 기간(시작~종료) 입력 행
+            '.cw-daterow{display:flex;align-items:center;gap:8px;}',
+            '.cw-daterow .cw-in{flex:1;min-width:0;}',
+            '.cw-date-sep{color:var(--gray-400);font-weight:700;flex:none;}',
+            '.cw-daterange-hint{margin-top:6px;font-size:0.76rem;font-weight:600;color:var(--primary-dark);min-height:1em;}',
+            // [E] edit by smsong
             '.cw-time-row{display:flex;align-items:center;gap:12px;margin-top:14px;}',
             '.cw-switch{display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--gray-600);cursor:pointer;white-space:nowrap;}',
             '.cw-switch input{width:17px;height:17px;accent-color:var(--primary);}',
