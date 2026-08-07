@@ -28,6 +28,7 @@ public class ScheduleDTO {
     private String remind2;
     // [E] edit by smsong
     private String color;
+    private String groupId;   // [B][E] edit by smsong - 기간 일정 묶음 ID (단일이면 null)
     private String ownerUid;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -47,6 +48,7 @@ public class ScheduleDTO {
                 .remind1(e.getRemind1())
                 .remind2(e.getRemind2())
                 .color(e.getColor())
+                .groupId(e.getGroupId())   // [B][E] edit by smsong
                 .deleted(e.isDeleted())
                 .ownerUid(ownerUid)
                 .createdAt(e.getCreatedAt())
@@ -71,6 +73,7 @@ public class ScheduleDTO {
                 .remind1(remind1)
                 .remind2(remind2)
                 .color(color)
+                .groupId(groupId)   // [B][E] edit by smsong
                 .deleted(deleted != null && deleted)
                 .owner(owner)
                 .createdAt(createdAt)

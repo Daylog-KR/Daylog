@@ -25,5 +25,9 @@ public interface ScheduleRepository extends JpaRepository<ScheduleEntity, Long> 
 
     /** 휴지통 30일 자동 삭제 대상 */
     List<ScheduleEntity> findByDeletedTrueAndTrashedAtBefore(LocalDateTime cutoff);
+
+    // [B] edit by smsong - 기간 일정 묶음(groupId) 단위 처리 (방 스코프)
+    List<ScheduleEntity> findByGroupIdAndRoomId(String groupId, Long roomId);
+    // [E] edit by smsong
 }
 // [E] edit by smsong

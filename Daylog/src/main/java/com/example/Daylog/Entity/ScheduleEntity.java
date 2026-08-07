@@ -55,6 +55,13 @@ public class ScheduleEntity {
     @Column(length = 16)
     private String color;
 
+    // [B] edit by smsong - 기간(여러 날)으로 만든 일정을 한 묶음으로 묶는 ID.
+    //  · 단일 일정은 null. 프론트가 기간 생성 시 UUID 를 만들어 같은 묶음 전부에 넣는다.
+    //  · 이 값으로 묶음 단위 수정/휴지통/복원/영구삭제를 한다.
+    @Column(length = 40)
+    private String groupId;
+    // [E] edit by smsong
+
     /** 소속 방 — 이 방의 멤버끼리만 공유 */
     @Column(nullable = false)
     private Long roomId;

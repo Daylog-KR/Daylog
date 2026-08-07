@@ -86,7 +86,7 @@ public class ScheduleService {
             throw new IllegalArgumentException("일정 제목은 필수입니다.");
         }
 
-        ScheduleEntity e = dto.dtoToEntity(owner);
+        ScheduleEntity e = dto.dtoToEntity(owner);   // groupId 포함(있으면)
         e.setId(null);
         e.setRoomId(roomId);
         e.setDeleted(false);
@@ -108,22 +108,25 @@ public class ScheduleService {
     @Transactional
     public ScheduleDTO update(Long id, ScheduleDTO dto, UserDetails userDetails) {
         ScheduleEntity s = getEditable(id, userDetails);
-
-        if (dto.getTitle() != null && !dto.getTitle().isBlank()) s.setTitle(dto.getTitle());
-        if (dto.getContent() != null) s.setContent(dto.getContent());
-        if (dto.getScheduleDate() != null) s.setScheduleDate(dto.getScheduleDate());
-        boolean allDay = dto.isAllDayOrDefault();   // [B][E] #21 null 이면 종일로
-        s.setAllDay(allDay);
-        s.setStartTime(allDay ? null : dto.getStartTime());
-        if (dto.getColor() != null) s.setColor(dto.getColor());
-        // [B][E] edit by smsong - #27 알림 예약 (null 로 보내면 해제)
-        s.setRemind1(dto.getRemind1());
-        s.setRemind2(dto.getRemind2());
-
+        applyEditableFields(s, dto, true);           // 단일 수정은 날짜도 반영
         s.setUpdatedAt(LocalDateTime.now());
         s.setLastEditorUid(userDetails.getUsername());
         return ScheduleDTO.entityToDto(scheduleRepository.save(s));
     }
+
+    // [B] edit by smsong - 공통: dto 로 들어온 값만 반영. withDate=false 면 날짜/시간의 '날짜'는 건드리지 않는다(묶음 수정).
+    private void applyEditableFields(ScheduleEntity s, ScheduleDTO dto, boolean withDate) {
+        if (dto.getTitle() != null && !dto.getTitle().isBlank()) s.setTitle(dto.getTitle());
+        if (dto.getContent() != null) s.setContent(dto.getContent());
+        if (withDate && dto.getScheduleDate() != null) s.setScheduleDate(dto.getScheduleDate());
+        boolean allDay = dto.isAllDayOrDefault();
+        s.setAllDay(allDay);
+        s.setStartTime(allDay ? null : dto.getStartTime());
+        if (dto.getColor() != null) s.setColor(dto.getColor());
+        s.setRemind1(dto.getRemind1());
+        s.setRemind2(dto.getRemind2());
+    }
+    // [E] edit by smsong
 
     // ===== 휴지통 =====
     @Transactional
@@ -173,6 +176,107 @@ public class ScheduleService {
         long passed = ChronoUnit.DAYS.between(trashedAt.toLocalDate(), LocalDateTime.now().toLocalDate());
         return (int) Math.max(0, TRASH_RETENTION_DAYS - passed);
     }
+
+    // ===== [B] edit by smsong - 기간 일정 묶음(groupId) 단위 처리 =====
+    //  · roomId 는 컨트롤러가 X-Room-Id 로 받아 넘긴다(방 스코프).
+    //  · 권한 없는 항목은 건너뛰고 처리된 개수만 돌려준다(일괄 처리와 동일한 관용 규칙).
+
+    private List<ScheduleEntity> groupItems(String groupId, Long roomId) {
+        if (groupId == null || groupId.isBlank() || roomId == null) return new ArrayList<>();
+        return scheduleRepository.findByGroupIdAndRoomId(groupId, roomId);
+    }
+
+    /** 묶음 전체 수정 — 날짜는 각자 유지, 나머지 필드만 반영 */
+    @Transactional
+    public Map<String, Object> updateGroup(String groupId, Long roomId, ScheduleDTO dto, UserDetails ud) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        for (ScheduleEntity s : groupItems(groupId, roomId)) {
+            if (s.isDeleted()) continue;
+            try {
+                roomService.requireMember(ud.getUsername(), s.getRoomId());
+                requireOwnerOrAdmin(s, ud, "수정");
+                permissionService.requireCanEdit(ud.getUsername(), s.getRoomId());
+                applyEditableFields(s, dto, false);   // 날짜는 유지
+                s.setUpdatedAt(LocalDateTime.now());
+                s.setLastEditorUid(ud.getUsername());
+                scheduleRepository.save(s);
+                ok++;
+            } catch (Exception e) {
+                failed.add(s.getId());
+            }
+        }
+        return result(ok, failed);
+    }
+
+    /** 묶음 전체 휴지통으로 */
+    @Transactional
+    public Map<String, Object> moveGroupToTrash(String groupId, Long roomId, UserDetails ud) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        for (ScheduleEntity s : groupItems(groupId, roomId)) {
+            if (s.isDeleted()) continue;
+            try {
+                roomService.requireMember(ud.getUsername(), s.getRoomId());
+                requireOwnerOrAdmin(s, ud, "휴지통으로 이동");
+                s.setDeleted(true);
+                s.setTrashedAt(LocalDateTime.now());
+                scheduleRepository.save(s);
+                ok++;
+            } catch (Exception e) {
+                failed.add(s.getId());
+            }
+        }
+        return result(ok, failed);
+    }
+
+    /** 묶음 전체 복원 */
+    @Transactional
+    public Map<String, Object> restoreGroup(String groupId, Long roomId, UserDetails ud) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        for (ScheduleEntity s : groupItems(groupId, roomId)) {
+            if (!s.isDeleted()) continue;
+            try {
+                roomService.requireMember(ud.getUsername(), s.getRoomId());
+                requireOwnerOrAdmin(s, ud, "복원");
+                s.setDeleted(false);
+                s.setTrashedAt(null);
+                scheduleRepository.save(s);
+                ok++;
+            } catch (Exception e) {
+                failed.add(s.getId());
+            }
+        }
+        return result(ok, failed);
+    }
+
+    /** 묶음 전체 영구 삭제 */
+    @Transactional
+    public Map<String, Object> permanentDeleteGroup(String groupId, Long roomId, UserDetails ud) {
+        int ok = 0;
+        List<Long> failed = new ArrayList<>();
+        for (ScheduleEntity s : groupItems(groupId, roomId)) {
+            try {
+                roomService.requireMember(ud.getUsername(), s.getRoomId());
+                requireOwnerOrAdmin(s, ud, "영구 삭제");
+                scheduleRepository.delete(s);
+                ok++;
+            } catch (Exception e) {
+                failed.add(s.getId());
+            }
+        }
+        return result(ok, failed);
+    }
+
+    private Map<String, Object> result(int ok, List<Long> failed) {
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", ok);
+        res.put("updated", ok);
+        res.put("failed", failed);
+        return res;
+    }
+    // ===== [E] edit by smsong =====
 
     // ===== 일괄 처리 =====
     //  실패한 건은 건너뛰고 결과만 돌려준다 (권한 없는 항목이 섞여도 나머지는 처리된다)

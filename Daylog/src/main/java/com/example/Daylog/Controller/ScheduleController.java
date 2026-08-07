@@ -77,6 +77,44 @@ public class ScheduleController {
         return ResponseEntity.ok(scheduleService.getTrash(uid, roomId, userDetails));
     }
 
+    // ===== [B] edit by smsong - 기간 일정 묶음(groupId) 단위 처리 =====
+    //  · 방 스코프는 X-Room-Id 로 받는다. groupId 는 프론트가 만든 UUID.
+    //  · 경로가 /{id} 계열(단일 세그먼트)과 겹치지 않도록 /group/... 접두어를 쓴다.
+
+    /** 묶음 전체 수정 (날짜는 각자 유지, 나머지 필드만 반영) */
+    @PutMapping("/group/{groupId}")
+    public ResponseEntity<Map<String, Object>> updateGroup(@PathVariable("groupId") String groupId,
+                                                           @RequestBody ScheduleDTO dto,
+                                                           @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                           @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(scheduleService.updateGroup(groupId, roomId, dto, userDetails));
+    }
+
+    /** 묶음 전체 휴지통으로 */
+    @PutMapping("/group/{groupId}/trash")
+    public ResponseEntity<Map<String, Object>> trashGroup(@PathVariable("groupId") String groupId,
+                                                          @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                          @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(scheduleService.moveGroupToTrash(groupId, roomId, userDetails));
+    }
+
+    /** 묶음 전체 복원 */
+    @PutMapping("/group/{groupId}/restore")
+    public ResponseEntity<Map<String, Object>> restoreGroup(@PathVariable("groupId") String groupId,
+                                                            @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(scheduleService.restoreGroup(groupId, roomId, userDetails));
+    }
+
+    /** 묶음 전체 영구 삭제 */
+    @DeleteMapping("/group/{groupId}")
+    public ResponseEntity<Map<String, Object>> deleteGroup(@PathVariable("groupId") String groupId,
+                                                           @RequestHeader(value = "X-Room-Id", required = false) Long roomId,
+                                                           @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(scheduleService.permanentDeleteGroup(groupId, roomId, userDetails));
+    }
+    // ===== [E] edit by smsong =====
+
     // ===== 일괄 처리 (보관함/휴지통 선택 모드) =====
 
     /** 여러 건을 한 번에 휴지통으로 */

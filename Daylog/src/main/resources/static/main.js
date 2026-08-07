@@ -6740,18 +6740,22 @@ function renderTrash(memories, comments, checklists, schedules) {
         schedules.forEach(sc => {
             const when = sc.scheduleDate ? String(sc.scheduleDate).substring(0, 10).replace(/-/g, '.') : '';
             const time = sc.allDay ? '종일' : (sc.startTime ? String(sc.startTime).substring(0, 5) : '종일');
+            // [B] edit by smsong - 휴지통 안의 같은 묶음 개수 → '묶음 전체' 옵션 노출
+            const gcount = sc.groupId ? schedules.filter(x => String(x.groupId) === String(sc.groupId)).length : 0;
+            const gArg = (sc.groupId && gcount > 1) ? ("'" + String(sc.groupId).replace(/'/g, "\\'") + "', " + gcount) : 'null, 0';
+            const gBadge = (sc.groupId && gcount > 1) ? ('<span class="trash-group-badge">묶음 ' + gcount + '일</span>') : '';
             html +=
                 '<div class="trash-row" data-kind="schedule" data-id="' + sc.id + '">' +
                 '<div class="lm-thumb lm-thumb-empty">' + icon('calendar', 18, 'color:#2e9e5b;') + '</div>' +
                 '<div class="lm-row-main">' +
-                '<div class="lm-row-date">' + escapeHtml(when + ' · ' + time) + '</div>' +
+                '<div class="lm-row-date">' + escapeHtml(when + ' · ' + time) + gBadge + '</div>' +
                 '<div class="lm-row-title">' + escapeHtml(sc.title || '') + '</div>' +
                 '<div class="lm-row-text">' + escapeHtml(sc.content || '') + '</div>' +
                 autoDeleteText(sc) +
                 '</div>' +
                 '<div class="trash-actions">' +
-                '<button type="button" class="trash-restore" onclick="restoreSchedule(' + sc.id + ')">복원</button>' +
-                '<button type="button" class="trash-delete" onclick="deleteScheduleForever(' + sc.id + ')">영구삭제</button>' +
+                '<button type="button" class="trash-restore" onclick="restoreSchedule(' + sc.id + ', ' + gArg + ')">복원</button>' +
+                '<button type="button" class="trash-delete" onclick="deleteScheduleForever(' + sc.id + ', ' + gArg + ')">영구삭제</button>' +
                 '</div>' +
                 '</div>';
         });
@@ -6761,18 +6765,30 @@ function renderTrash(memories, comments, checklists, schedules) {
     body.innerHTML = html;
 }
 
-// [B] edit by smsong - #23 일정 복원 / 영구 삭제
-function restoreSchedule(id) {
-    withLoading(fetch(`${Daylog.api}/api/schedules/${id}/restore`, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
+// [B] edit by smsong - #23 일정 복원 / 영구 삭제 (묶음 대응: gid/count 가 오면 '전체 vs 이 항목만' 선택)
+function restoreSchedule(id, gid, count) {
+    var url, msg;
+    if (gid && count > 1 && confirm('이 일정은 ' + count + '일 묶음이에요.\n\n[확인] 묶음 ' + count + '일 전체 복원\n[취소] 이 일정만')) {
+        url = `${Daylog.api}/api/schedules/group/${encodeURIComponent(gid)}/restore`; msg = '묶음을 복원했어요';
+    } else {
+        url = `${Daylog.api}/api/schedules/${id}/restore`; msg = '일정을 복원했어요';
+    }
+    withLoading(fetch(url, { method: 'PUT', headers: Daylog.authHeaders(true) }), '복원 중...')
         .then(Daylog.handleResponse)
-        .then(() => { showToast('일정을 복원했어요'); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
+        .then(() => { showToast(msg); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
         .catch(() => showToast('복원 실패'));
 }
-function deleteScheduleForever(id) {
-    if (!confirm('이 일정을 영구 삭제합니다.\n' + (Daylog.PERM_WARN || ''))) return;
-    withLoading(fetch(`${Daylog.api}/api/schedules/${id}`, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
+function deleteScheduleForever(id, gid, count) {
+    var url, msg;
+    if (gid && count > 1 && confirm('이 일정은 ' + count + '일 묶음이에요.\n\n[확인] 묶음 ' + count + '일 전체 영구 삭제\n[취소] 이 일정만')) {
+        url = `${Daylog.api}/api/schedules/group/${encodeURIComponent(gid)}`; msg = '묶음을 영구 삭제했어요';
+    } else {
+        if (!confirm('이 일정을 영구 삭제합니다.\n' + (Daylog.PERM_WARN || ''))) return;
+        url = `${Daylog.api}/api/schedules/${id}`; msg = '영구 삭제했어요';
+    }
+    withLoading(fetch(url, { method: 'DELETE', headers: Daylog.authHeaders(true) }), '삭제 중...')
         .then(Daylog.handleResponse)
-        .then(() => { showToast('영구 삭제했어요'); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
+        .then(() => { showToast(msg); openTrashModal(); if (Daylog._reloadCalendar) Daylog._reloadCalendar(); })
         .catch(() => showToast('삭제 실패'));
 }
 // [E] edit by smsong
@@ -8679,6 +8695,15 @@ document.addEventListener('DOMContentLoaded', () => {
         while (cur <= b) { out.push(ymd(cur)); cur.setDate(cur.getDate() + 1); }
         return out;
     }
+    // 기간 일정 묶음 ID 생성 / 같은 묶음 개수(정상 일정 기준)
+    function genGroupId() {
+        return (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+            : ('g-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10));
+    }
+    function groupCount(gid) {
+        if (!gid) return 0;
+        return _schedules.filter(function (x) { return String(x.groupId) === String(gid); }).length;
+    }
     // [E] edit by smsong
 
     // ===================== 데이터 =====================
@@ -9051,7 +9076,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ov.innerHTML =
             '<div class="cw-dt-card" role="dialog" aria-modal="true" aria-label="일정 상세">' +
                 '<div class="cw-dt-top">' +
-                    '<span class="cw-dt-kind">' + icon('calendar', 13) + ' 일정</span>' +
+                    '<span class="cw-dt-kind">' + icon('calendar', 13) + ' 일정' +
+                        (groupCount(s.groupId) > 1 ? ' <span class="cw-dt-group">묶음 ' + groupCount(s.groupId) + '일</span>' : '') +
+                    '</span>' +
                     '<div class="cw-dt-act">' +
                         (canEdit ? '<button type="button" class="cw-dt-btn" id="cw-dt-edit" title="수정" aria-label="수정">' + icon('edit', 16) + '</button>' : '') +
                         (canTrash ? '<button type="button" class="cw-dt-btn danger" id="cw-dt-trash" title="휴지통" aria-label="휴지통">' + icon('trash', 16) + '</button>' : '') +
@@ -9092,11 +9119,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         var tb = document.getElementById('cw-dt-trash');
         if (tb) tb.addEventListener('click', function () {
-            if (!confirm('이 일정을 휴지통으로 옮기시겠습니까?')) return;
-            withLoading(fetch(api() + '/api/schedules/' + s.id + '/trash', { method: 'PUT', headers: hdr(true) })
+            var gn = groupCount(s.groupId);
+            var url, msg;
+            if (gn > 1) {
+                // 확인 = 묶음 전체 / 취소 = 이 일정만 (아무것도 안 하려면 그냥 두 번째 confirm 취소)
+                var whole = confirm('이 일정은 ' + gn + '일 묶음이에요.\n\n[확인] 묶음 ' + gn + '일 전체를 휴지통으로\n[취소] 이 일정만');
+                if (whole) {
+                    url = api() + '/api/schedules/group/' + encodeURIComponent(s.groupId) + '/trash';
+                    msg = '묶음 ' + gn + '일을 휴지통으로 옮겼어요';
+                } else {
+                    if (!confirm('이 일정만 휴지통으로 옮길까요?')) return;
+                    url = api() + '/api/schedules/' + s.id + '/trash';
+                    msg = '휴지통으로 옮겼어요';
+                }
+            } else {
+                if (!confirm('이 일정을 휴지통으로 옮기시겠습니까?')) return;
+                url = api() + '/api/schedules/' + s.id + '/trash';
+                msg = '휴지통으로 옮겼어요';
+            }
+            withLoading(fetch(url, { method: 'PUT', headers: hdr(true) })
                 .then(Daylog.handleResponse), '이동 중...')
                 .then(function () { return loadCalendarData(true); })
-                .then(function () { closeScheduleDetail(); render(); showToast('휴지통으로 옮겼어요'); })
+                .then(function () { closeScheduleDetail(); render(); showToast(msg); })
                 .catch(function () { showToast('이동 실패'); });
         });
     }
@@ -9204,7 +9248,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!allday.checked && timeEl.value) body.startTime = timeEl.value + ':00';
             // [E] edit by smsong
             if (editing) {
-                withLoading(fetch(api() + '/api/schedules/' + s.id, { method: 'PUT', headers: hdr(true), body: JSON.stringify(body) })
+                var _gn = groupCount(s.groupId);
+                var _url, _method = 'PUT', _isGroup = false;
+                if (_gn > 1 && confirm('이 일정은 ' + _gn + '일 묶음이에요.\n\n[확인] 묶음 ' + _gn + '일 전체에 적용 (날짜는 각자 유지)\n[취소] 이 일정만 적용')) {
+                    _url = api() + '/api/schedules/group/' + encodeURIComponent(s.groupId);
+                    _isGroup = true;
+                } else {
+                    _url = api() + '/api/schedules/' + s.id;
+                }
+                withLoading(fetch(_url, { method: _method, headers: hdr(true), body: JSON.stringify(body) })
                     .then(Daylog.handleResponse), '저장 중...')
                     .then(function () { return loadCalendarData(true); })
                     .then(function () {
@@ -9215,7 +9267,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (fresh) openScheduleDetail(fresh, dkey(fresh.scheduleDate));
                             else closeScheduleDetail();
                         }
-                        showToast('일정을 수정했어요');
+                        showToast(_isGroup ? ('묶음 ' + _gn + '일을 수정했어요') : '일정을 수정했어요');
                     })
                     .catch(function (e) { console.error(e); showToast('저장 실패. 다시 시도해주십시오.'); });
                 return;
@@ -9228,8 +9280,10 @@ document.addEventListener('DOMContentLoaded', () => {
             var MAX_RANGE = 92;
             if (dates.length > MAX_RANGE) { showToast('기간이 너무 길어요 (최대 ' + MAX_RANGE + '일)'); return; }
             var createUrl = api() + '/api/schedules?uid=' + encodeURIComponent(Daylog.currentUid);
+            var gid = (dates.length > 1) ? genGroupId() : null;   // 여러 날이면 한 묶음으로
             var jobs = dates.map(function (d0) {
                 var b2 = Object.assign({}, body, { scheduleDate: d0 });
+                if (gid) b2.groupId = gid;
                 return fetch(createUrl, { method: 'POST', headers: hdr(true), body: JSON.stringify(b2) }).then(Daylog.handleResponse);
             });
             withLoading(Promise.all(jobs), dates.length > 1 ? (dates.length + '개 일정 저장 중...') : '저장 중...')
