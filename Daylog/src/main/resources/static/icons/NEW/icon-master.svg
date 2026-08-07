@@ -1,0 +1,46 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5E6890"/>
+      <stop offset="0.55" stop-color="#3C4468"/>
+      <stop offset="1" stop-color="#262C46"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCFCFF"/>
+      <stop offset="1" stop-color="#F0F2FA"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="ds" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="12" result="o"/>
+      <feFlood flood-color="#141726" flood-opacity="0.30"/>
+      <feComposite in2="o" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect x="0" y="0" width="512" height="290" rx="116" fill="url(#gloss)"/>
+
+  <g filter="url(#ds)">
+    <rect x="150" y="120" width="212" height="272" rx="22" fill="url(#page)"/>
+  </g>
+  <rect x="150" y="120" width="34" height="272" rx="16" fill="#7982B0"/>
+  <circle cx="167" cy="160" r="5.5" fill="#F0F2FA"/>
+  <circle cx="167" cy="196" r="5.5" fill="#F0F2FA"/>
+  <circle cx="167" cy="232" r="5.5" fill="#F0F2FA"/>
+  <circle cx="167" cy="268" r="5.5" fill="#F0F2FA"/>
+  <circle cx="167" cy="304" r="5.5" fill="#F0F2FA"/>
+  <circle cx="167" cy="340" r="5.5" fill="#F0F2FA"/>
+  <g stroke="#C4CAEA" stroke-width="10" stroke-linecap="round">
+    <line x1="210" y1="170" x2="332" y2="170"/>
+    <line x1="210" y1="204" x2="332" y2="204"/>
+    <line x1="210" y1="238" x2="300" y2="238"/>
+    <line x1="210" y1="272" x2="332" y2="272"/>
+    <line x1="210" y1="306" x2="326" y2="306"/>
+    <line x1="210" y1="340" x2="292" y2="340"/>
+  </g>
+  <path d="M312 120 h34 v72 l-17 -14 -17 14 z" fill="#5A6CF0"/>
+</svg>
